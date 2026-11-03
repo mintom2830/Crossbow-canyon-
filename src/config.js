@@ -9,6 +9,13 @@ export const CFG = {
   // ---------- Map ----------
   roadHalfWidth: 3.6,
   plateauHeight: 1.6,
+  // The map fields below (roadPoints, plateaus, hills, slots, fortress, walk,
+  // huts, town, ...) hold the level being played: Level 1 here, and setLevel()
+  // in world.js swaps in another entry of MAPS (end of this file).
+  level: 1,
+  hills: [],     // smooth sand hills the road can climb (Level 2): centre, radii, height
+  decor: null,   // a level's own landmarks (Level 2: the lone tree and the picnic)
+  levelHp: 1,    // the level's own rat health multiplier (Level 2's longer road gives towers more time)
   // Road control points (x = east, z = south). Enemies walk from the first
   // point (canyon gap, bottom-right) to the last point (fortress gate).
   roadPoints: [
@@ -339,3 +346,57 @@ export function cannonSpec(level, path) {
   return CFG.cannon.paths[path === 'rapid' ? 'rapid' : 'blast'].levels[level];
 }
 export const CANNON_PATHS = ['rapid', 'blast'];
+
+// ---------- Maps ----------
+// Every level shares the waves, towers and the town in the north; each map
+// has its own road, cliffs, hills and tower spots. setLevel() in world.js
+// copies one of these into CFG.
+const SUNSTONE = {
+  id: 1, name: 'Sunstone Canyon',
+  roadPoints: CFG.roadPoints, plateaus: CFG.plateaus, hills: [], slots: CFG.slots,
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk, heroStart: CFG.hero.start,
+  huts: CFG.huts, town: CFG.town, moleExit: 150, decor: null, hpMul: 1,
+};
+
+// Level 2: the road winds back and forth up a big sand hill, past a lone
+// flowering desert tree and a picnic blanket on the summit, then down to the town.
+const LONETREE = {
+  id: 2, name: 'Lonetree Hill',
+  roadPoints: [
+    [-40, 46], [-29, 38.5], [-16, 34.5], [-2, 33.6], [11, 33], [20.5, 29], [23.5, 21.5],
+    [18.5, 14.8], [7, 12.6], [-5, 11.4], [-13.5, 8.6], [-18, 2.5],
+    [-15.5, -3.8], [-6, -7.4], [6, -8.4], [16.5, -11.4], [20.5, -18.4],
+    [14.5, -24.6], [3, -26.2], [-5, -26], [-12, -27.6], [-16, -33.5],
+  ],
+  plateaus: [
+    { x: -26, z: 25.8, rx: 4.7, rz: 5.4, seed: 5.3 },
+    { x: 27.5, z: 3.5, rx: 3.4, rz: 5.2, seed: 2.6 },
+  ],
+  // the hill: centre, radii and height (a smooth sand dome, a little uneven)
+  hills: [{ x: -0.5, z: 2.5, rx: 23, rz: 19, h: 5, seed: 1.3 }],
+  slots: [
+    { id: 'H1', x: -7, z: 25.5, prebuilt: true },
+    { id: 'H2', x: 8, z: 25.5 },
+    { id: 'H3', x: -8, z: 2 },
+    { id: 'E1', x: 16.5, z: 21.5 },
+    { id: 'H4', x: 7.5, z: 3.6 },
+    { id: 'H5', x: -3, z: -17 },
+    { id: 'F1', x: -5.5, z: -33.5 },
+    { id: 'H6', x: 11.5, z: -17.5 },
+    { id: 'H7', x: -17, z: 26.5 },
+    { id: 'W1', x: -25.8, z: 29 },
+  ],
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk,
+  heroStart: [0, 23],
+  huts: CFG.huts, town: CFG.town,
+  moleExit: 0,   // set by setLevel: about 30 from the gate, like Level 1
+  hpMul: 1.3,   // tougher rats: the long switchback road gives the towers more time
+  decor: {
+    tree: { x: 0.6, z: 0.6, rot: 0.6 },
+    picnic: { x: -2, z: 5, rot: -0.25 },
+    kite: { x: 5, z: -2, h: 13 },
+    flowers: 80,
+  },
+};
+
+export const MAPS = [SUNSTONE, LONETREE];

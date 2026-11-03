@@ -3,13 +3,16 @@
 //   +auto turns on Auto skip; +skip also presses Skip wave whenever it can.
 //   +rapid / +blast: which way cannon bots take the level 4 upgrade choice.
 //   +easy / +hard: play on that difficulty (Normal otherwise). +repair: the bot repairs the town hall.
+//   +l2: play Level 2 (Lonetree Hill) instead of Level 1.
 import { Sim } from '../src/sim.js';
 import { CFG } from '../src/config.js';
 import { makeBot } from '../src/bot.js';
+import { setLevel } from '../src/world.js';
 
 export function runLevel(fullMode = 'bot', seed = 7, verbose = false) {
   const [mode, ...flags] = fullMode.split('+');
   const skipper = flags.includes('skip');
+  setLevel(flags.includes('l2') ? 2 : 1);
   const difficulty = flags.includes('easy') ? 'easy' : flags.includes('hard') ? 'hard' : 'normal';
   const sim = new Sim({ seed, cannon: mode.startsWith('cannon'), autoSkip: flags.includes('auto') || skipper, difficulty });
   const cannonPath = flags.includes('rapid') ? 'rapid' : flags.includes('blast') ? 'blast' : undefined;

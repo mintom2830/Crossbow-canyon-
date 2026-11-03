@@ -7,8 +7,8 @@ const KEYS = {
   waveStart: 'crossbow-canyon:wave-start:v1',
 };
 
-export const DEFAULT_SETTINGS = { sfx: true, music: true, quality: 'auto', tutorialDone: false, autoSkip: false, speed: 1, difficulty: 'normal' };
-export const DEFAULT_PROGRESS = { bestWave: 0, cleared: false, bestStars: 0, games: 0, diamonds: 0, clears: 0, unlocks: { cannon: false } };
+export const DEFAULT_SETTINGS = { sfx: true, music: true, quality: 'auto', tutorialDone: false, autoSkip: false, speed: 1, difficulty: 'normal', level: 1 };
+export const DEFAULT_PROGRESS = { bestWave: 0, cleared: false, bestStars: 0, games: 0, diamonds: 0, clears: 0, unlocks: { cannon: false }, byLevel: {} };
 
 export const Save = {
   get(key, fallback) {

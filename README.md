@@ -1,6 +1,6 @@
 # Crossbow Canyon
 
-A 3D crowd tower-defense game for desktop and phone browsers. Huge swarms of rats scurry along a winding canyon road toward your town. You play the farmer: collect the gold they drop, stand on construction pads to build and upgrade crossbow towers, and survive all 16 waves on Easy, Normal or Hard.
+A 3D crowd tower-defense game for desktop and phone browsers. Huge swarms of rats scurry along a winding canyon road toward your town. You play the farmer: collect the gold they drop, stand on construction pads to build and upgrade crossbow towers, and survive all 16 waves on Easy, Normal or Hard. There are two maps: **Sunstone Canyon** and **Lonetree Hill**.
 
 All characters, models, UI, the map, sounds and the name are original. The game is built from code: three.js geometry and WebAudio synthesis. It ships no image or audio files.
 
@@ -42,7 +42,7 @@ The town is all decoration: villagers never change the battle. The farmer walks 
 
 ## Run it
 
-**Quickest:** open `dist/index.html` in any modern browser. It is a single self-contained file (≈810 KB) and works offline. Without internet the display font falls back to a system font.
+**Quickest:** open `dist/index.html` in any modern browser. It is a single self-contained file (≈830 KB) and works offline. Without internet the display font falls back to a system font.
 
 **From source** (Node 18+):
 
@@ -73,6 +73,30 @@ The game pauses by itself when the tab is hidden or the phone locks.
 If your device is set to reduce motion, the screen shake is cut to a faint tremor and the pulsing alerts (boss warning, red screen edges, villagers' alarm bubbles) hold still.
 
 When `dist/index.html` is hosted on a website, a phone can add it to its home screen, and it then opens full-screen like an app.
+
+## Two maps
+
+Pick the map on the title screen (the scene behind the menu switches to it straight away). Both maps lead to the same town and use the same 16 waves, towers and bosses.
+
+| | Level 1: Sunstone Canyon | Level 2: Lonetree Hill |
+|---|---|---|
+| The road | winds round two raised red-rock plateaus, from a burrow in the bottom-right corner | zig-zags back and forth in four long switchbacks, from a burrow in the bottom-left corner, up and over a big sand hill |
+| Tower spots | mostly up on the plateaus | inside the hairpin bends and on the hillside, where one tower covers two stretches of road; one on a small mesa by the burrow |
+| Rats | as listed below | 30% more health (the long switchback road gives towers more time) |
+
+### Level 2: Lonetree Hill
+
+The map is laid out like a footpath winding up a meadow hill, in desert colours:
+- **The hill:** a smooth sand dome 5 units high in the middle of the canyon, paler and wind-rippled near the top, with its sunny side lit and its far side in shade. The road climbs it on two long switchbacks and comes back down the far side to the town.
+- **On the summit:** a lone desert tree with a twisted trunk and a wide, flat canopy covered in white and yellow blossom, and a picnic in its shade: a striped, fringed blanket with a wicker basket, a straw hat, a jar of wildflowers and a book. A kite flies high above the hill on a string from the blanket, drifting and bobbing on the breeze.
+- **Wildflowers** in yellow, orange, white, purple, red and blue grow in clumps all over the hill, clear of the road and the build spots.
+- **Two red-rock mesas:** one beside the burrow carries a tower spot, the other stands on its own on the east side.
+- **Everything follows the slope:** rats, giants and bosses walk up and down the hill, arrows aim at their height, cannonballs land on the slope, splats, puffs and blast rings sit on the ground, the road and build pads lie on the slope, and towers stand on the lowest point of their footprint so their bases never float.
+- The farmer walks round the tree trunk.
+
+**Balance on Level 2:** an efficient crossbow player wins Normal with 2–3 stars and a distracted player still wins. On Hard, crossbows alone fall on the final wave unless you repair the town hall between waves; cannon players win with 3 stars.
+
+Saves remember their map: **Continue** and **Retry wave** reopen the game on the map it was played on, whatever is picked on the title screen, and the title shows each map's own best result.
 
 ## Difficulty
 
@@ -377,8 +401,8 @@ At the same level a cannon kills far more rats than a crossbow, on either path. 
 Progress is saved in the browser's local storage, and every access is guarded so private windows still play normally.
 - **Checkpoint:** saved at the start of every wave, after every purchase between waves and every 5 s between waves. **Continue** on the title screen resumes from it.
 - **Wave start:** used by **Retry wave** after a defeat. It restores the towers and gold you had when that wave began.
-- **Settings and progress:** sound, music, graphics level, Auto skip, game speed, difficulty, tutorial done, best wave, best stars and hardest difficulty beaten, diamonds and unlocks.
-- Checkpoints remember the game's difficulty and any gold already poured into a repair.
+- **Settings and progress:** sound, music, graphics level, Auto skip, game speed, difficulty, the map last played, tutorial done, best wave, best stars and hardest difficulty beaten (overall and for each map), diamonds and unlocks.
+- Checkpoints remember the game's map and difficulty and any gold already poured into a repair. A save only loads on its own map; saves from before Level 2 load on Level 1.
 
 ## Performance
 - All small rats share one instanced draw call, as do their shadows, the coins, the bolts and each effect type. Static scenery is merged into a few meshes. The final wave puts nearly 600 rats on screen at once and renders in about 80 draw calls, ink outlines, the town and its 18 villagers included.
@@ -396,8 +420,9 @@ ONLY="skip|auto" npm run test:e2e   # run just the matching browser tests
 CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already have
 ```
 
-**Headless gameplay tests** (70) check:
-- The map: the road never cuts through a plateau, and every tower slot can reach the road.
+**Headless gameplay tests** (74) check:
+- The maps (each check runs on both): the road never cuts through a plateau, every tower slot can reach the road, the town stays clear of the road, and upgrade-choice pads fit beside their towers.
+- Level 2's hill: the road climbs it and the summit rises above the road; the tree and the picnic sit on the summit, clear of the road, the towers and their pads; the town stays on flat ground; towers never float over the slope; rats walk on the slope, arrows strike at their height and cannonballs land on the slope. A save remembers its map and never loads on another one.
 - Aiming: crossbows and cannons turn round to face the rats before they shoot, and never fire more than about 25° off their target. Arrows close in on the one rat they were fired at. Cannonballs rise above the barrel, land on their aim point and catch groups.
 - Rat types: each kind shows up first in its own wave (fast 2, armored 3, shield 4, healer 6, brood 7) with the right speed and health. Ratlings only come out of brood rats. Armour blocks arrow damage, Armor Piercer gets through it, and the cannon bonus applies.
 - Enemies that need tactics:
@@ -436,7 +461,8 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - Diamonds: the wave payouts add up to 50, a run that clears three waves earns the first three payouts, reloading a checkpoint never pays a wave twice, a short run still earns its waves' diamonds and a full clear earns exactly 50.
 - Balance: an idle player loses by wave 2 and a player who never upgrades loses at wave 7. A distracted player wins, an efficient crossbow-only player wins all 16 waves with 3 stars (2–3 with Auto skip on), and cannon players win with 3 stars on either path.
   - Hard: the efficient player still wins (with less town hall health left than on Normal), a distracted player loses, and cannons win with 3 stars. Repairing between waves earns the efficient player more stars.
-  - Easy: a distracted player wins with 3 stars, but an idle player and one who never upgrades still lose. The cannon player still builds every third tower as a crossbow, because only crossbows can shoot down the Canyon Buzzard while it flies.
+  - Easy: a distracted player wins with 3 stars, but an idle player and one who never upgrades still lose.
+  - Level 2: an efficient player wins with 2–3 stars, a distracted one still wins, idling or never upgrading loses. On Hard, cannons win with 3 stars and crossbows alone only hold with repairs. The cannon player still builds every third tower as a crossbow, because only crossbows can shoot down the Canyon Buzzard while it flies.
 - The Cannon Tower:
   - It is locked until unlocked and has priced pads.
   - Levels 1–3 each work as described.
@@ -450,7 +476,8 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
   - Cannon players (two cannons for every crossbow) win with 3 stars on either path.
 - Simulation speed.
 
-**Browser tests** (32) check:
+**Browser tests** (33) check:
+- Level 2: picking it on the title screen switches the scene (and back again), a new game starts on it, rats are drawn standing on the hill, a saved Level 2 game says so on the Continue button and reopens on Level 2 even with Level 1 picked, and the map is remembered after a reload.
 - Every button: title, how to play, settings toggles, quality, pause/resume, Escape, tab-hide pause, start wave, restart confirmation, main menu, defeat retry, victory play again, and continue after reload.
 - Skip wave: early start, locked with a countdown while rats pour in, a mid-wave skip with the bonus shown on the button, and Space.
 - Auto skip: the switch and the `T` key, the "Auto start" countdown, wave 2 starting within 3 s, and the setting surviving a reload.
@@ -496,13 +523,13 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - A full autoplayed 16-wave level that ends on the victory screen.
 - A frame-cost check with the biggest crowd on screen.
 
-`tools/balance.mjs` prints a per-wave report for the bot players, for example `node tools/balance.mjs bot+auto`, `node tools/balance.mjs bot+skip` or `node tools/balance.mjs bot+hard+repair`. `tools/scene.mjs` takes scripted screenshots.
+`tools/balance.mjs` prints a per-wave report for the bot players, for example `node tools/balance.mjs bot+auto`, `node tools/balance.mjs bot+skip`, `node tools/balance.mjs bot+hard+repair` or `node tools/balance.mjs bot+l2` (Level 2). `tools/scene.mjs` takes scripted screenshots.
 
 ## Project layout
 
 ```
-src/config.js        every balance number: waves, towers, costs, map
-src/world.js         road path (arc-length), plateaus, terrain height, RNG
+src/config.js        every balance number: waves, towers, costs, and both maps (MAPS)
+src/world.js         road path (arc-length), plateaus, hills, terrain height, RNG, setLevel()
 src/sim.js           deterministic game simulation (runs in Node and browser)
 src/bot.js           autoplayer used by tests and the title-screen demo
 src/main.js          game shell: loop, screens, HUD, saving, tutorial

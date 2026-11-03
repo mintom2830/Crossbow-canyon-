@@ -2,7 +2,7 @@
 // No rendering or DOM code lives here, so it runs unchanged in Node for the
 // balance bot and in the browser for the real game.
 import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds } from './config.js';
-import { road, groundHeight, makeRng, plateauSdf } from './world.js';
+import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf } from './world.js';
 
 export const T_GRUNT = 0, T_GIANT = 1, T_BOSS = 2;
 // small rat types (CFG.ratTypes index) with special abilities
@@ -17,7 +17,10 @@ const tmp2 = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 const aimOut = { x: 0, z: 0 };
 const extraBuf = [];
 const AIR = CFG.airborne;   // flying higher than this: out of reach of blasts and ground effects
-const hitY = (e) => (e.fly > 0 ? e.fly + 0.9 : e.type === T_GRUNT ? 0.55 : e.type === T_GIANT ? 1.6 : 2.2);
+// where an arrow strikes an enemy (gy: the ground under it, on a hill)
+const hitY = (e) => e.gy + (e.fly > 0 ? e.fly + 0.9 : e.type === T_GRUNT ? 0.55 : e.type === T_GIANT ? 1.6 : 2.2);
+// the ground under a point of the road (0 on a map without hills)
+const roadY = (x, z) => (CFG.hills.length ? hillHeight(x, z) : 0);
 // standing still for a moment (aim straight at it, no lead)
 const holding = (e) => e.atGate || e.stun > 0 || e.fall > 0 || e.dig === 1 || e.dig === 3;
 
@@ -131,7 +134,7 @@ export class Sim {
     const [hx, hz] = CFG.hero.start;
     this.hero = { x: hx, z: hz, y: groundHeight(hx, hz), vx: 0, vz: 0, facing: Math.PI, moving: false, collect: 0 };
     this.input = { x: 0, z: 0 };
-    this.slots = CFG.slots.map((s, i) => { const up = upgradeOffset(s); return { ...s, index: i, y: groundHeight(s.x, s.z), tower: null, up, upB: branchOffsets(s, up) }; });
+    this.slots = CFG.slots.map((s, i) => { const up = upgradeOffset(s); return { ...s, index: i, y: footHeight(s.x, s.z), tower: null, up, upB: branchOffsets(s, up) }; });
     for (const s of this.slots) if (s.prebuilt) this._placeTower(s, 1, true, 'crossbow');
     this.refreshPads();
   }
@@ -164,7 +167,7 @@ export class Sim {
 
   get waveCount() { return CFG.waves.length; }
   // Difficulty: every enemy's health is scaled by this.
-  get hpMul() { return CFG.difficulties[this.difficulty].hp; }
+  get hpMul() { return CFG.difficulties[this.difficulty].hp * CFG.levelHp; }
   // Diamonds a wave pays on this difficulty.
   waveDiamonds(i) { return waveDiamonds(i, this.difficulty); }
   get diamondsPerClear() { return clearDiamonds(this.difficulty); }
@@ -355,7 +358,7 @@ export class Sim {
       attackT: 0, swings: kind.swings, flash: 0, radius: kind.radius, phase: this.rng() * 6.28, cell: 0,
       stun: 0, slow: 0, slowMul: 1, broken: 0,
       frost: 0, frostT: 0, frozen: 0, freezeCd: 0, hitT: 0,
-      shield: 0, shieldMax: 0, healT: 0, healed: 0,
+      shield: 0, shieldMax: 0, healT: 0, healed: 0, gy: 0,
       // boss abilities: kind (stats), boss (name), slime size (tier) and family (root, rootHp),
       // mole tunnelling (dig, digT, under), buzzard flight (fly, dropT), rats falling from it (fall)
       kind: null, boss: null, tier: 0, root: 0, rootHp: 0, dig: 0, digT: 0, under: false,
@@ -563,6 +566,7 @@ export class Sim {
     };
     for (const t of this.towers) pushOut(t.x, t.z, this._towerRadius(t));
     pushOut(this.fortress.x, this.fortress.z, CFG.fortress.radius);
+    if (CFG.decor && CFG.decor.tree) pushOut(CFG.decor.tree.x, CFG.decor.tree.z, 0.75);   // Level 2's lone tree
     for (const hut of CFG.huts) pushOut(hut.x, hut.z, 1.5);
     for (const o of CFG.town.obstacles) pushOut(o.x, o.z, o.r);
     const W = CFG.walk;
@@ -581,6 +585,7 @@ export class Sim {
     e.x = tmp.x + tmp.nx * e.lat;
     e.z = tmp.z + tmp.nz * e.lat;
     e.yaw = Math.atan2(tmp.tx, tmp.tz);
+    e.gy = roadY(e.x, e.z);
   }
 
   _updateEnemies(dt) {
@@ -907,7 +912,7 @@ export class Sim {
       t.storms.splice(i, 1);
       const dx = a.x - t.x, dz = a.z - t.z, l = Math.hypot(dx, dz) || 1;
       this.bolts.push({
-        x: a.x, z: a.z, y: S.height, y0: S.height, y1: 0.4, dx: dx / l, dz: dz / l,
+        x: a.x, z: a.z, y: S.height, y0: S.height, y1: 0.4 + roadY(a.x, a.z), dx: dx / l, dz: dz / l,
         d: 0, aim: 1, max: 99, dmg: S.dmg, pierce: 1, hits: [], alive: true, level: t.level,
         bounces: 0, fall: true, air: false,
       });
@@ -1060,7 +1065,7 @@ export class Sim {
     const T = Math.max(0.3, dist / CFG.cannon.shellSpeed) * (kind === 'nova' ? 1.3 : 1) * speedK;
     const h = kind === 'rocket' ? 0.9 + dist * 0.06 : L.heavy ? 2.4 + dist * 0.18 : L.light ? 1.0 + dist * 0.08 : 1.4 + dist * 0.12;
     this.shells.push({
-      x0: ox, y0: oy, z0: oz, tx: pt.x, tz: pt.z, ty: 0.3, t: 0, T, h,
+      x0: ox, y0: oy, z0: oz, tx: pt.x, tz: pt.z, ty: 0.3 + roadY(pt.x, pt.z), t: 0, T, h,
       r: kind === 'nova' ? L.nova.radius : kind === 'rocket' ? L.salvo.r : L.radius,
       dmg: kind === 'nova' ? L.nova.dmg : kind === 'rocket' ? L.salvo.dmg : L.dmg,
       x: ox, y: oy, z: oz, level: t.level, path: t.path, spec: L, kind, alive: true,
@@ -1113,12 +1118,13 @@ export class Sim {
     if (L.burn && !nova && !small) this.zones.push({ x, z, r: L.burn.r, t: L.burn.t, max: L.burn.t, dps: L.burn.dps, tick: 0 });
     // Cluster Shells: bomblets scatter out of the blast onto the rats around it
     if (L.cluster && !small && !nova) {
+      const gy = roadY(x, z);
       const C = L.cluster, a0 = this.rng() * Math.PI * 2;
       for (let k = 0; k < C.n; k++) {
         const a = a0 + (k / C.n) * Math.PI * 2, d = C.spread * (0.8 + this.rng() * 0.4);
         this.shells.push({
-          x0: x, y0: 0.5, z0: z, tx: x + Math.cos(a) * d, tz: z + Math.sin(a) * d, ty: 0.25, t: 0, T: 0.3 + this.rng() * 0.08, h: 0.9,
-          r: C.r, dmg: C.dmg, x, y: 0.5, z, level: s.level, path: s.path, spec: L, kind: 'bomblet', alive: true,
+          x0: x, y0: 0.5 + gy, z0: z, tx: x + Math.cos(a) * d, tz: z + Math.sin(a) * d, ty: 0.25 + roadY(x + Math.cos(a) * d, z + Math.sin(a) * d), t: 0, T: 0.3 + this.rng() * 0.08, h: 0.9,
+          r: C.r, dmg: C.dmg, x, y: 0.5 + gy, z, level: s.level, path: s.path, spec: L, kind: 'bomblet', alive: true,
         });
       }
     }
@@ -1188,7 +1194,7 @@ export class Sim {
         b.hits.push(e.id);
         // (view only) where the arrow strikes: a comic burst; arrows stick in giants
         if (e.type !== T_GRUNT) this.events.push({ type: 'hit', x: e.x, z: e.z, y: e.fly > 0 ? e.fly + 1.2 : e.type === T_BOSS ? 2.6 : 1.9, giant: true, id: e.id, dx: b.dx, dz: b.dz, level: b.level });
-        else if (!(e.shield > 0)) this.events.push({ type: 'poke', x: e.x - b.dx * 0.3, y: b.air ? b.y : 0.6, z: e.z - b.dz * 0.3 });
+        else if (!(e.shield > 0)) this.events.push({ type: 'poke', x: e.x - b.dx * 0.3, y: b.air ? b.y - e.gy : 0.6, z: e.z - b.dz * 0.3 });
         if (e.shield > 0) {
           // a raised shield stops the arrow dead and soaks up its damage
           b.pierce = 0;
@@ -1549,12 +1555,13 @@ export class Sim {
       hero: [Math.round(this.hero.x * 10) / 10, Math.round(this.hero.z * 10) / 10],
       stats: { ...this.stats },
       paid: this.diamondsPaid,
+      level: CFG.level,
       buildTimer: this.state === 'build' ? Math.round(this.buildTimer) : CFG.buildTime,
     };
   }
 
   load(d) {
-    if (!d || d.v !== CFG.version) return false;
+    if (!d || d.v !== CFG.version || (d.level || 1) !== CFG.level) return false;   // a save loads only on its own map
     if (CFG.difficulties[d.diff]) this.difficulty = d.diff;   // older saves have none: they stay on Normal
     this.reset();
     this.towers = [];

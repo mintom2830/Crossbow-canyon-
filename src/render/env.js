@@ -3,13 +3,13 @@
 // meshes so the whole environment costs ~4 draw calls.
 import * as THREE from 'three';
 import { CFG } from '../config.js';
-import { road, plateauOutline, plateauSdf, makeRng, groundHeight } from '../world.js';
+import { road, plateauOutline, plateauSdf, makeRng, groundHeight, hillHeight } from '../world.js';
 import { GB, P, orientTriangles } from './geo.js';
 import { toon, addInk, INK_PX } from './toon.js';
 import { PAL, windmillTowerGeometry, barnGeometry, wellGeometry, marketGeometry, scarecrowGeometry } from './models.js';
 import { fieldPoint, turn } from '../town.js';
 
-const W = CFG.walk;
+let W = CFG.walk;
 
 function nearRoad(x, z, r) { return road.distanceTo(x, z) < r; }
 function nearSlots(x, z, r) {
@@ -25,6 +25,8 @@ function smoothNoise(rng) {
 }
 
 export function buildEnvironment(scene, quality) {
+  W = CFG.walk;
+  const hilly = CFG.hills.length > 0;
   const rng = makeRng(99);
   const noise = smoothNoise(rng);
   const group = new THREE.Group();
@@ -32,7 +34,8 @@ export function buildEnvironment(scene, quality) {
 
   // ---------------------------------------------------------- ground
   const gw = 170, gd = 190;
-  const ground = new THREE.PlaneGeometry(gw, gd, 85, 95);
+  // (a finer grid on a map with a hill, so the slope stays smooth under the road)
+  const ground = new THREE.PlaneGeometry(gw, gd, hilly ? 170 : 85, hilly ? 190 : 95);
   ground.rotateX(-Math.PI / 2);
   ground.translate(2, 0, -4);
   {
@@ -48,9 +51,23 @@ export function buildEnvironment(scene, quality) {
       const edge = Math.min(x - W.minX, W.maxX - x, z - W.minZ, W.maxZ - z);
       const o = THREE.MathUtils.clamp(1 - edge / 9, 0, 1) * THREE.MathUtils.clamp(0.6 + noise(x * 2.1, z * 1.7), 0, 1);
       c.lerp(cOlive, o * 0.75);
+      if (hilly) {
+        // the sand hill: the ground rises, paler and wind-rippled towards the top
+        const h = hillHeight(x, z);
+        if (h > 0) {
+          pos.setY(i, h);
+          const top = THREE.MathUtils.clamp(h / 4, 0, 1);
+          c.lerp(cLight, top * 0.45 + Math.max(0, Math.sin(x * 0.9 + z * 0.35 + n * 3)) * 0.08 * top);
+          // slopes facing the low sun glow, the far side of the hill falls into shade
+          const e = 0.5, gx = (hillHeight(x + e, z) - hillHeight(x - e, z)) / (2 * e), gz = (hillHeight(x, z + e) - hillHeight(x, z - e)) / (2 * e);
+          const nl = (-gx * SUN_DIR.x + SUN_DIR.y - gz * SUN_DIR.z) / Math.hypot(gx, 1, gz) - SUN_DIR.y;
+          c.multiplyScalar(THREE.MathUtils.clamp(1 + nl * 2.6, 0.68, 1.2));
+        }
+      }
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
     ground.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (hilly) ground.computeVertexNormals();
   }
   const groundMesh = new THREE.Mesh(ground, toon());
   groundMesh.receiveShadow = true;
@@ -76,9 +93,18 @@ export function buildEnvironment(scene, quality) {
       else positions.push([x + out.nx * wl, z + out.nz * wl, x - out.nx * wr, z - out.nz * wr]);
     }
     const verts = [];
+    // on a hill the road lies on the slope: it is cut into narrow strips across
+    // its width so the curved ground never pokes up through the middle
+    const Y = hilly ? (x, z) => y + 0.04 + hillHeight(x, z) : () => y;
+    const across = hilly && !line ? 8 : 1;
     const quad = (a, b, o) => {
-      verts.push(a[o], y, a[o + 1], a[o + 2], y, a[o + 3], b[o], y, b[o + 1]);
-      verts.push(a[o + 2], y, a[o + 3], b[o + 2], y, b[o + 3], b[o], y, b[o + 1]);
+      for (let j = 0; j < across; j++) {
+        const t0 = j / across, t1 = (j + 1) / across;
+        const p = (q, t) => [q[o] + (q[o + 2] - q[o]) * t, q[o + 1] + (q[o + 3] - q[o + 1]) * t];
+        const [a0x, a0z] = p(a, t0), [a1x, a1z] = p(a, t1), [b0x, b0z] = p(b, t0), [b1x, b1z] = p(b, t1);
+        verts.push(a0x, Y(a0x, a0z), a0z, a1x, Y(a1x, a1z), a1z, b0x, Y(b0x, b0z), b0z);
+        verts.push(a1x, Y(a1x, a1z), a1z, b1x, Y(b1x, b1z), b1z, b0x, Y(b0x, b0z), b0z);
+      }
     };
     for (let i = 0; i < positions.length - 1; i++) {
       quad(positions[i], positions[i + 1], 0);
@@ -91,6 +117,7 @@ export function buildEnvironment(scene, quality) {
     for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     orientTriangles(g, () => [0, 1, 0]);
+    if (hilly) { g.computeVertexNormals(); return g; }
     const nr = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) nr[i * 3 + 1] = 1;
     g.setAttribute('normal', new THREE.BufferAttribute(nr, 3));
@@ -193,8 +220,14 @@ export function buildEnvironment(scene, quality) {
   const cliffCols = [PAL.cliff, PAL.cliffLight, 0xc96842, PAL.cliffDark];
   const entry = (x, z) => {
     // keep the canyon gap open where enemies march in
-    const out = { x: 0, z: 0 };
+    const out = { x: 0, z: 0, tx: 0, tz: 0 };
     for (let s = 0; s < 22; s += 1) { road.sample(s, out); if (Math.hypot(out.x - x, out.z - z) < 7.5) return true; }
+    if (CFG.level !== 1) {
+      // beyond the burrow the gap carries on straight back the way the road comes in
+      road.sample(0, out);
+      for (let k = 0; k < 26; k += 2) if (Math.hypot(out.x - out.tx * k - x, out.z - out.tz * k - z) < 8 + k * 0.15) return true;
+      return false;
+    }
     const ex = 38 + 10, ez = 41 + 9; // extend beyond spawn
     return Math.hypot(ex - x, ez - z) < 9 || (x > 30 && z > 33 && (x - 30) * 0.8 - (z - 33) < 6 && (z - 33) - (x - 30) * 1.2 < 6);
   };
@@ -275,6 +308,8 @@ export function buildEnvironment(scene, quality) {
       if (Math.hypot(x - CFG.fortress.x, z - CFG.fortress.z) < 8) continue;
       if (CFG.plateaus.some((p) => plateauSdf(p, x, z) > -1.2)) continue; // keep build plateaus clean
       if (CFG.huts.some((h) => Math.hypot(h.x - x, h.z - z) < 3) || inTown(x, z)) continue;
+      // keep the hilltop picnic spot clear
+      if (CFG.decor && [CFG.decor.tree, CFG.decor.picnic].some((d) => d && Math.hypot(d.x - x, d.z - z) < 5)) continue;
       return [x, z, groundHeight(x, z)];
     }
     return null;
@@ -322,8 +357,9 @@ export function buildEnvironment(scene, quality) {
     for (const side of [1]) {
       const x = o.x + o.nx * side * (CFG.roadHalfWidth + 1.0), z = o.z + o.nz * side * (CFG.roadHalfWidth + 1.0);
       if (nearSlots(x, z, 2.5)) continue;
-      st.add(P.box(0.16, 0.9, 0.16), PAL.wood, { x, y: 0.45, z });
-      st.add(P.box(0.08, 0.1, 2.2), PAL.woodLight, { x, y: 0.7, z, ry: Math.atan2(o.tx, o.tz) });
+      const fy = hilly ? hillHeight(x, z) : 0;
+      st.add(P.box(0.16, 0.9, 0.16), PAL.wood, { x, y: fy + 0.45, z });
+      st.add(P.box(0.08, 0.1, 2.2), PAL.woodLight, { x, y: fy + 0.7, z, ry: Math.atan2(o.tx, o.tz) });
     }
   }
   // ---------------------------------------------------------- farms, windmill, barn, well, market
@@ -394,11 +430,114 @@ export function buildEnvironment(scene, quality) {
   addInk(cropMesh, INK_PX.thin);
   group.add(cropMesh);
 
+  // a level's own landmarks (Level 2: the lone tree, the picnic, wildflowers and a kite)
+  const kite = CFG.decor ? buildDecor(st, CFG.decor, rng, group) : null;
+
   const staticMesh = new THREE.Mesh(st.build(), toon());
   staticMesh.castShadow = quality !== 'low';
   staticMesh.receiveShadow = true;
   addInk(staticMesh, INK_PX.terrain);   // ink outlines round cliffs, plateaus and props
   group.add(staticMesh);
 
-  return { group, torches, ground: groundMesh };
+  return { group, torches, ground: groundMesh, kite };
 }
+
+// ---------------------------------------------------------- Level 2 landmarks
+// A lone flowering desert tree on the hilltop, a picnic in its shade,
+// wildflowers over the hill and a kite flying high above it.
+const BLOSSOM = [0xfff6e0, 0xfff1c2, 0xffe27a, 0xffffff];
+const SUN_DIR = new THREE.Vector3(-30, 62, 28).normalize();   // matches the key light in view.js
+const WILDFLOWERS = [0xffd23a, 0xff9a3a, 0xfff4e0, 0xb57ad8, 0xe8503a, 0x6aa6ff];
+function buildDecor(st, D, rng, group) {
+  const gy = (x, z) => groundHeight(x, z);
+  if (D.tree) {
+    const { x, z, rot } = D.tree, y = gy(x, z) - 0.15;
+    const at = (lx, lz) => { const [dx, dz] = turnXZ(lx, lz, rot); return [x + dx, z + dz]; };
+    // a short, twisted trunk that forks into three leaning limbs
+    st.add(P.cyl(0.32, 0.5, 2.2, 8), PAL.woodDark, { x, y: y + 1.1, z, rz: 0.08, jitter: 0.06, rng, shadeY: [0.7, 1.05] });
+    const limbs = [[-0.6, 0.15, 1.15], [0.55, 0.3, 1.05], [0.05, -0.55, 1.2]];
+    for (const [lx, lz, len] of limbs) {
+      const [bx, bz] = at(lx, lz);
+      st.add(P.cyl(0.14, 0.26, len * 1.6, 7), PAL.woodDark, { x: (x + bx) / 2, y: y + 2.7, z: (z + bz) / 2, rz: -lx * 0.9, rx: lz * 0.9, order: 'YXZ', ry: rot });
+    }
+    // a wide, flat-topped canopy of soft clumps, the way desert trees spread
+    const canopy = [[0, 0, 1.35], [1.5, 0.3, 1.1], [-1.45, 0.4, 1.05], [0.3, 1.4, 1.0], [-0.4, -1.35, 1.0], [1.2, -1.1, 0.9], [-1.3, -0.9, 0.85], [-1.0, 1.3, 0.85], [1.1, 1.2, 0.85]];
+    for (const [lx, lz, r] of canopy) {
+      const [cx, cz] = at(lx, lz);
+      const cy = y + 3.55 + (1.4 - Math.hypot(lx, lz)) * 0.2;
+      st.add(P.ico(r, 1), 0x8aa45a, { x: cx, y: cy, z: cz, sy: 0.55, jitter: 0.12, rng, shadeY: [0.72, 1.12] });
+      // blossoms all over the top, like the flowering tree in a spring meadow
+      for (let k = 0; k < 16; k++) {
+        const a = rng() * Math.PI * 2, rr = r * Math.sqrt(rng()) * 0.9;
+        const up = Math.sqrt(Math.max(0, 1 - (rr / r) ** 2));   // follow the clump's rounded top
+        st.add(P.ico(0.075 + rng() * 0.04, 0), BLOSSOM[k % BLOSSOM.length], { x: cx + Math.cos(a) * rr, y: cy + r * 0.55 * up + 0.02, z: cz + Math.sin(a) * rr });
+      }
+    }
+  }
+  if (D.picnic) {
+    const { x, z, rot } = D.picnic, y = gy(x, z) + 0.03;
+    // a striped blanket with fringed ends
+    const stripes = [0xe8443a, 0xff9a3a, 0xfff1d6, 0x2aa59a, 0xffc63a, 0xe86a9a, 0x5a7ad8, 0xfff1d6, 0xe8443a];
+    const w = 3.2, d = 2.3, sw = w / stripes.length;
+    stripes.forEach((c, i) => {
+      const [dx, dz] = turnXZ(-w / 2 + sw * (i + 0.5), 0, rot);
+      st.add(P.box(sw + 0.01, 0.05, d), c, { x: x + dx, y, z: z + dz, ry: rot });
+    });
+    for (const side of [-1, 1]) for (let i = 0; i < 9; i++) {
+      const [dx, dz] = turnXZ(-w / 2 + (i + 0.5) * (w / 9), side * (d / 2 + 0.12), rot);
+      st.add(P.box(0.05, 0.03, 0.24), 0xfff1d6, { x: x + dx, y: y - 0.01, z: z + dz, ry: rot });
+    }
+    // a wicker basket, a straw hat and a jar of wildflowers
+    const put = (lx, lz) => { const [dx, dz] = turnXZ(lx, lz, rot); return [x + dx, z + dz]; };
+    let [bx, bz] = put(-1.0, -0.45);
+    st.add(P.cyl(0.42, 0.34, 0.42, 10), 0xc28a4a, { x: bx, y: y + 0.24, z: bz });
+    st.add(P.cyl(0.44, 0.44, 0.06, 10), 0x9a6a36, { x: bx, y: y + 0.45, z: bz });
+    st.add(P.tor(0.34, 0.04, 4, 12, Math.PI), 0x9a6a36, { x: bx, y: y + 0.46, z: bz, ry: rot });
+    st.add(P.box(0.5, 0.05, 0.3), 0xe8443a, { x: bx + 0.1, y: y + 0.5, z: bz, ry: rot + 0.3 });
+    [bx, bz] = put(1.05, 0.35);
+    st.add(P.cyl(0.55, 0.55, 0.04, 14), PAL.straw, { x: bx, y: y + 0.06, z: bz });
+    st.add(P.cyl(0.25, 0.3, 0.26, 12), PAL.straw, { x: bx, y: y + 0.2, z: bz });
+    st.add(P.cyl(0.305, 0.305, 0.07, 12), 0xc8402f, { x: bx, y: y + 0.12, z: bz });
+    [bx, bz] = put(-0.2, -0.6);
+    st.add(P.cyl(0.13, 0.15, 0.3, 8), 0x9fd6e0, { x: bx, y: y + 0.17, z: bz });
+    for (let k = 0; k < 5; k++) st.add(P.ico(0.08, 0), WILDFLOWERS[k], { x: bx + Math.cos(k * 1.3) * 0.12, y: y + 0.42 + (k % 2) * 0.05, z: bz + Math.sin(k * 1.3) * 0.12 });
+    [bx, bz] = put(0.15, 0.55);
+    st.add(P.box(0.5, 0.06, 0.36), 0x3a6ab8, { x: bx, y: y + 0.05, z: bz, ry: rot - 0.4 });   // a book
+  }
+  if (D.flowers) {
+    // little clumps of desert wildflowers over the hill, kept off the road and the build spots
+    const H = CFG.hills[0];
+    let placed = 0;
+    for (let tries = 0; placed < D.flowers && tries < D.flowers * 12; tries++) {
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 1.05;
+      const x = H.x + Math.cos(a) * r * H.rx, z = H.z + Math.sin(a) * r * H.rz;
+      if (road.distanceTo(x, z) < CFG.roadHalfWidth + 0.9 || nearSlots(x, z, 3.6)) continue;
+      if (D.tree && Math.hypot(D.tree.x - x, D.tree.z - z) < 1.2) continue;
+      if (D.picnic && Math.hypot(D.picnic.x - x, D.picnic.z - z) < 2.4) continue;
+      const y = groundHeight(x, z);
+      const col = WILDFLOWERS[Math.floor(rng() * WILDFLOWERS.length)];
+      st.add(P.ico(0.3, 0), 0x86a650, { x, y: y + 0.05, z, sy: 0.35, ry: rng() * 6 });   // a rosette of leaves
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 + rng(), rr = 0.12 + rng() * 0.2;
+        st.add(P.ico(0.075 + rng() * 0.03, 0), k === 5 ? WILDFLOWERS[Math.floor(rng() * WILDFLOWERS.length)] : col, { x: x + Math.cos(a) * rr, y: y + 0.17 + rng() * 0.08, z: z + Math.sin(a) * rr });
+      }
+      placed++;
+    }
+  }
+  if (!D.kite) return null;
+  // the kite: a diamond of coloured panels with a ribboned tail, on a string down to the picnic
+  const k = new GB();
+  const panels = [[0, 0.55, 0xe8443a], [0.42, 0, 0xffc63a], [0, -0.75, 0x2aa59a], [-0.42, 0, 0x5a7ad8]];
+  for (const [px, py, c] of panels) k.add(P.box(0.62, 0.62, 0.04), c, { x: px * 0.7, y: py * 0.7, rz: Math.PI / 4, sy: py ? 1.25 : 0.9 });
+  k.add(P.box(0.05, 1.6, 0.06), PAL.woodDark, { y: -0.08 });
+  k.add(P.box(1.1, 0.05, 0.06), PAL.woodDark, { y: 0.15 });
+  for (let i = 0; i < 5; i++) k.add(P.box(0.22, 0.12, 0.03), i % 2 ? 0xffc63a : 0xe8443a, { y: -1.1 - i * 0.38, x: Math.sin(i * 1.4) * 0.12, rz: 0.5 * (i % 2 ? 1 : -1) });
+  const kiteMesh = new THREE.Mesh(k.build(), toon());
+  addInk(kiteMesh, INK_PX.thin);
+  const holder = D.picnic || D.tree;
+  const from = new THREE.Vector3(holder.x, groundHeight(holder.x, holder.z) + 0.6, holder.z);
+  const string = new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, from.clone()]), new THREE.LineBasicMaterial({ color: 0x3a2a20, transparent: true, opacity: 0.7 }));
+  group.add(kiteMesh, string);
+  return { mesh: kiteMesh, string, from, x: D.kite.x, z: D.kite.z, h: D.kite.h + groundHeight(D.kite.x, D.kite.z) };
+}
+const turnXZ = (lx, lz, a) => { const c = Math.cos(a), s = Math.sin(a); return [lx * c + lz * s, -lx * s + lz * c]; };

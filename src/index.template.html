@@ -200,6 +200,15 @@ select { font-family: var(--font-body); font-weight: 800; font-size: 15px; color
 .diff-pick [data-diff="hard"][aria-checked="true"] { background: var(--crimson); }
 .diff-pick button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .diff-note { margin-top: -4px !important; }
+.level-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.level-pick button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; font-family: var(--font-body); color: var(--umber); background: rgba(255, 255, 255, 0.45); border: 2.5px solid var(--ink); border-radius: 14px; padding: 7px 6px 8px; cursor: pointer; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 3px 0 rgba(42, 24, 16, 0.85); }
+.level-pick b { font-family: var(--font-display); font-weight: 400; font-size: 19px; line-height: 1.1; }
+.level-pick small { font-size: 12px; font-weight: 900; opacity: 0.85; }
+.level-pick button:active { transform: translateY(2px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 1px 0 rgba(42, 24, 16, 0.85); }
+.level-pick button[aria-checked="true"] { background: var(--teal); color: #fff; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 3px 0 var(--ink); }
+.level-pick button[aria-checked="true"] b { text-shadow: var(--ink-text); }
+.level-pick button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.new-tag { position: absolute; top: -9px; right: -6px; font-style: normal; font-family: var(--font-display); font-size: 12px; color: #fff; background: var(--crimson); border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; transform: rotate(8deg); text-shadow: var(--ink-text); }
 #armoryInfo { display: block; font-size: 12.5px; white-space: nowrap; }
 #armoryBtn.ready { background: var(--gold); animation: throb 0.7s ease-in-out infinite alternate; }
 .gem-pill { align-self: center; display: inline-flex; align-items: center; gap: 6px; background: var(--umber); color: #bff3ff; border-radius: 999px; padding: 4px 14px 4px 10px; font-family: var(--font-display); font-size: 20px; font-variant-numeric: tabular-nums; }
@@ -446,6 +455,10 @@ select { border: 2.5px solid var(--ink); }
       <p class="tagline">Protect the town. Build crossbows. Grab every coin.</p>
       <div class="gem-pill" aria-label="Diamonds"><svg class="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg><b id="gemVal">0</b></div>
       <button id="continueBtn" class="btn gold" type="button" hidden>Continue <small id="continueInfo"></small></button>
+      <div class="level-pick" id="levelPick" role="radiogroup" aria-label="Map">
+        <button type="button" role="radio" data-level="1" aria-checked="true"><b>Level 1</b><small>Sunstone Canyon</small></button>
+        <button type="button" role="radio" data-level="2" aria-checked="false"><b>Level 2</b><small>Lonetree Hill</small><i class="new-tag">New!</i></button>
+      </div>
       <div class="diff-pick" id="diffPick" role="radiogroup" aria-label="Difficulty for a new game">
         <button type="button" role="radio" data-diff="easy" aria-checked="false">Easy</button>
         <button type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
@@ -476,6 +489,7 @@ select { border: 2.5px solid var(--ink); }
         <li><span class="ic">▣</span><span>Stand on a pad to pour coins into it. When it fills, a crossbow is built. Step off and back on to buy again.</span></li>
         <li><span class="ic">▲</span><span>Every crossbow upgrades from level 1 to 7 on the pad beside it and gains a new ability each time: Power Shot, Twin Shot, Armor Piercer, Triple Barrage, Frost Arrows and Crystal Storm (see the Armory). After wave 2 and wave 5 you can also upgrade the town hall for more health, and the houses grow with it.</span></li>
         <li><span class="ic">»</span><span><b>Skip wave</b> sends the next wave right away for bonus gold. Mid-wave it unlocks once every rat of the current wave is out. Turn on <b>Auto</b> to start each wave 3 seconds after the last one is cleared, and tap <b>▶ 1×</b> (or press F) to play at double speed.</span></li>
+        <li><span class="ic">2</span><span>Two maps: <b>Level 1, Sunstone Canyon</b>, where the road winds round two red-rock plateaus, and <b>Level 2, Lonetree Hill</b>, where it zig-zags up and over a big sand hill past a lone flowering tree and a picnic. Pick one on the title screen.</span></li>
         <li><span class="ic">✚</span><span>When rats damage the town hall, a <b>repair pad</b> appears in front of it. Stand on it to pour in gold and patch the hall back to full health: 1 gold for each point of health it lost.</span></li>
         <li><span class="ic">⌂</span><span>The rats march on your town: a town hall, houses, two farms and the villagers who live there. Villagers stop and stare when rats come near, run home and hide if they get too close, and come back out once it is safe. Win and the whole town celebrates.</span></li>
         <li><span class="ic">!</span><span>Giant rats carry a lot of health and hit the gate hard. Every wave is harder than the last, and six bosses climb out of the burrow along the way. A siren and a red warning give you 5 seconds to get ready, and all of them return in the final wave. Survive all <span class="nWaves">16</span> waves to hold the canyon.</span></li>

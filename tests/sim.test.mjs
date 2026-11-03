@@ -1,8 +1,8 @@
 // Headless gameplay tests (no browser). Run: node tests/sim.test.mjs
 import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING } from '../src/sim.js';
 import { RAT_GUIDE, firstWave, guideEntry } from '../src/ratguide.js';
-import { CFG, cannonSpec } from '../src/config.js';
-import { road, plateauSdf } from '../src/world.js';
+import { CFG, cannonSpec, MAPS } from '../src/config.js';
+import { road, plateauSdf, setLevel, groundHeight, hillHeight } from '../src/world.js';
 import { runLevel } from '../tools/balance.mjs';
 import { makeBot } from '../src/bot.js';
 import { describeFocus, towerStats, CROSSBOW_ABILITIES, cannonAbility } from '../src/towerinfo.js';
@@ -16,16 +16,26 @@ function test(name, fn) {
 }
 function assert(c, msg) { if (!c) throw new Error(msg); }
 const dt = CFG.fixedDt;
+// runs a check on every map (Level 1, Level 2, ...), then goes back to Level 1
+function forLevels(fn) {
+  try {
+    for (const m of MAPS) { setLevel(m.id); try { fn(m); } catch (e) { e.message = `Level ${m.id}: ${e.message}`; throw e; } }
+  } finally { setLevel(1); }
+}
 const run = (sim, sec, each) => { for (let i = 0, n = Math.round(sec / dt); i < n; i++) { each && each(sim); sim.step(dt); } };
 
-test('road never cuts through a plateau', () => {
-  for (const p of CFG.plateaus) for (let i = 0; i < road.count; i++) {
-    assert(-plateauSdf(p, road.px[i], road.pz[i]) > CFG.roadHalfWidth - 0.05, `road overlaps plateau at ${road.px[i]},${road.pz[i]}`);
-  }
+test('road never cuts through a plateau (every map)', () => {
+  forLevels(() => {
+    for (const p of CFG.plateaus) for (let i = 0; i < road.count; i++) {
+      assert(-plateauSdf(p, road.px[i], road.pz[i]) > CFG.roadHalfWidth - 0.05, `road overlaps plateau at ${road.px[i]},${road.pz[i]}`);
+    }
+  });
 });
 
-test('every tower slot can reach the road with a level 1 crossbow', () => {
-  for (const s of CFG.slots) assert(road.distanceTo(s.x, s.z) < CFG.towers[1].range - 1, `slot ${s.id} too far`);
+test('every tower slot can reach the road with a level 1 crossbow (every map)', () => {
+  forLevels(() => {
+    for (const s of CFG.slots) assert(road.distanceTo(s.x, s.z) < CFG.towers[1].range - 1, `slot ${s.id} too far`);
+  });
 });
 
 test('a wave spawns a crowd of rats with giant rats and HP values from the wave table', () => {
@@ -729,23 +739,25 @@ test('upgrade choice: a level 3 cannon gets two pads, one per path; the one you 
 });
 
 test('upgrade choice pads sit on the same ground as their tower, clear of the road, other pads and the town', () => {
-  const sim = new Sim({ seed: 1 });
-  for (const s of sim.slots) {
-    const home = CFG.plateaus.find((p) => plateauSdf(p, s.x, s.z) > 0);
-    for (const [dx, dz] of s.upB) {
-      const x = s.x + dx, z = s.z + dz;
-      if (home) assert(plateauSdf(home, x, z) > CFG.pad.half, `slot ${s.id}: choice pad falls off its plateau`);
-      else assert(CFG.plateaus.every((p) => plateauSdf(p, x, z) < -CFG.pad.half), `slot ${s.id}: choice pad climbs a plateau`);
-      assert(road.distanceTo(x, z) > CFG.roadHalfWidth + CFG.pad.half, `slot ${s.id}: choice pad on the road`);
-      for (const o of sim.slots) if (o !== s) {
-        assert(Math.hypot(o.x - x, o.z - z) > 2.8, `slot ${s.id}: choice pad on slot ${o.id}`);
-        assert(Math.hypot(o.x + o.up[0] - x, o.z + o.up[1] - z) > 2.6, `slot ${s.id}: choice pad on the upgrade pad of ${o.id}`);
+  forLevels(() => {
+    const sim = new Sim({ seed: 1 });
+    for (const s of sim.slots) {
+      const home = CFG.plateaus.find((p) => plateauSdf(p, s.x, s.z) > 0);
+      for (const [dx, dz] of s.upB) {
+        const x = s.x + dx, z = s.z + dz;
+        if (home) assert(plateauSdf(home, x, z) > CFG.pad.half, `slot ${s.id}: choice pad falls off its plateau`);
+        else assert(CFG.plateaus.every((p) => plateauSdf(p, x, z) < -CFG.pad.half), `slot ${s.id}: choice pad climbs a plateau`);
+        assert(road.distanceTo(x, z) > CFG.roadHalfWidth + CFG.pad.half, `slot ${s.id}: choice pad on the road`);
+        for (const o of sim.slots) if (o !== s) {
+          assert(Math.hypot(o.x - x, o.z - z) > 2.8, `slot ${s.id}: choice pad on slot ${o.id}`);
+          assert(Math.hypot(o.x + o.up[0] - x, o.z + o.up[1] - z) > 2.6, `slot ${s.id}: choice pad on the upgrade pad of ${o.id}`);
+        }
+        for (const o of CFG.town.obstacles) assert(Math.hypot(o.x - x, o.z - z) > o.r + CFG.pad.half, `slot ${s.id}: choice pad inside a town building`);
       }
-      for (const o of CFG.town.obstacles) assert(Math.hypot(o.x - x, o.z - z) > o.r + CFG.pad.half, `slot ${s.id}: choice pad inside a town building`);
+      const [a, b] = s.upB;
+      assert(Math.hypot(a[0] - b[0], a[1] - b[1]) > CFG.pad.half * 2 + 0.3, `slot ${s.id}: choice pads overlap`);
     }
-    const [a, b] = s.upB;
-    assert(Math.hypot(a[0] - b[0], a[1] - b[1]) > CFG.pad.half * 2 + 0.3, `slot ${s.id}: choice pads overlap`);
-  }
+  });
 });
 
 test('Rapid Launcher: light shells several times as often, retargeting each shot; fewer fast rats slip past', () => {
@@ -861,26 +873,28 @@ test('simulation is deterministic for a seed', () => {
 // ------------------------------------------------ 16 waves, skip, auto skip
 const waveHp = (w) => w.grunts * w.hp + w.giants.reduce((a, g) => a + g[0], 0);
 test('town: houses, farms, windmill, barn, well and market stay clear of the road, build spots and plateaus', () => {
-  const T = CFG.town, W = CFG.walk;
-  const clear = (name, x, z, roadGap) => {
-    assert(road.distanceTo(x, z) > CFG.roadHalfWidth + roadGap, `${name} too close to the road (${road.distanceTo(x, z).toFixed(1)})`);
-    for (const sl of CFG.slots) assert(Math.hypot(sl.x - x, sl.z - z) > 3.2, `${name} blocks tower slot ${sl.id}`);
-    assert(Math.hypot(CFG.fortressPad.x - x, CFG.fortressPad.z - z) > 3, `${name} blocks the town hall pad`);
-    for (const p of CFG.plateaus) assert(plateauSdf(p, x, z) < -0.4, `${name} sits on a plateau`);
-    assert(x > W.minX - 1.5 && x < W.maxX + 1.5 && z > W.minZ - 1.5 && z < W.maxZ + 1.5, `${name} is outside the canyon floor`);
-  };
-  CFG.huts.forEach((h, i) => clear(`house ${i}`, h.x, h.z, 2.5));
-  for (const [name, o] of [['windmill', T.windmill], ['barn', T.barn], ['well', T.well], ['market', T.market]]) clear(name, o.x, o.z, 2);
-  T.fields.forEach((f, i) => {
-    for (const [u, v] of [[0, 0], [-0.56, -0.56], [0.56, -0.56], [0.56, 0.56], [-0.56, 0.56]]) { const p = fieldPoint(f, u, v); clear(`field ${i}`, p.x, p.z, 0.8); }
+  forLevels(() => {
+    const T = CFG.town, W = CFG.walk;
+    const clear = (name, x, z, roadGap) => {
+      assert(road.distanceTo(x, z) > CFG.roadHalfWidth + roadGap, `${name} too close to the road (${road.distanceTo(x, z).toFixed(1)})`);
+      for (const sl of CFG.slots) assert(Math.hypot(sl.x - x, sl.z - z) > 3.2, `${name} blocks tower slot ${sl.id}`);
+      assert(Math.hypot(CFG.fortressPad.x - x, CFG.fortressPad.z - z) > 3, `${name} blocks the town hall pad`);
+      for (const p of CFG.plateaus) assert(plateauSdf(p, x, z) < -0.4, `${name} sits on a plateau`);
+      assert(x > W.minX - 1.5 && x < W.maxX + 1.5 && z > W.minZ - 1.5 && z < W.maxZ + 1.5, `${name} is outside the canyon floor`);
+    };
+    CFG.huts.forEach((h, i) => clear(`house ${i}`, h.x, h.z, 2.5));
+    for (const [name, o] of [['windmill', T.windmill], ['barn', T.barn], ['well', T.well], ['market', T.market]]) clear(name, o.x, o.z, 2);
+    T.fields.forEach((f, i) => {
+      for (const [u, v] of [[0, 0], [-0.56, -0.56], [0.56, -0.56], [0.56, 0.56], [-0.56, 0.56]]) { const p = fieldPoint(f, u, v); clear(`field ${i}`, p.x, p.z, 0.8); }
+    });
+    // nothing overlaps: houses, buildings and fields keep apart from each other
+    const things = [...CFG.huts.map((h) => [h.x, h.z, 1.8]), [T.windmill.x, T.windmill.z, 1.8], [T.barn.x, T.barn.z, 3], [T.well.x, T.well.z, 1], [T.market.x, T.market.z, 1.3],
+      [CFG.fortress.x, CFG.fortress.z, CFG.fortress.radius], ...T.fields.map((f) => [f.x, f.z, Math.min(f.w, f.d) / 2 + 0.45])];
+    for (let i = 0; i < things.length; i++) for (let j = i + 1; j < things.length; j++) {
+      const [ax, az, ar] = things[i], [bx, bz, br] = things[j];
+      assert(Math.hypot(ax - bx, az - bz) > ar + br - 0.1, `town pieces ${i} and ${j} overlap`);
+    }
   });
-  // nothing overlaps: houses, buildings and fields keep apart from each other
-  const things = [...CFG.huts.map((h) => [h.x, h.z, 1.8]), [T.windmill.x, T.windmill.z, 1.8], [T.barn.x, T.barn.z, 3], [T.well.x, T.well.z, 1], [T.market.x, T.market.z, 1.3],
-    [CFG.fortress.x, CFG.fortress.z, CFG.fortress.radius], ...T.fields.map((f) => [f.x, f.z, Math.min(f.w, f.d) / 2 + 0.45])];
-  for (let i = 0; i < things.length; i++) for (let j = i + 1; j < things.length; j++) {
-    const [ax, az, ar] = things[i], [bx, bz, br] = things[j];
-    assert(Math.hypot(ax - bx, az - bz) > ar + br - 0.1, `town pieces ${i} and ${j} overlap`);
-  }
 });
 
 test('town: every villager has a home with a door, and a field or spot to go to', () => {
@@ -1169,6 +1183,69 @@ test('repair pad: a damaged town hall is patched up for gold; it never blocks an
   assert(bp && bp.cost === 30 && bp.paid === 10, 'reloaded repair pad ' + JSON.stringify(bp && { cost: bp.cost, paid: bp.paid }));
 });
 
+test('Level 2: the road climbs over a sand hill; rats, arrows and cannonballs follow the ground', () => {
+  try {
+    setLevel(2);
+    assert(CFG.level === 2 && CFG.hills.length === 1, 'Level 2 has no hill');
+    const H = CFG.hills[0];
+    let top = 0; for (let i = 0; i < road.count; i++) top = Math.max(top, groundHeight(road.px[i], road.pz[i]));
+    assert(top > 2, `the road should climb the hill (highest point ${top.toFixed(2)})`);
+    assert(groundHeight(H.x, H.z) > top + 1, 'the summit should rise above the road');
+    // the lone tree and the picnic sit on the summit, clear of the road, the towers and their pads
+    const D = CFG.decor, sim0 = new Sim({ seed: 1, cannon: true });
+    for (const [name, d, r] of [['tree', D.tree, 2.6], ['picnic', D.picnic, 2.2]]) {
+      assert(groundHeight(d.x, d.z) > 3.5, `the ${name} is not on the hilltop`);
+      assert(road.distanceTo(d.x, d.z) > CFG.roadHalfWidth + r, `the ${name} is on the road`);
+      for (const sl of sim0.slots) {
+        assert(Math.hypot(sl.x - d.x, sl.z - d.z) > r + 1.8, `the ${name} blocks slot ${sl.id}`);
+        for (const [ox, oz] of [sl.up, ...sl.upB]) assert(Math.hypot(sl.x + ox - d.x, sl.z + oz - d.z) > r + CFG.pad.half - 0.4, `the ${name} covers a pad of slot ${sl.id}`);
+      }
+    }
+    // the town stays on flat ground
+    for (const h of CFG.huts) assert(hillHeight(h.x, h.z) === 0, 'a house sits on the hill');
+    for (const f of CFG.town.fields) assert(hillHeight(f.x, f.z) === 0, 'a field sits on the hill');
+    // towers on the hill stand on the lowest point of their footprint
+    for (const sl of sim0.slots) assert(sl.y <= groundHeight(sl.x, sl.z) + 1e-9, `tower ${sl.id} floats`);
+    // a crowd walking over the hill: each rat stands on the slope, arrows strike at its height
+    const sim = new Sim({ seed: 4 });
+    sim.towers.length = 0; for (const sl of sim.slots) sl.tower = null;
+    const t = sim._placeTower(sim.slots.find((q) => q.id === 'H3'), 5, true, 'crossbow');
+    sim.callWave();
+    let onHill = null, bolt = null;
+    run(sim, 160, (s) => {
+      for (const e of s.enemies) if (e.gy > 1.5 && !onHill) onHill = { gy: e.gy, want: hillHeight(e.x, e.z) };
+      for (const b of s.bolts) { const e = s.enemies.find((q) => q.id === b.tid); if (!bolt && e && e.gy > 1 && !b.fall) bolt = { y1: b.y1, gy: e.gy, type: e.type, fly: e.fly }; }
+      s.fortress.hp = s.fortress.maxHp;
+    });
+    assert(onHill && Math.abs(onHill.gy - onHill.want) < 1e-6, 'rats do not walk on the hill: ' + JSON.stringify(onHill));
+    assert(bolt && bolt.y1 > bolt.gy && bolt.y1 < bolt.gy + 2.5, 'arrows do not aim at a rat on the slope: ' + JSON.stringify(bolt));
+    assert(t.fired > 0, 'the hilltop crossbow never fired');
+    // a cannonball lands on the slope, not under it
+    const cs = new Sim({ seed: 5, cannon: true });
+    cs.towers.length = 0; for (const sl of cs.slots) sl.tower = null;
+    cs._placeTower(cs.slots.find((q) => q.id === 'H4'), 3, true, 'cannon');
+    cs.callWave();
+    let shell = null;
+    run(cs, 160, (s) => { for (const sh of s.shells) if (!shell && hillHeight(sh.tx, sh.tz) > 1) shell = { ty: sh.ty, want: 0.3 + hillHeight(sh.tx, sh.tz), kind: sh.kind }; s.fortress.hp = s.fortress.maxHp; });
+    assert(shell && Math.abs(shell.ty - shell.want) < 1e-6, 'cannonballs do not land on the slope: ' + JSON.stringify(shell));
+  } finally { setLevel(1); }
+});
+
+test('Level 2: a save remembers its map, and never loads on another map', () => {
+  try {
+    setLevel(2);
+    const sim = new Sim({ seed: 3 }); sim.gold = 77;
+    const snap = JSON.parse(JSON.stringify(sim.serialize()));
+    assert(snap.level === 2, 'the save does not record its map');
+    const back = new Sim({ seed: 9 });
+    assert(back.load(snap) && back.gold === 77 && back.slots[0].id === 'H1', 'a Level 2 save did not load on Level 2');
+    setLevel(1);
+    assert(!new Sim({ seed: 9 }).load(snap), 'a Level 2 save loaded on Level 1');
+    const old = JSON.parse(JSON.stringify(new Sim({ seed: 3 }).serialize())); delete old.level;
+    assert(new Sim({ seed: 9 }).load(old), 'an old save (no map recorded) should load on Level 1');
+  } finally { setLevel(1); }
+});
+
 const balance = {};
 test('balance: idle player loses early', () => {
   const r = runLevel('idle', 1); balance.idle = r;
@@ -1227,6 +1304,30 @@ test('balance: Easy is gentle, but you still have to build and upgrade', () => {
   assert(i.result === 'defeat', 'an idle player should still lose on Easy');
   const n = runLevel('noup+easy', 1); balance.easynu = n;
   assert(n.result === 'defeat', 'never upgrading should still lose on Easy');
+});
+test('balance (Level 2): tougher rats; an efficient player wins with 2-3 stars, a distracted one still wins, idling or never upgrading loses', () => {
+  try {
+    for (const seed of [1, 2]) {
+      const r = runLevel('bot+l2', seed); balance['l2bot' + seed] = r;
+      assert(r.result === 'victory' && r.stars >= 2, `Level 2 bot seed ${seed}: ${r.result} ${r.stars}`);
+    }
+    const l = runLevel('lazy+l2', 1); balance.l2lazy = l;
+    assert(l.result === 'victory', `distracted player lost Level 2 on wave ${l.wave}`);
+    const n = runLevel('noup+l2', 1); balance.l2noup = n;
+    assert(n.result === 'defeat' && n.wave >= 5, `no-upgrade on Level 2: ${n.result} wave ${n.wave}`);
+    const i = runLevel('idle+l2', 1); balance.l2idle = i;
+    assert(i.result === 'defeat' && i.wave <= 3, `idle on Level 2 reached wave ${i.wave}`);
+  } finally { setLevel(1); }
+});
+test('balance (Level 2 Hard): cannons win with 3 stars; crossbows alone only hold with repairs', () => {
+  try {
+    const c = runLevel('cannon+hard+blast+l2', 1); balance.l2hardc = c;
+    assert(c.result === 'victory' && c.stars === 3, `cannons on Level 2 Hard: ${c.result} ${c.stars}`);
+    const b = runLevel('bot+hard+l2', 1); balance.l2hardb = b;
+    const r = runLevel('bot+hard+repair+l2', 1); balance.l2hardr = r;
+    assert(r.result === 'victory', `crossbows with repairs lost Level 2 Hard on wave ${r.wave}`);
+    assert(b.result === 'defeat' || b.stars < r.stars, 'repairs should matter on Level 2 Hard');
+  } finally { setLevel(1); }
 });
 test('performance: one simulation step stays well under 1 ms', () => {
   const r = balance.bot1 || runLevel('bot', 1);

@@ -1,7 +1,8 @@
 // Crossbow Canyon — game shell: loop, screens, HUD, saving, tutorial.
 import { describeFocus, CROSSBOW_ABILITIES, cannonAbility } from './towerinfo.js';
 import { RAT_GUIDE, guideEntry, firstWave } from './ratguide.js';
-import { CFG, clearDiamonds } from './config.js';
+import { CFG, clearDiamonds, MAPS } from './config.js';
+import { setLevel, levelMap } from './world.js';
 import { Sim, T_GRUNT, T_BOSS } from './sim.js';
 import { makeBot } from './bot.js';
 import { View } from './render/view.js';
@@ -14,8 +15,14 @@ const TOWER_NAMES = CROSSBOW_ABILITIES.map((a) => (a ? a[0] : ''));
 const FIXED = CFG.fixedDt;
 const settings = Save.get('settings', DEFAULT_SETTINGS);
 let progress = Save.get('progress', DEFAULT_PROGRESS);
+// the map picked on the title screen (Level 1 or 2) is the one the game opens on
+setLevel(MAPS.some((m) => m.id === settings.level) ? settings.level : 1);
 progress.unlocks = { cannon: false, ...(progress.unlocks || {}) };
 progress.diamonds = Math.max(0, progress.diamonds | 0);
+// best results per map (saves from before Level 2 hold Level 1's results at the top level)
+progress.byLevel = progress.byLevel || {};
+if (!progress.byLevel[1] && (progress.bestWave || progress.cleared)) progress.byLevel[1] = { bestWave: progress.bestWave | 0, cleared: !!progress.cleared, bestStars: progress.bestStars | 0, bestDiff: progress.bestDiff || null };
+const levelBest = (id = CFG.level) => progress.byLevel[id] || (progress.byLevel[id] = { bestWave: 0, cleared: false, bestStars: 0, bestDiff: null });
 const cannonUnlocked = () => !!progress.unlocks.cannon;
 const coarse = matchMedia('(pointer: coarse)').matches;
 
@@ -87,6 +94,31 @@ for (const b of document.querySelectorAll('[data-diff]')) {
   b.addEventListener('click', () => { audio.unlock(); audio.click(); settings.difficulty = b.dataset.diff; Save.set('settings', settings); syncDiffPick(); });
 }
 
+// Maps: the title screen picks Level 1 or 2. Switching rebuilds the 3D scene in
+// place (the renderer is kept) and the title-screen demo carries on on the new map.
+function syncLevelPick() {
+  for (const b of document.querySelectorAll('[data-level]')) b.setAttribute('aria-checked', String(+b.dataset.level === CFG.level));
+}
+function switchLevel(id) {
+  if (CFG.level === id || !MAPS.some((m) => m.id === id)) return false;
+  setLevel(id);
+  const old = view;
+  old.dispose();
+  view = new View(canvas, $('labels'), quality, old.renderer);
+  hudCache = {}; tcKey = '';
+  needsRender = true;
+  return true;
+}
+for (const b of document.querySelectorAll('[data-level]')) {
+  b.addEventListener('click', () => {
+    audio.unlock(); audio.click();
+    const id = +b.dataset.level;
+    settings.level = id; Save.set('settings', settings);
+    if (switchLevel(id) && mode === 'title') { sim = makeDemo(); demoBot = makeBot(); view.reset(sim); }
+    refreshTitle();
+  });
+}
+
 const SCREENS = ['titleScreen', 'helpScreen', 'settingsScreen', 'pauseScreen', 'confirmScreen', 'victoryScreen', 'defeatScreen', 'armoryScreen', 'guideScreen'];
 function showScreen(id) {
   for (const s of SCREENS) $(s).hidden = s !== id;
@@ -101,16 +133,18 @@ function refreshTitle() {
   const cp = Save.get('checkpoint', null);
   const valid = cp && cp.v === CFG.version;
   $('continueBtn').hidden = !valid;
-  if (valid) $('continueInfo').textContent = `wave ${cp.waveIndex + 1} of ${CFG.waves.length}${cp.diff && cp.diff !== 'normal' ? ' · ' + diffName(cp.diff) : ''}`;
+  if (valid) $('continueInfo').textContent = `${(cp.level || 1) !== 1 || MAPS.length > 1 ? `Level ${cp.level || 1} · ` : ''}wave ${cp.waveIndex + 1} of ${CFG.waves.length}${cp.diff && cp.diff !== 'normal' ? ' · ' + diffName(cp.diff) : ''}`;
   syncDiffPick();
+  syncLevelPick();
   for (const el of document.querySelectorAll('.cannonCost')) el.textContent = CFG.cannonUnlockCost;
   const p = progress;
   $('gemVal').textContent = p.diamonds;
   $('armoryInfo').textContent = cannonUnlocked() ? 'cannon unlocked' : p.diamonds >= CFG.cannonUnlockCost ? 'cannon ready to unlock!' : `cannon: ${CFG.cannonUnlockCost} diamonds`;
   $('armoryBtn').classList.toggle('ready', !cannonUnlocked() && p.diamonds >= CFG.cannonUnlockCost);
-  $('bestLine').textContent = p.cleared
-    ? `Canyon held${p.bestDiff ? ' on ' + diffName(p.bestDiff) : ''} · best ${'★'.repeat(p.bestStars)}${'☆'.repeat(3 - p.bestStars)}`
-    : p.bestWave > 0 ? `Best: survived ${p.bestWave} of ${CFG.waves.length} waves` : `Level 1 · Sunstone Canyon · ${CFG.waves.length} waves`;
+  const b = levelBest(), map = levelMap();
+  $('bestLine').textContent = `Level ${map.id} · ${map.name} · ` + (b.cleared
+    ? `held${b.bestDiff ? ' on ' + diffName(b.bestDiff) : ''} · best ${'★'.repeat(b.bestStars)}${'☆'.repeat(3 - b.bestStars)}`
+    : b.bestWave > 0 ? `best: survived ${b.bestWave} of ${CFG.waves.length} waves` : `${CFG.waves.length} waves`);
 }
 
 function goTitle() {
@@ -141,6 +175,8 @@ function startGame(saveData, difficulty = diffKey()) {
   audio.unlock();
   hideEnemyCard();
   introducedBosses.clear();
+  if (saveData && (saveData.level || 1) !== CFG.level) switchLevel(saveData.level || 1);
+  if (settings.level !== CFG.level) { settings.level = CFG.level; Save.set('settings', settings); }   // the map last played opens next time
   sim = new Sim({ seed: newSeed(), cannon: cannonUnlocked(), autoSkip: !!settings.autoSkip, difficulty });
   if (saveData && !sim.load(saveData)) saveData = null;
   syncAuto();
@@ -747,6 +783,7 @@ function processEvents() {
         }
         audio.musicIntensity = 0.15;
         if (e.index + 1 > progress.bestWave) { progress.bestWave = e.index + 1; Save.set('progress', progress); }
+        if (e.index + 1 > levelBest().bestWave) { levelBest().bestWave = e.index + 1; Save.set('progress', progress); }
         break;
       case 'checkpoint': {
         const snap = s.serialize();
@@ -786,6 +823,9 @@ function endGame(won, stars = 0) {
     progress.bestStars = Math.max(progress.bestStars, stars);
     const rank = (k) => Object.keys(CFG.difficulties).indexOf(k);
     if (!progress.bestDiff || rank(sim.difficulty) > rank(progress.bestDiff)) progress.bestDiff = sim.difficulty;
+    const lb = levelBest();
+    lb.cleared = true; lb.bestWave = CFG.waves.length; lb.bestStars = Math.max(lb.bestStars, stars);
+    if (!lb.bestDiff || rank(sim.difficulty) > rank(lb.bestDiff)) lb.bestDiff = sim.difficulty;
     Save.set('progress', progress);
     Save.del('checkpoint'); Save.del('waveStart');
   } else {
@@ -908,7 +948,8 @@ try {
 
 // Test / debugging hooks
 window.__cc = {
-  get sim() { return sim; }, view, audio, input, settings,
+  get sim() { return sim; }, get view() { return view; }, audio, input, settings, switchLevel,
+  get level() { return CFG.level; },
   get mode() { return mode; },
   get screen() { return screen; },
   get quality() { return quality; },

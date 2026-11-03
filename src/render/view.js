@@ -1,7 +1,7 @@
 // Renders the simulation: camera, lights, units, structures, pads, labels.
 import * as THREE from 'three';
 import { CFG } from '../config.js';
-import { groundHeight, road } from '../world.js';
+import { groundHeight, hillHeight, road } from '../world.js';
 import { T_GRUNT, T_BOSS, SHIELD } from '../sim.js';
 import { buildEnvironment } from './env.js';
 import { FX } from './fx.js';
@@ -29,6 +29,8 @@ export function giantScale(e) {
   if (e.type === T_BOSS) return BOSS_SCALE[e.boss] || 2.1;
   return e.maxHp <= 40 ? 1.2 : e.maxHp <= 80 ? 1.3 : e.maxHp <= 170 ? 1.4 : e.maxHp <= 260 ? 1.5 : 1.6;
 }
+// events at an enemy: their effects are raised onto the ground (a hill) under it
+const LIFTED = new Set(['death', 'poke', 'spent', 'hit', 'freeze', 'bossSpawn', 'clink', 'block', 'shieldBreak', 'split', 'slimeSplit', 'digDown', 'digUp', 'drop', 'heal', 'stormHit', 'explode']);
 const _road = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 // colour of the cartoon splat each kind of enemy leaves behind
 const RAT_SPLAT = [0xb08fcc, 0xd2a8de, 0x9d93b5, 0xbfa2cf, 0x9fdcae, 0xd49ac6, 0xe6b4da];
@@ -53,11 +55,12 @@ function discTexture(fill, size = 64) {
 }
 
 export class View {
-  constructor(canvas, labelLayer, quality = 'high') {
+  // renderer: an existing renderer to draw with (a new map reuses the old one)
+  constructor(canvas, labelLayer, quality = 'high', renderer = null) {
     this.canvas = canvas;
     this.labels = labelLayer;
     this.quality = quality;
-    const r = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance', stencil: false });
+    const r = renderer || new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance', stencil: false });
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.NoToneMapping;
     r.shadowMap.enabled = quality !== 'low';
@@ -555,6 +558,11 @@ export class View {
     glow.position.y = 0.03;
     g.add(base, fill, label, glow);
     g.position.set(p.x, p.y + 0.07, p.z);
+    if (CFG.hills.length) {
+      // on a hill the pad lies on the slope
+      const e = 0.6, dx = (groundHeight(p.x + e, p.z) - groundHeight(p.x - e, p.z)) / (2 * e), dz = (groundHeight(p.x, p.z + e) - groundHeight(p.x, p.z - e)) / (2 * e);
+      g.quaternion.setFromUnitVectors(UP, new THREE.Vector3(-dx, 1, -dz).normalize());
+    }
     this.scene.add(g);
     const v = { group: g, base, fill, label, glow, canvas, ctx, tex, shown: -1, broke: null, pop: 0 };
     return v;
@@ -623,20 +631,32 @@ export class View {
   _ratDies(e, spent) {
     if (this.ratDying.length >= 400) return;
     const v = e.v === SHIELD && !e.sh ? SHIELDLESS : e.v || 0;
-    this.ratDying.push({ x: e.x, z: e.z, yaw: e.yaw || 0, dir: e.dir || 1, v, k: 0, dur: spent ? 0.45 : 0.72, spent, puffed: spent });
+    this.ratDying.push({ x: e.x, z: e.z, gy: this._gy(e.x, e.z), yaw: e.yaw || 0, dir: e.dir || 1, v, k: 0, dur: spent ? 0.45 : 0.72, spent, puffed: spent });
   }
   _giantDies(e, spent) {
     const v = this.giantViews.get(e.id);
     if (!v) return;
     v.dying = 0; v.spent = spent; v.dieDir = e.dir || 1;
-    v.dieDur = spent ? 0.6 : v.boss === 'slime' ? 0.5 : v.boss === 'buzzard' && v.group.position.y > 0.5 ? 2.0 : v.boss ? 1.8 : 1.2;
+    v.gy = this._gy(v.group.position.x, v.group.position.z);
+    v.dieDur = spent ? 0.6 : v.boss === 'slime' ? 0.5 : v.boss === 'buzzard' && v.group.position.y - v.gy > 0.5 ? 2.0 : v.boss ? 1.8 : 1.2;
     v.downed = spent; v.vanished = false;
-    v.fallFrom = v.group.position.y;   // a buzzard shot down falls out of the sky
+    v.fallFrom = v.group.position.y - v.gy;   // a buzzard shot down falls out of the sky
     v.label.style.display = 'none';
     v.mat.emissive.setScalar(spent ? 0.3 : 0.9);
   }
-  // Giant rat defeat: topples backwards, bounces, lies still, sinks in a puff.
+  // ground under a point: a hill on Level 2, 0 on a flat road
+  _gy(x, z) { return CFG.hills.length ? hillHeight(x, z) : 0; }
+  // raise the effects of the next fx calls onto the ground at x, z (reset with fx.lift = 0)
+  _lift(x, z) { this.fx.lift = this._gy(x, z); return this.fx; }
+
   _animateGiantDeath(v, dt, t) {
+    this.fx.lift = v.gy || 0;
+    this._giantDeathPose(v, dt, t);
+    v.group.position.y += v.gy || 0;
+    this.fx.lift = 0;
+  }
+  // Giant rat defeat: topples backwards, bounces, lies still, sinks in a puff.
+  _giantDeathPose(v, dt, t) {
     v.dying = Math.min(1, v.dying + dt / v.dieDur);
     const k = v.dying, sc = v.baseScale || 1.4, g = v.group;
     v.mat.emissive.setScalar(Math.max(0, (v.spent ? 0.3 : 0.9) * (1 - k / 0.15)));
@@ -737,7 +757,7 @@ export class View {
     if (mine >= 10) return;
     const g = v.group, yaw = g.rotation.y, sc = v.baseScale || 1.4;
     // world offset of the impact from the giant's feet, then into its own (unrotated, unscaled) frame
-    const ox = -e.dx * radius * 0.78, oz = -e.dz * radius * 0.78, oy = e.y - g.position.y + (Math.random() - 0.5) * 0.7;
+    const ox = -e.dx * radius * 0.78, oz = -e.dz * radius * 0.78, oy = e.y + this._gy(e.x, e.z) - g.position.y + (Math.random() - 0.5) * 0.7;
     const c = Math.cos(yaw), s = Math.sin(yaw);
     this.stuck.push({
       id: e.id, lx: (ox * c - oz * s) / sc, ly: oy / sc, lz: (ox * s + oz * c) / sc,
@@ -799,7 +819,7 @@ export class View {
       v.body.rotation.x = 0.55 * k;
       const c = Math.sin(t * 22) * 0.9;
       v.armL.rotation.x = -1.3 + c; v.armR.rotation.x = -1.3 - c;
-      if (Math.random() < 0.5) this.fx.puff(e.x + (Math.random() - 0.5) * 3, 0, e.z + (Math.random() - 0.5) * 3, 0x9b7650, 1.3);
+      if (Math.random() < 0.5) { this._lift(e.x, e.z).puff(e.x + (Math.random() - 0.5) * 3, 0, e.z + (Math.random() - 0.5) * 3, 0x9b7650, 1.3); this.fx.lift = 0; }
     } else if (e.dig === 3) {
       const k = 1 - Math.max(0, e.digT) / D.up;
       v.group.position.y = -(1 - k) * (1 - k) * deep;
@@ -849,6 +869,7 @@ export class View {
   // -------------------------------------------------------------- events
   handleEvent(e, sim) {
     const fx = this.fx;
+    fx.lift = LIFTED.has(e.type) ? this._gy(e.x, e.z) : 0;
     switch (e.type) {
       case 'death': {
         // the body plays a defeat animation; the white puff comes when it vanishes
@@ -915,8 +936,8 @@ export class View {
       case 'bounce': fx.glow(e.x, e.y, e.z, 1.1, 0xd29bff, 0.14); if (this.pokeBudget >= 1) { this.pokeBudget--; fx.star(e.x, e.y, e.z, 0.55, 0xeed4ff, 0.15, 0.45); } break;
       case 'storm': {
         // the target area lights up, the tower's crystal flares
-        fx.ring(e.x, groundHeight(e.x, e.z), e.z, e.r / 1.5, 0xc07bff, e.time);
-        fx.glow(e.x, 0.4, e.z, e.r * 1.6, 0x9b5cff, e.time * 0.8);
+        fx.ring(e.x, groundHeight(e.x, e.z), e.z, e.r / 1.5, 0xc07bff, e.time);   // (not lifted: y is the ground already)
+        fx.glow(e.x, 0.4 + groundHeight(e.x, e.z), e.z, e.r * 1.6, 0x9b5cff, e.time * 0.8);
         const tv = this.towerViews.get(e.slot);
         if (tv) fx.glow(e.tx, tv.group.position.y + 2.4, e.tz, 3.2, 0xd29bff, 0.45);
         break;
@@ -988,6 +1009,7 @@ export class View {
       case 'loaded': this.reset(sim); break;
       default: break;
     }
+    fx.lift = 0;
   }
 
   // ------------------------------------------------------------- per frame
@@ -1027,7 +1049,7 @@ export class View {
         if (e.fall > 0) {   // dropped from the buzzard's net: falls, tumbling, and lands in a puff
           const u = 1 - e.fall / e.fallT;
           y += e.fallH * (1 - u * u); pitch += Math.sin(u * 9 + e.phase) * 0.8;
-          if (e.fall < 0.05 && Math.random() < 0.35) this.fx.puff(e.x, 0, e.z, 0xd9c7a8, 0.7);
+          if (e.fall < 0.05 && Math.random() < 0.35) { this._lift(e.x, e.z).puff(e.x, 0, e.z, 0xd9c7a8, 0.7); this.fx.lift = 0; }
         }
         // thrown back by a blast: the simulation moves the rat at once; it is drawn flying
         // back along the road in a hop (a big blast flips it head over heels)
@@ -1041,6 +1063,8 @@ export class View {
           pitch -= e._kb > 1.1 ? prog * Math.PI * 2 : Math.sin(prog * Math.PI) * 0.7;
           road.sample(e._vs, _road); ex = _road.x + _road.nx * e.lat; ez = _road.z + _road.nz * e.lat;
         }
+        const gy = this._gy(ex, ez);
+        y += gy;
         _p.set(ex, y, ez);
         _e.set(pitch, e.yaw, 0, 'YXZ'); _q.setFromEuler(_e);
         _s.set(sc, sc, sc);
@@ -1054,7 +1078,7 @@ export class View {
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
         const k = sc / 1.1;
         if (e.frozen > 0 && icn < 600) {
-          _p.set(ex, 0.34 * k, ez); _s.set(0.9 * k, 0.8 * k, 1.15 * k); _m.compose(_p, _q, _s); im.setMatrixAt(icn++, _m);
+          _p.set(ex, gy + 0.34 * k, ez); _s.set(0.9 * k, 0.8 * k, 1.15 * k); _m.compose(_p, _q, _s); im.setMatrixAt(icn++, _m);
         } else if (e.stun > 0 && dzn < 318) {
           // dazed by a blast: little stars circle its head
           for (let d = 0; d < 3; d++) {
@@ -1064,7 +1088,7 @@ export class View {
             _s.set(k, k, k); _m.compose(_p, _q, _s); dzm.setMatrixAt(dzn++, _m);
           }
         }
-        if (em > 0.3) { _p.set(ex, 0.06, ez); _s.set(0.85 * k, 1, 1.6 * k); _q.setFromAxisAngle(UP, e.yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
+        if (em > 0.3) { _p.set(ex, gy + 0.06, ez); _s.set(0.85 * k, 1, 1.6 * k); _q.setFromAxisAngle(UP, e.yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
       } else {
         seen.add(e.id);
         let v = this.giantViews.get(e.id);
@@ -1076,6 +1100,7 @@ export class View {
         const em = Math.min(1, (e.s - spawnS) / 2.2);
         const u = 1 - Math.max(0, em);
         v.group.position.set(e.x, -u * u * 2.6 * sc, e.z);
+        const ggy = this._gy(e.x, e.z);   // the ground under it (a hill on Level 2), added once the pose is set
         v.group.rotation.y = e.yaw;
         v.group.rotation.x = -u * 0.5;
         v.group.scale.setScalar(sc);
@@ -1104,7 +1129,7 @@ export class View {
           v.body.position.y = 0.1 * up;
           v.body.rotation.z = 0;
           lean += -0.14 * up + 0.3 * down;
-          if (down > 0.9 && !v.smashed) { v.smashed = true; this.fx.puff(e.x + Math.sin(e.yaw) * 2 * sc, 0, e.z + Math.cos(e.yaw) * 2 * sc, 0xd9c7a8, 1.3); }
+          if (down > 0.9 && !v.smashed) { v.smashed = true; this._lift(e.x, e.z).puff(e.x + Math.sin(e.yaw) * 2 * sc, 0, e.z + Math.cos(e.yaw) * 2 * sc, 0xd9c7a8, 1.3); this.fx.lift = 0; }
           if (a < 0.3) v.smashed = false;
         }
         if (style !== 'slime' && style !== 'buzzard') {
@@ -1114,6 +1139,7 @@ export class View {
           if (style === 'mole') this._poseMole(v, e, sc, t);
         }
         // a tunnelling mole is out of sight (its hump of earth shows instead)
+        v.group.position.y += ggy;
         if (e.under !== v.hidden) { v.hidden = e.under; v.group.visible = !e.under; v.label.style.display = e.under ? 'none' : ''; }
         if (e.flash > 0) v.mat.emissive.setScalar(0.85);
         else if (e.broken > 0) v.mat.emissive.setRGB(0.32 + Math.sin(t * 10) * 0.12, 0.06, 0.45);   // armour cracked (Crystal Quake / Doomsday Nova)
@@ -1121,14 +1147,14 @@ export class View {
         if (e.frozen > 0) { v.mat.color.setRGB(0.85, 1.2, 1.7); if (!(e.flash > 0)) v.mat.emissive.setRGB(0.1, 0.22, 0.3); }
         else if (e.slow > 0) v.mat.color.setRGB(0.66, 0.86, 1.3); else if (e.stun > 0) v.mat.color.setRGB(1.25, 1.15, 0.6); else v.mat.color.setRGB(1, 1, 1);
         if (e.frozen > 0 && icn < 600) {
-          if (style === 'slime') { _p.set(e.x, 0.75 * sc, e.z); _s.set(3.4 * sc, 2.4 * sc, 3.4 * sc); }
-          else { _p.set(e.x, 1.35 * sc, e.z); _s.set(1.6 * sc, 2.4 * sc, 1.6 * sc); }
+          if (style === 'slime') { _p.set(e.x, ggy + 0.75 * sc, e.z); _s.set(3.4 * sc, 2.4 * sc, 3.4 * sc); }
+          else { _p.set(e.x, ggy + 1.35 * sc, e.z); _s.set(1.6 * sc, 2.4 * sc, 1.6 * sc); }
           _m.compose(_p, _q.setFromAxisAngle(UP, e.yaw), _s); im.setMatrixAt(icn++, _m);
         }
         if (em > 0.3 && !e.under) {
           // a flier's shadow shrinks the higher it flies
           const bs = style === 'buzzard' ? 2.4 * sc * (1 - Math.min(0.55, e.fly / 10)) : style === 'slime' ? 2.4 * sc : 2.6 * sc;
-          _p.set(e.x, 0.06, e.z); _s.set(bs, 1, bs); _m.compose(_p, _q.identity(), _s); bm.setMatrixAt(bn++, _m);
+          _p.set(e.x, ggy + 0.06, e.z); _s.set(bs, 1, bs); _m.compose(_p, _q.identity(), _s); bm.setMatrixAt(bn++, _m);
         }
         // HP number above the head
         const hp = Math.max(0, Math.ceil(e.hp));
@@ -1147,13 +1173,13 @@ export class View {
         const vt = d.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
         if (gn >= 1400) continue;
         const sc = CFG.ratTypes[vt === SHIELDLESS ? SHIELD : vt].scale;
-        _p.set(d.x, 0, d.z); _q.setFromAxisAngle(UP, d.yaw); _s.set(sc, sc, sc); _m.compose(_p, _q, _s);
+        _p.set(d.x, d.gy || 0, d.z); _q.setFromAxisAngle(UP, d.yaw); _s.set(sc, sc, sc); _m.compose(_p, _q, _s);
         gm.setColorAt(gn, this.tint.normal);
         const o = gn * 4;
         ra[o] = d.dir; ra[o + 1] = 0; ra[o + 2] = -1; ra[o + 3] = d.spent ? -Math.max(d.k, 0.001) : Math.max(d.k, 0.001);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
         const b = (1 - d.k) * sc / 1.1;
-        _p.set(d.x, 0.06, d.z); _s.set(0.85 * b, 1, 1.6 * b); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m);
+        _p.set(d.x, (d.gy || 0) + 0.06, d.z); _s.set(0.85 * b, 1, 1.6 * b); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m);
       }
     }
     // ---- Tunnel Mole: a hump of earth races along while it tunnels, and red
@@ -1165,13 +1191,14 @@ export class View {
       this.mound.visible = under;
       if (under) {
         const w = Math.sin(t * 18) * 0.08;
-        this.mound.position.set(mole.x, 0, mole.z);
+        this.mound.position.set(mole.x, this._gy(mole.x, mole.z), mole.z);
         this.mound.rotation.y = mole.yaw;
         this.mound.scale.set(1.6 + w, 1.4 - w, 1.6 + w);
         this.moundPuff -= dt;
         if (this.moundPuff <= 0) {
           this.moundPuff = 0.07;
-          this.fx.puff(mole.x - Math.sin(mole.yaw) * 1.8 + (Math.random() - 0.5) * 1.5, 0, mole.z - Math.cos(mole.yaw) * 1.8 + (Math.random() - 0.5) * 1.5, 0x9b7650, 1.1);
+          this._lift(mole.x, mole.z).puff(mole.x - Math.sin(mole.yaw) * 1.8 + (Math.random() - 0.5) * 1.5, 0, mole.z - Math.cos(mole.yaw) * 1.8 + (Math.random() - 0.5) * 1.5, 0x9b7650, 1.1);
+          this.fx.lift = 0;
         }
         this.shake = Math.max(this.shake, 0.05);   // the ground rumbles
       }
@@ -1179,7 +1206,7 @@ export class View {
       if (mole) {
         road.sample(CFG.bosses.mole.dig.exit, _road);
         const pulse = 0.5 + 0.5 * Math.sin(t * 9);
-        this.exitMark.position.set(_road.x + _road.nx * mole.lat, 0.1, _road.z + _road.nz * mole.lat);
+        this.exitMark.position.set(_road.x + _road.nx * mole.lat, 0.1 + this._gy(_road.x, _road.z), _road.z + _road.nz * mole.lat);
         this.exitMark.rotation.y = t * 0.6;
         this.exitMark.scale.setScalar(1 + pulse * 0.12);
         this.exitMat.opacity = 0.45 + pulse * 0.45;
@@ -1322,7 +1349,7 @@ export class View {
         const fl = 0.85 + Math.sin(t * 17 + zn.x) * 0.1 + Math.sin(t * 29 + zn.z) * 0.05;
         _p.set(zn.x, 0.09 + groundHeight(zn.x, zn.z), zn.z); _s.set(zn.r * 1.25 * fl, 1, zn.r * 1.25 * fl); _m.compose(_p, _q.identity(), _s);
         zm.setMatrixAt(n, _m); zm.instanceColor.setXYZ(n, Math.min(1, k * 2), Math.min(1, k * 2) * 0.9, Math.min(1, k * 2) * 0.8); n++;
-        if (Math.random() < dt * 9) { const a = Math.random() * 6.28, d = Math.random() * zn.r; this.fx.glow(zn.x + Math.cos(a) * d, 0.5, zn.z + Math.sin(a) * d, 0.9, 0xff8a24, 0.4); }
+        if (Math.random() < dt * 9) { const a = Math.random() * 6.28, d = Math.random() * zn.r; this._lift(zn.x, zn.z).glow(zn.x + Math.cos(a) * d, 0.5, zn.z + Math.sin(a) * d, 0.9, 0xff8a24, 0.4); this.fx.lift = 0; }
       }
       zm.count = n; zm.instanceMatrix.needsUpdate = true; if (zm.instanceColor) zm.instanceColor.needsUpdate = true;
     }
@@ -1485,8 +1512,28 @@ export class View {
       const k = 0.85 + Math.sin(t * 13 + i * 2.1) * 0.12 + Math.sin(t * 23 + i) * 0.06;
       fl.scale.set(k, k * (1 + this.night * 0.3), k);
     }
+    // ---- Level 2: the kite drifts and bobs on the breeze above the hill
+    const kite = this.env.kite;
+    if (kite) {
+      const m = kite.mesh;
+      m.position.set(kite.x + Math.sin(t * 0.45) * 1.6, kite.h + Math.sin(t * 0.8) * 0.7 + Math.sin(t * 2.3) * 0.15, kite.z + Math.cos(t * 0.37) * 0.9);
+      m.rotation.set(-0.35, 0.25 * Math.sin(t * 0.5), 0.22 * Math.sin(t * 1.1));
+      const p = kite.string.geometry.attributes.position;
+      p.setXYZ(1, m.position.x, m.position.y - 0.4, m.position.z); p.needsUpdate = true;
+    }
 
     this.fx.update(dt);
+  }
+
+  // Frees this map's meshes, materials and textures (a new map is about to replace it).
+  // The renderer itself stays: the next View draws with it.
+  dispose() {
+    this.scene.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of mats) { if (m.map) m.map.dispose(); m.dispose(); }
+    });
+    this.labels.textContent = '';
   }
 
   _syncLighting(sim, dt) {

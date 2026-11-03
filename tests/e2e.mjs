@@ -303,6 +303,61 @@ await test('repair pad: a damaged town hall gets a repair pad; walking onto it w
   await ctx.close();
 });
 
+await test('Level 2: pick Lonetree Hill on the title screen; rats climb the hill; a saved game reopens on its own map', async () => {
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
+  assert((await page.getAttribute('[data-level="1"]', 'aria-checked')) === 'true', 'Level 1 should be picked at first');
+  await page.click('[data-level="2"]');
+  assert((await page.getAttribute('[data-level="2"]', 'aria-checked')) === 'true', 'Level 2 not picked');
+  assert((await page.textContent('#bestLine')).includes('Lonetree Hill'), 'title should name Level 2');
+  const t = await g(page, () => ({ level: window.__cc.level, kite: !!window.__cc.view.env.kite, saved: JSON.parse(localStorage.getItem('crossbow-canyon:settings:v1')).level }));
+  assert(t.level === 2 && t.kite && t.saved === 2, 'the map did not switch: ' + JSON.stringify(t));
+  // switching back and forth rebuilds the scene cleanly
+  await page.click('[data-level="1"]'); await page.waitForTimeout(400);
+  assert((await g(page, () => window.__cc.level)) === 1 && !(await g(page, () => window.__cc.view.env.kite)), 'did not switch back to Level 1');
+  await page.click('[data-level="2"]'); await page.waitForTimeout(400);
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  assert((await g(page, () => window.__cc.sim.slots[0].id)) === 'H1', 'the game did not start on Level 2');
+  // a crowd crosses the hill: rats are drawn standing on the slope
+  const r = await g(page, () => {
+    const c = window.__cc, s = c.sim;
+    s.callWave(); s.fortress.hp = s.fortress.maxHp = 99999;
+    for (let i = 0; i < 400 && !s.enemies.some((e) => e.type === 0 && e.gy > 1.8); i++) c.advance(0.25);
+    return { onHill: s.enemies.filter((e) => e.type === 0 && e.gy > 1.8).length };
+  });
+  assert(r.onHill > 0, 'no rat ever reached the hill');
+  await page.waitForTimeout(800);
+  const drawn = await g(page, () => {
+    const c = window.__cc, s = c.sim, v = c.view, m = new (v.camera.matrix.constructor)();
+    const e = s.enemies.find((q) => q.type === 0 && q.gy > 1.8 && q.v === 0 && q.alive);
+    if (!e) return { skip: true };
+    let best = null;
+    v.gruntMesh.count && [...Array(v.gruntMesh.count).keys()].forEach((i) => { v.gruntMesh.getMatrixAt(i, m); const p = m.elements; const d = Math.hypot(p[12] - e.x, p[14] - e.z); if (!best || d < best.d) best = { d, y: p[13] }; });
+    return { gy: e.gy, best };
+  });
+  assert(drawn.skip || (drawn.best && drawn.best.d < 0.8 && drawn.best.y > drawn.gy - 0.8), 'rat not drawn on the slope: ' + JSON.stringify(drawn));
+  await g(page, () => window.__cc.teleport(2, 8));
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${SHOTS}/level2-hill.png` });
+  // back on the title (with Level 1 picked) the saved game still says Level 2, and Continue reopens it there
+  await g(page, () => { const s = window.__cc.sim; s.state = 'build'; });
+  await page.keyboard.press('Escape');
+  await page.click('#quitBtn');
+  await page.waitForFunction(() => window.__cc.screen === 'titleScreen');
+  await page.click('[data-level="1"]');
+  assert((await page.textContent('#continueInfo')).includes('Level 2'), 'Continue should name Level 2: ' + await page.textContent('#continueInfo'));
+  await page.click('#continueBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  assert((await g(page, () => window.__cc.level)) === 2, 'Continue did not reopen Level 2');
+  // the map choice survives a reload
+  await page.waitForTimeout(1500);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.__cc && window.__cc.screen === 'titleScreen');
+  assert((await g(page, () => window.__cc.level)) === 2, 'the picked map was not remembered');
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
 await test('walking onto a pad builds one crossbow; coins are collected by walking near them', async () => {
   const { ctx, page } = await open();
   await page.click('#playBtn');

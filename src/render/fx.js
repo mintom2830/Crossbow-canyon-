@@ -76,14 +76,18 @@ function splatTexture() {
 const easeBack = (k) => { const c1 = 2.2, c3 = c1 + 1, u = k - 1; return 1 + c3 * u * u * u + c1 * u * u; };
 
 class Pool {
-  constructor(mesh, max) {
-    this.mesh = mesh; this.max = max;
+  constructor(mesh, max, fx = null) {
+    this.mesh = mesh; this.max = max; this.fx = fx;
     mesh.count = 0;
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.items = [];
   }
+  // fx.lift raises an effect onto the ground under it (a hill on Level 2); g remembers that ground
   spawn(o) {
+    const lift = this.fx ? this.fx.lift : 0;
+    o.g = lift;
+    if (lift && o.y !== undefined) o.y += lift;
     if (this.items.length >= this.max) this.items.shift();
     this.items.push(o);
     return o;
@@ -92,66 +96,67 @@ class Pool {
 
 export class FX {
   constructor(scene, camera) {
+    this.lift = 0;   // set around a call to raise its effects onto the ground (a hill) under them
     this.scene = scene; this.camera = camera;
     // ---- puffs (death clouds)
     const puffGeo = new THREE.IcosahedronGeometry(0.5, 1);
     const puffMat = toon({ vertexColors: false, color: 0xffffff, emissive: 0x6a6460 });
-    this.puffs = new Pool(new THREE.InstancedMesh(puffGeo, puffMat, 420), 420);
+    this.puffs = new Pool(new THREE.InstancedMesh(puffGeo, puffMat, 420), 420, this);
     this.puffs.mesh.setColorAt(0, _c.set(0xffffff));
     scene.add(this.puffs.mesh);
     inkInstanced(this.puffs.mesh, INK_PX.thin);   // cartoon smoke puffs with an ink rim
     // ---- cartoon splats left on the ground by defeated monsters (tinted per kind)
     const splatGeo = new THREE.PlaneGeometry(1.5, 1.5); splatGeo.rotateX(-Math.PI / 2);
     const splatMat = new THREE.MeshBasicMaterial({ map: splatTexture(), transparent: true, alphaTest: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    this.dust = new Pool(new THREE.InstancedMesh(splatGeo, splatMat, 560), 560);
+    this.dust = new Pool(new THREE.InstancedMesh(splatGeo, splatMat, 560), 560, this);
     this.dust.mesh.setColorAt(0, _c.set(0xffffff));
     scene.add(this.dust.mesh);
     // ---- droplets flung out of a splat: they arc, land and leave a little splat each
-    this.drops = new Pool(new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.1, 0), toon({ vertexColors: false, color: 0xffffff }), 260), 260);
+    this.drops = new Pool(new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.1, 0), toon({ vertexColors: false, color: 0xffffff }), 260), 260, this);
     this.drops.mesh.setColorAt(0, _c.set(0xffffff));
     scene.add(this.drops.mesh);
     inkInstanced(this.drops.mesh, INK_PX.thin);
     // ---- inked comic bursts (impacts) and twinkles (coins), always facing the camera
     const quad = new THREE.PlaneGeometry(1, 1);
     const spriteMat = (map) => new THREE.MeshBasicMaterial({ map, transparent: true, alphaTest: 0.05, depthWrite: false });
-    this.bursts = new Pool(new THREE.InstancedMesh(quad, spriteMat(burstTexture()), 160), 160);
+    this.bursts = new Pool(new THREE.InstancedMesh(quad, spriteMat(burstTexture()), 160), 160, this);
     this.bursts.mesh.setColorAt(0, _c.set(0xffffff)); this.bursts.mesh.renderOrder = 4;
     scene.add(this.bursts.mesh);
-    this.twinkles = new Pool(new THREE.InstancedMesh(quad, spriteMat(twinkleTexture()), 60), 60);
+    this.twinkles = new Pool(new THREE.InstancedMesh(quad, spriteMat(twinkleTexture()), 60), 60, this);
     this.twinkles.mesh.setColorAt(0, _c.set(0xffffff)); this.twinkles.mesh.renderOrder = 4;
     scene.add(this.twinkles.mesh);
     // ---- scorch marks left by cannon blasts
     const scorchGeo = new THREE.CircleGeometry(1, 14); scorchGeo.rotateX(-Math.PI / 2);
     const scorchMat = new THREE.MeshBasicMaterial({ color: 0x3b2a1f, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    this.scorch = new Pool(new THREE.InstancedMesh(scorchGeo, scorchMat, 80), 80);
+    this.scorch = new Pool(new THREE.InstancedMesh(scorchGeo, scorchMat, 80), 80, this);
     scene.add(this.scorch.mesh);
     // ---- additive glow sprites (hit sparks, build glow, muzzle flash)
     const glowTex = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
     const glowGeo = new THREE.PlaneGeometry(1, 1);
     const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, vertexColors: false });
-    this.glows = new Pool(new THREE.InstancedMesh(glowGeo, glowMat, 160), 160);
+    this.glows = new Pool(new THREE.InstancedMesh(glowGeo, glowMat, 160), 160, this);
     this.glows.mesh.setColorAt(0, _c.set(0xffffff));
     scene.add(this.glows.mesh);
     // ---- expanding rings (construction complete, pad appear)
     const ringGeo = new THREE.RingGeometry(0.82, 1, 32); ringGeo.rotateX(-Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    this.rings = new Pool(new THREE.InstancedMesh(ringGeo, ringMat, 64), 64);
+    this.rings = new Pool(new THREE.InstancedMesh(ringGeo, ringMat, 64), 64, this);
     this.rings.mesh.setColorAt(0, _c.set(0xffffff));
     scene.add(this.rings.mesh);
     // ---- flying coins (paid into pads)
     const coinMat = toon({ emissive: 0x6a4400 });
-    this.fly = new Pool(new THREE.InstancedMesh(coinGeometry(), coinMat, 80), 80);
+    this.fly = new Pool(new THREE.InstancedMesh(coinGeometry(), coinMat, 80), 80, this);
     scene.add(this.fly.mesh);
     inkInstanced(this.fly.mesh, INK_PX.prop);
     // ---- confetti chips
     const chipGeo = new THREE.BoxGeometry(0.16, 0.16, 0.04);
     const chipMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    this.chips = new Pool(new THREE.InstancedMesh(chipGeo, chipMat, 220), 220);
+    this.chips = new Pool(new THREE.InstancedMesh(chipGeo, chipMat, 220), 220, this);
     this.chips.mesh.setColorAt(0, _c.set(0xffffff));
     scene.add(this.chips.mesh);
     // ---- green plus signs floating up from healed rats (camera-facing, ink outlined)
     const plusGeo = mergeGeometries([new THREE.BoxGeometry(0.42, 0.13, 0.05), new THREE.BoxGeometry(0.13, 0.42, 0.05)]);
-    this.plusses = new Pool(new THREE.InstancedMesh(plusGeo, new THREE.MeshBasicMaterial({ color: 0x5cf27a }), 90), 90);
+    this.plusses = new Pool(new THREE.InstancedMesh(plusGeo, new THREE.MeshBasicMaterial({ color: 0x5cf27a }), 90), 90, this);
     scene.add(this.plusses.mesh);
     inkInstanced(this.plusses.mesh, INK_PX.thin);
   }
@@ -324,7 +329,7 @@ export class FX {
       for (const o of P.items) {
         o.t += dt;
         o.vy -= 20 * dt; o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt;
-        if (o.y <= 0.08 || o.t > 2) { if (o.mark && o.t <= 2) this.smudge(o.x, 0.005, o.z, 0.2 + o.s * 0.12, o.color, 2.6); continue; }
+        if (o.y <= o.g + 0.08 || o.t > 2) { if (o.mark && o.t <= 2) this.smudge(o.x, o.g + 0.005, o.z, 0.2 + o.s * 0.12, o.color, 2.6); continue; }
         P.items[j++] = o;
         const st = 1 + Math.min(0.6, Math.abs(o.vy) * 0.05);   // stretched by its speed
         _p.set(o.x, o.y, o.z); _s.set(o.s, o.s * st, o.s);
@@ -389,8 +394,8 @@ export class FX {
       const P = this.chips, mesh = P.mesh; let n = 0, j = 0;
       for (const o of P.items) {
         o.t += dt; if (o.t >= o.life) continue; P.items[j++] = o;
-        o.vy -= 18 * dt; o.x += o.vx * dt; o.y = Math.max(0.1, o.y + o.vy * dt); o.z += o.vz * dt; o.r += o.rs * dt;
-        if (o.y <= 0.1) { o.vx *= 0.8; o.vz *= 0.8; }
+        o.vy -= 18 * dt; o.x += o.vx * dt; o.y = Math.max(o.g + 0.1, o.y + o.vy * dt); o.z += o.vz * dt; o.r += o.rs * dt;
+        if (o.y <= o.g + 0.1) { o.vx *= 0.8; o.vz *= 0.8; }
         const s = 1 - Math.max(0, (o.t / o.life - 0.7) / 0.3);
         _p.set(o.x, o.y, o.z); _e.set(o.r, o.r * 0.7, 0); _q.setFromEuler(_e); _s.set(s, s, s);
         _m.compose(_p, _q, _s); mesh.setMatrixAt(n, _m); mesh.setColorAt(n, _c.set(o.color)); n++;

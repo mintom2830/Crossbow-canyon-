@@ -1,7 +1,7 @@
 // Shared world geometry: road path (arc-length lookup), plateau shapes,
 // terrain height and walkability. Pure JS — used by the simulation (Node or
 // browser) and by the renderer.
-import { CFG } from './config.js';
+import { CFG, MAPS } from './config.js';
 
 // ---------- Seeded RNG (mulberry32) ----------
 export function makeRng(seed = 1) {
@@ -115,11 +115,49 @@ export function plateauOutline(p, segments = 96) {
   return pts;
 }
 
+// ---------- Hills ----------
+// A smooth sand dome: a cosine bump, slightly uneven round its edge.
+export function hillHeight(x, z) {
+  let h = 0;
+  for (const H of CFG.hills) {
+    const dx = (x - H.x) / H.rx, dz = (z - H.z) / H.rz, r2 = dx * dx + dz * dz;
+    if (r2 >= 1.3) continue;
+    const a = Math.atan2(dz, dx);
+    const r = Math.sqrt(r2) / (1 + 0.07 * Math.sin(3 * a + H.seed) + 0.04 * Math.sin(5 * a + H.seed * 2.3));
+    if (r < 1) h += H.h * (0.5 + 0.5 * Math.cos(Math.PI * r));
+  }
+  return h;
+}
+
 export function groundHeight(x, z) {
   for (const p of CFG.plateaus) {
     if (plateauSdf(p, x, z) > 0) return CFG.plateauHeight;
   }
-  return 0;
+  return CFG.hills.length ? hillHeight(x, z) : 0;
 }
 
-export const road = new RoadPath(CFG.roadPoints);
+// Where a tower stands: on a hill it sits on the lowest point of its footprint,
+// so its base never floats over the slope.
+export function footHeight(x, z, r = 1.3) {
+  if (!CFG.hills.length) return groundHeight(x, z);
+  let h = hillHeight(x, z);
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; h = Math.min(h, hillHeight(x + Math.cos(a) * r, z + Math.sin(a) * r)); }
+  return groundHeight(x, z) - hillHeight(x, z) + h;
+}
+
+export let road = new RoadPath(CFG.roadPoints);
+
+// Switches every map field of CFG to another level and rebuilds the road.
+export function setLevel(id) {
+  const m = MAPS.find((q) => q.id === id) || MAPS[0];
+  Object.assign(CFG, {
+    level: m.id, roadPoints: m.roadPoints, plateaus: m.plateaus, hills: m.hills, slots: m.slots,
+    fortress: m.fortress, fortressPad: m.fortressPad, walk: m.walk, huts: m.huts, town: m.town, decor: m.decor, levelHp: m.hpMul || 1,
+  });
+  CFG.hero.start = m.heroStart;
+  road = new RoadPath(CFG.roadPoints);
+  if (!m.moleExit) m.moleExit = Math.round(road.length - 30);
+  CFG.bosses.mole.dig.exit = m.moleExit;
+  return m;
+}
+export const levelMap = (id = CFG.level) => MAPS.find((q) => q.id === id) || MAPS[0];
