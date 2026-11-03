@@ -190,7 +190,7 @@ Late in a game every tower is usually at level 7 and gold piles up with nothing 
 | **Jetpack rat** | ginger fur, leather aviator cap with ear flaps and goggles, white flying scarf, a red twin-tank jetpack with yellow nose cones and little flames | 1× | 85% | every 4.5 s its **jetpack fires** for 0.9 s and it rockets forward at 3.2× speed, hopping on two jets of flame | Frost Arrows slow it even mid-boost; frozen or stunned it can't fire; strong towers near the end of the road |
 
   - Wave 1 is plain rats. Wave 2 adds fast rats, wave 3 armored rats, wave 4 shield rats, wave 6 healer rats, wave 7 brood rats, wave 9 bomb rats, wave 12 ninja rats and wave 14 jetpack rats.
-  - The wave that introduces a kind always includes it, has its own title ("Shield rats raise their shields!") and shows a **New enemy** card for 7 s: a 3D portrait, what the rat does and how to beat it. Tap or click anywhere on the card to close it sooner. On phones the card is smaller and shows only the rat's name and the main tip for beating it; the Rat guide has the full details.
+  - The wave that introduces a kind always includes it, has its own title ("Shield rats raise their shields!") and shows a **New enemy** card for 7 s: a 3D portrait, what the rat does and how to beat it. On phones the card is smaller: it shows the rat's name and the main tip for beating it, and says **Tap for more**. Tapping it opens the full details (what the rat does and every tip) and keeps it up for 15 s; tapping again closes it. On a computer the card already shows everything, and clicking it closes it.
   - From the second half on, the rows are roughly 17% fast, 17% armored, 11% shield and 7% brood rats, plus 5–6% bomb rats from wave 9, 6–7% ninja rats from wave 12 and 7% jetpack rats from wave 14, and one row in ten has a healer.
   - The **Rat guide** (title screen and pause menu) lists every enemy, from plain rats to the six bosses: a 3D portrait rendered with the game's own toon shading, speed, health, armour, the wave it first appears in, what it does and how to beat it.
   - Cannons count armored rats as armoured, so the Thunder Mortar's bonus damage applies to them (and Rapid Launcher shells glance off them), and Frost Arrows slow fast rats down.
@@ -511,7 +511,8 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
   - Rats in the square make villagers panic, show alarmed speech bubbles and hide indoors, and everyone comes back out once the wave is over.
   - A win swings the camera to the square, most villagers cheer, and the victory card follows.
 - Enemies that need tactics, in the browser:
-  - Wave 4 shows the New enemy card for shield rats, with a 3D portrait and the cannon tip, and its × closes it. The bomb rat card closes when you tap anywhere on it.
+  - Wave 4 shows the New enemy card for shield rats, with a 3D portrait and the cannon tip, and its × closes it. The bomb rat card closes when you click anywhere on it.
+  - On a phone the shield rat card says "Tap for more" and leaves out what the rat does; the first tap opens the full details, the second closes it.
   - In wave 7 a shield breaks, a brood rat bursts into ratlings and a healer heals. All eight rat models draw (including the shield rat without its shield), and green plus signs rise.
   - The Rat guide opens from the pause menu and the title screen. Every entry, all six bosses included, gets a real (not blank) 3D portrait, and Back returns to where you came from.
 - Bosses with special abilities, in the browser:

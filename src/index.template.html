@@ -389,6 +389,14 @@ select { border: 2.5px solid var(--ink); }
   #ecTrait, .ec-more { display: none; }
   .ecard-close { width: 24px; height: 24px; font-size: 19px; right: 3px; top: 2px; }
 }
+/* phones: the small card says it can be tapped; a tap opens the full details, a second tap closes it */
+.ecard-more { display: none; }
+@media (max-width: 640px), (max-height: 500px) {
+  .ecard-more { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 10.5px; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gold); text-shadow: var(--ink-text); }
+  .ecard-more::after { content: ''; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
+  .ecard.open .ecard-more::after { border-top: 0; border-bottom: 5px solid currentColor; }
+  .ecard.open #ecTrait, .ecard.open .ec-more { display: revert; }
+}
 /* short landscape phones: keep the card below the wave buttons so it never covers Skip, Auto or the speed switch */
 @media (max-height: 500px) and (min-width: 641px) {
   .ecard { top: calc(env(safe-area-inset-top, 0px) + 136px); width: min(290px, 38vw); grid-template-columns: 40px 1fr; gap: 7px; padding: 5px 26px 6px 5px; }
@@ -475,6 +483,7 @@ select { border: 2.5px solid var(--ink); }
         <b id="ecName">Shield rat</b>
         <p id="ecTrait"></p>
         <p class="ecard-counter"><em>How to beat it:</em> <span id="ecCounter"></span></p>
+        <span class="ecard-more" id="ecMore">Tap for more</span>
       </div>
       <button id="ecClose" class="ecard-close" type="button" aria-label="Close">×</button>
     </div>

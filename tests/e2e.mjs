@@ -792,6 +792,28 @@ await test('enemies that need tactics: shield, healer and brood rats are drawn; 
   await ctx.close();
 });
 
+await test('phone: the New enemy card is small, says "Tap for more", opens the full details on a tap and closes on the next', async () => {
+  const { ctx, page, errors } = await open('phone', { sfx: false, music: false, quality: 'low', tutorialDone: true });
+  await page.tap('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await g(page, () => { const c = window.__cc, s = c.sim; s.fortress.hp = s.fortress.maxHp = 99999; s.waveIndex = 3; s.callWave(); c.advance(0.5); });
+  await page.waitForFunction(() => !document.getElementById('enemyCard').hidden, null, { timeout: 30000 });
+  const vis = (id) => g(page, (id) => { const el = document.getElementById(id); return !!el && el.offsetParent !== null && getComputedStyle(el).display !== 'none'; }, id);
+  const small = await g(page, () => document.getElementById('enemyCard').getBoundingClientRect().height);
+  assert(await vis('ecMore') && (await page.textContent('#ecMore')) === 'Tap for more', 'the small card should say "Tap for more"');
+  assert(!(await vis('ecTrait')), 'the small card should leave out what the rat does');
+  await page.tap('#ecName');
+  assert(!(await g(page, () => document.getElementById('enemyCard').hidden)), 'the first tap should open the card, not close it');
+  assert(await vis('ecTrait') && (await page.textContent('#ecMore')) === 'Tap to close', 'the open card shows the full details');
+  const big = await g(page, () => document.getElementById('enemyCard').getBoundingClientRect().height);
+  assert(big > small + 20, `the open card should be taller (${small} → ${big})`);
+  await page.screenshot({ path: `${SHOTS}/phone-enemy-card-open.png` });
+  await page.tap('#ecName');
+  assert(await g(page, () => document.getElementById('enemyCard').hidden), 'the second tap should close the card');
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
 await test('new rats: bomb, ninja and jetpack rats get their own card and model, and their tricks show', async () => {
   const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true });
   await page.click('#playBtn');

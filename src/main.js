@@ -319,7 +319,20 @@ click('pauseSettingsBtn', () => { backTo = 'pauseScreen'; syncSettingsUi(); show
 click('guideBtn', () => { backTo = 'titleScreen'; openGuide(); });
 click('pauseGuideBtn', () => { backTo = 'pauseScreen'; openGuide(); });
 click('ecClose', () => hideEnemyCard());
-$('enemyCard').addEventListener('click', () => hideEnemyCard());   // tap anywhere on the card to close it
+// On a phone the card is cut down to the main tip and says "Tap for more": the
+// first tap opens the full details, the next one closes it. On a bigger screen
+// the card already shows everything, so a click closes it.
+const compactCard = matchMedia('(max-width: 640px), (max-height: 500px)');
+$('enemyCard').addEventListener('click', (e) => {
+  if (e.target.closest('#ecClose')) return;
+  const card = $('enemyCard');
+  if (compactCard.matches && !card.classList.contains('open')) {
+    card.classList.add('open');
+    $('ecMore').textContent = 'Tap to close';
+    audio.click();
+    holdEnemyCard(15000);
+  } else hideEnemyCard();
+});
 click('pauseBtn', () => pause());
 click('resumeBtn', () => resume());
 click('restartBtn', () => askConfirm('Restart the level?', 'You will start again from wave 1 with no crossbows built.', 'Restart', () => { const d = sim.difficulty; Save.del('checkpoint'); Save.del('waveStart'); startGame(null, d); }));
@@ -567,6 +580,8 @@ function showEnemyCard(key) {
   // the first sentence is the main tip; phones leave out the rest
   const [, tip, more] = /^(.*?[.;])\s+(.+)$/s.exec(g.counter) || [, g.counter, ''];
   $('ecCounter').innerHTML = esc(tip) + (more ? ` <span class="ec-more">${esc(more)}</span>` : '');
+  $('enemyCard').classList.remove('open');
+  $('ecMore').textContent = 'Tap for more';
   $('enemyCard').hidden = false;
   $('enemyCard').dataset.key = key;
   holdEnemyCard(7000);
