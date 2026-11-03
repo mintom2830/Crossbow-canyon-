@@ -2,7 +2,7 @@
 import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING, BOMB, NINJA, JET } from '../src/sim.js';
 import { RAT_GUIDE, firstWave, guideEntry } from '../src/ratguide.js';
 import { CFG, cannonSpec, MAPS } from '../src/config.js';
-import { road, plateauSdf, setLevel, groundHeight, hillHeight } from '../src/world.js';
+import { road, plateauSdf, setLevel, groundHeight, hillHeight, pondDepth, streamDistance, STREAM_HALF, inWater, oasisLayout } from '../src/world.js';
 import { runLevel } from '../tools/balance.mjs';
 import { makeBot } from '../src/bot.js';
 import { describeFocus, towerStats, CROSSBOW_ABILITIES, cannonAbility } from '../src/towerinfo.js';
@@ -1408,6 +1408,91 @@ test('balance (Level 2 Hard): cannons win with 3 stars; crossbows alone barely h
     assert(b.result === 'defeat' || b.stars === 1, `crossbows alone should only just hold Level 2 Hard: ${b.result} ${b.stars} stars`);
     const r = runLevel('bot+hard+repair+l2', 1); balance.l2hardr = r;
     assert(r.result === 'victory' && r.stars >= b.stars, `repairs should never hurt: ${r.result} ${r.stars}`);
+  } finally { setLevel(1); }
+});
+test('Level 3: the road loops round the oasis without touching the water, crossing the stream once (the bridge)', () => {
+  try {
+    setLevel(3);
+    assert(CFG.level === 3 && CFG.decor.pond && CFG.decor.stream, 'Level 3 has no oasis');
+    let closest = Infinity;
+    for (let i = 0; i < road.count; i++) closest = Math.min(closest, -pondDepth(road.px[i], road.pz[i]));
+    assert(closest > CFG.roadHalfWidth + 2, `the road runs too close to the pool (${closest.toFixed(1)})`);
+    // the stream crosses the road in exactly one place
+    let crossings = 0, wet = false;
+    for (let i = 0; i < road.count; i++) {
+      const w = streamDistance(road.px[i], road.pz[i]) < STREAM_HALF;
+      if (w && !wet) crossings++;
+      wet = w;
+    }
+    assert(crossings === 1, `the stream crosses the road ${crossings} times`);
+    // the road goes all the way round the pool: it passes it on every side
+    const P = CFG.decor.pond, sides = new Set();
+    for (let i = 0; i < road.count; i++) {
+      const dx = road.px[i] - P.x, dz = road.pz[i] - P.z;
+      if (Math.hypot(dx / P.rx, dz / P.rz) < 3) sides.add(Math.abs(dx / P.rx) > Math.abs(dz / P.rz) ? (dx > 0 ? 'E' : 'W') : (dz > 0 ? 'S' : 'N'));
+    }
+    assert(sides.size === 4, 'the road does not loop round the pool: ' + [...sides].join(''));
+    // the arch's pillars stand either side of the road, clear of it
+    const lay = oasisLayout();
+    assert(lay.pillars.length === 2, 'no arch');
+    for (const q of lay.pillars) assert(road.distanceTo(q.x, q.z) > CFG.roadHalfWidth + q.r, 'an arch pillar stands on the road');
+    // palms and camels stay off the road and out of the water
+    for (const q of [...lay.palms, ...CFG.decor.camels]) {
+      assert(road.distanceTo(q.x, q.z) > CFG.roadHalfWidth + 1.2, `a palm or camel is on the road at ${q.x.toFixed(1)},${q.z.toFixed(1)}`);
+      assert(!inWater(q.x, q.z, 0.3), `a palm or camel stands in the water at ${q.x.toFixed(1)},${q.z.toFixed(1)}`);
+    }
+    assert(lay.palms.length === CFG.decor.palms, `only ${lay.palms.length} palms found room`);
+  } finally { setLevel(1); }
+});
+
+test('Level 3: towers and every pad stand on dry ground clear of the landmarks; the farmer walks round the pool', () => {
+  try {
+    setLevel(3);
+    const sim = new Sim({ seed: 2, cannon: true });
+    const lay = oasisLayout(), H = CFG.pad.half;
+    for (const sl of sim.slots) {
+      assert(!inWater(sl.x, sl.z, 2), `slot ${sl.id} is too close to the water`);
+      for (const [ox, oz] of [sl.up, ...sl.upB]) {
+        const x = sl.x + ox, z = sl.z + oz;
+        assert(!inWater(x, z, H + 0.4), `a pad of slot ${sl.id} is in the water at ${x.toFixed(1)},${z.toFixed(1)}`);
+        for (const o of lay.solids) assert(Math.hypot(o.x - x, o.z - z) > o.r + H, `a pad of slot ${sl.id} is under a landmark`);
+      }
+      for (const o of lay.solids) assert(Math.hypot(o.x - sl.x, o.z - sl.z) > o.r + 2.2, `a landmark stands on slot ${sl.id}`);
+    }
+    // walking straight at the pool stops at its edge
+    const P = CFG.decor.pond;
+    sim.hero.x = P.x; sim.hero.z = P.z - P.rz - 1.5;
+    sim.setInput(0, 1);
+    run(sim, 3);
+    assert(pondDepth(sim.hero.x, sim.hero.z) < 0, 'the farmer walked into the pool');
+    // and the arch's pillars, the palms and the camels are solid too
+    const q = lay.pillars[0];
+    sim.hero.x = q.x - 3; sim.hero.z = q.z; sim.setInput(1, 0);
+    run(sim, 1.5);
+    assert(Math.hypot(sim.hero.x - q.x, sim.hero.z - q.z) >= q.r + CFG.hero.radius - 0.01, 'the farmer walked through the arch');
+  } finally { setLevel(1); }
+});
+
+test('balance (Level 3, Normal): the hardest map: the bot holds with 2 stars, no upgrades falls by wave 6', () => {
+  try {
+    const b = runLevel('bot+l3', 1); balance.l3bot = b;
+    assert(b.result === 'victory' && b.stars >= 1 && b.stars <= 2, `bot on Level 3: ${b.result} wave ${b.wave} ${b.stars} stars`);
+    const l = runLevel('lazy+l3', 1); balance.l3lazy = l;
+    assert(l.result === 'victory', `distracted player lost Level 3 on wave ${l.wave}`);
+    const n = runLevel('noup+l3', 1); balance.l3noup = n;
+    assert(n.result === 'defeat' && n.wave <= 8, `no-upgrade on Level 3: ${n.result} wave ${n.wave}`);
+    const i = runLevel('idle+l3', 1); balance.l3idle = i;
+    assert(i.result === 'defeat' && i.wave <= 3, `idle on Level 3 reached wave ${i.wave}`);
+  } finally { setLevel(1); }
+});
+test('balance (Level 3, Hard and Easy): cannons win Hard with 3 stars; crossbows alone fall on Hard; Easy is 3 stars', () => {
+  try {
+    const c = runLevel('cannon+hard+blast+l3', 1); balance.l3hardc = c;
+    assert(c.result === 'victory' && c.stars === 3, `cannons on Level 3 Hard: ${c.result} ${c.stars}`);
+    const b = runLevel('bot+hard+l3', 1); balance.l3hardb = b;
+    assert(b.result === 'defeat' || b.stars === 1, `crossbows alone should not comfortably hold Level 3 Hard: ${b.result} ${b.stars}`);
+    const e = runLevel('bot+easy+l3', 1); balance.l3easy = e;
+    assert(e.result === 'victory' && e.stars === 3, `Level 3 Easy: ${e.result} ${e.stars}`);
   } finally { setLevel(1); }
 });
 test('performance: one simulation step stays well under 1 ms', () => {

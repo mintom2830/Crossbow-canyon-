@@ -2,7 +2,7 @@
 // No rendering or DOM code lives here, so it runs unchanged in Node for the
 // balance bot and in the browser for the real game.
 import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds } from './config.js';
-import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf } from './world.js';
+import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf, inWater, oasisLayout, pondEdge } from './world.js';
 
 export const T_GRUNT = 0, T_GIANT = 1, T_BOSS = 2;
 // small rat types (CFG.ratTypes index) with special abilities
@@ -56,6 +56,9 @@ export function branchOffsets(slot, up) {
   const ok = (x, z) => {
     if (home ? plateauSdf(home, x, z) < H + 0.35 : CFG.plateaus.some((p) => plateauSdf(p, x, z) > -H - 0.4)) return false;
     if (road.distanceTo(x, z) < CFG.roadHalfWidth + H + 0.2) return false;
+    if (inWater(x, z, H + 0.5)) return false;
+    const oasis = oasisLayout();
+    if (oasis && oasis.solids.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + H + 0.3)) return false;
     if (x < W.minX + H || x > W.maxX - H || z < W.minZ + H || z > W.maxZ - H) return false;
     for (const o of CFG.slots) {
       if (o.x === slot.x && o.z === slot.z) continue;
@@ -584,6 +587,15 @@ export class Sim {
     for (const t of this.towers) pushOut(t.x, t.z, this._towerRadius(t));
     pushOut(this.fortress.x, this.fortress.z, CFG.fortress.radius);
     if (CFG.decor && CFG.decor.tree) pushOut(CFG.decor.tree.x, CFG.decor.tree.z, 0.75);   // Level 2's lone tree
+    const oasis = oasisLayout();
+    if (oasis) {
+      // Level 3: walk round the arch's pillars, the palms and the camels, and stay out of the pool
+      for (const o of oasis.solids) pushOut(o.x, o.z, o.r);
+      const P = CFG.decor.pond;
+      const dx = (h.x - P.x) / P.rx, dz = (h.z - P.z) / P.rz, r = Math.hypot(dx, dz) || 1e-6;
+      const lim = pondEdge(P, Math.atan2(dz, dx)) + H.radius / Math.min(P.rx, P.rz);
+      if (r < lim) { h.x = P.x + (dx / r) * lim * P.rx; h.z = P.z + (dz / r) * lim * P.rz; }
+    }
     for (const hut of CFG.huts) pushOut(hut.x, hut.z, 1.5);
     for (const o of CFG.town.obstacles) pushOut(o.x, o.z, o.r);
     const W = CFG.walk;

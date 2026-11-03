@@ -412,4 +412,42 @@ const LONETREE = {
   },
 };
 
-export const MAPS = [SUNSTONE, LONETREE];
+// Level 3: the road loops right round a palm-fringed oasis pool, crosses the
+// stream that runs out of it on a wooden bridge, passes under a sandstone arch
+// and winds through the dunes up to the town.
+const OASIS = {
+  id: 3, name: 'Mirage Oasis',
+  roadPoints: [
+    [44, 4], [31, 2.5], [22.5, 6], [18.5, 15.5], [19, 26], [11, 32.5], [-1, 33.8], [-13, 32.2],
+    [-23, 26], [-25, 15], [-20, 5.5], [-9, 1.8], [-1, -5], [5.5, -10.5], [14, -15.5],
+    [13, -23.5], [3, -26.5], [-5, -26], [-12, -27.6], [-16, -33.5],
+  ],
+  plateaus: [{ x: 29.5, z: 14, rx: 4.4, rz: 5.6, seed: 3.7 }],
+  hills: [],
+  slots: [
+    { id: 'O1', x: 26.5, z: -5, prebuilt: true },
+    { id: 'O2', x: 12, z: 12 },
+    { id: 'M1', x: 28, z: 11.5 },
+    { id: 'O3', x: 11, z: 23.5 },
+    { id: 'O4', x: -15, z: 11 },
+    { id: 'O5', x: 6, z: -1 },
+    { id: 'O6', x: 2.5, z: -18 },
+    { id: 'F1', x: -5.5, z: -33.5 },
+    { id: 'O7', x: -17, z: 22.5 },
+    { id: 'O8', x: 22, z: -18 },
+  ],
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk,
+  heroStart: [22, -2],
+  huts: CFG.huts, town: CFG.town,
+  moleExit: 0,   // set by setLevel: about 30 from the gate
+  hpMul: 1.2,   // a shorter road than Level 2 (rats reach the town sooner), so the hardest map with a little less rat health
+  decor: {
+    pond: { x: -2, z: 18, rx: 8.8, rz: 5.6, seed: 2.2 },
+    stream: [[-1.5, 23.5], [0.5, 28], [-0.5, 33.5], [1.5, 39], [0.5, 46]],
+    arch: { x: -24.9, z: 16 },
+    palms: 8,
+    camels: [{ x: -9, z: 7.5, rot: 0.5 }, { x: 15.5, z: 2, rot: -2.2 }],
+  },
+};
+
+export const MAPS = [SUNSTONE, LONETREE, OASIS];

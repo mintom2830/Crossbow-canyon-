@@ -231,7 +231,7 @@ select { font-family: var(--font-body); font-weight: 800; font-size: 15px; color
 .diff-pick [data-diff="hard"][aria-checked="true"] { background: var(--crimson); }
 .diff-pick button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .diff-note { margin-top: -4px !important; }
-.level-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.level-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .level-pick button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; font-family: var(--font-body); color: var(--umber); background: rgba(255, 255, 255, 0.45); border: 2.5px solid var(--ink); border-radius: 14px; padding: 7px 6px 8px; cursor: pointer; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 3px 0 rgba(42, 24, 16, 0.85); }
 .level-pick b { font-family: var(--font-display); font-weight: 400; font-size: 19px; line-height: 1.1; }
 .level-pick small { font-size: 12px; font-weight: 900; opacity: 0.85; }
@@ -239,6 +239,18 @@ select { font-family: var(--font-body); font-weight: 800; font-size: 15px; color
 .level-pick button[aria-checked="true"] { background: var(--teal); color: #fff; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 3px 0 var(--ink); }
 .level-pick button[aria-checked="true"] b { text-shadow: var(--ink-text); }
 .level-pick button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+/* locked maps: greyed out with a padlock; a tap shakes it and says what unlocks it */
+.level-pick button.locked { background: rgba(60, 40, 30, 0.28); color: rgba(42, 24, 16, 0.6); cursor: not-allowed; }
+.level-pick button.locked b, .level-pick button.locked small { opacity: 0.7; }
+.level-pick button.nope { animation: shake 0.3s; }
+.lock-tag { position: absolute; top: -9px; right: -6px; width: 26px; height: 26px; display: grid; place-items: center; color: #fff; background: #5b4636; border: 2px solid var(--ink); border-radius: 50%; transform: rotate(8deg); }
+.lock-tag[hidden] { display: none; }
+.lock-tag svg { width: 15px; height: 15px; }
+.level-note { margin: 2px 0 0; font-weight: 900; color: var(--crimson-deep, #8c1d18); }
+.tablet .unlock-note { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; font-family: var(--font-display); font-size: 22px; line-height: 1.2; color: #fff; background: var(--teal); border: 2.5px solid var(--ink); border-radius: 12px; padding: 7px 12px; text-shadow: var(--ink-text); }
+.tablet .unlock-note[hidden] { display: none; }
+.unlock-note .unlock-ic { width: 22px; height: 22px; flex: none; filter: drop-shadow(0 1.5px 0 var(--ink)); }
+@media (max-width: 420px) { .level-pick b { font-size: 16px; } .level-pick small { font-size: 10.5px; } .level-pick button { padding: 6px 3px 7px; } }
 .new-tag { position: absolute; top: -9px; right: -6px; font-style: normal; font-family: var(--font-display); font-size: 12px; color: #fff; background: var(--crimson); border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; transform: rotate(8deg); text-shadow: var(--ink-text); }
 #armoryInfo { display: block; font-size: 12.5px; white-space: nowrap; }
 #armoryBtn.ready { background: var(--gold); animation: throb 0.7s ease-in-out infinite alternate; }
@@ -310,6 +322,18 @@ select { font-family: var(--font-body); font-weight: 800; font-size: 15px; color
 .auto-btn[aria-pressed="true"] { background: var(--gold); color: #fff; border-color: var(--ink); }
 .toast.warn { border-color: var(--ink); background: #8f1d22; color: #fff; }
 .boss-bar { background: rgba(98, 18, 32, 0.96); }
+/* slim boss bars: a short name line over a thin bar; extra bosses fold into one chip */
+.boss-bars { gap: 3px; }
+.boss-bar { gap: 1px; padding: 1px 8px 3px; min-width: 150px; border-radius: 8px; border-width: 2px; box-shadow: 0 2px 0 var(--ink); }
+.boss-bar span { font-size: 12px; }
+.boss-bar .bar { height: 5px; }
+.boss-more { font-family: var(--font-display); font-size: 11px; color: #ffe1dc; letter-spacing: 0.03em; background: rgba(98, 18, 32, 0.96); border: 2px solid var(--ink); border-radius: 999px; padding: 0 9px 1px; text-shadow: var(--ink-text); white-space: nowrap; }
+@media (max-width: 640px), (max-height: 500px) {
+  .boss-bar { min-width: 0; width: 140px; padding: 0 6px 2px; border-width: 1.5px; border-radius: 7px; }
+  .boss-bar span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .boss-bar .bar { height: 4px; }
+  .boss-more { font-size: 10px; padding: 0 7px; border-width: 1.5px; }
+}
 .hint { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--gold), 0 4px 0 var(--ink); }
 .step-hint { border-color: var(--ink); }
 .step-hint::after { border-top-color: var(--ink); }
@@ -513,8 +537,10 @@ select { border: 2.5px solid var(--ink); }
       <button id="continueBtn" class="btn gold" type="button" hidden>Continue <small id="continueInfo"></small></button>
       <div class="level-pick" id="levelPick" role="radiogroup" aria-label="Map">
         <button type="button" role="radio" data-level="1" aria-checked="true"><b>Level 1</b><small>Sunstone Canyon</small></button>
-        <button type="button" role="radio" data-level="2" aria-checked="false"><b>Level 2</b><small>Lonetree Hill</small><i class="new-tag">New!</i></button>
+        <button type="button" role="radio" data-level="2" aria-checked="false"><b>Level 2</b><small>Lonetree Hill</small><i class="new-tag" hidden>New!</i><i class="lock-tag" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z"/></svg></i></button>
+        <button type="button" role="radio" data-level="3" aria-checked="false"><b>Level 3</b><small>Mirage Oasis</small><i class="new-tag" hidden>New!</i><i class="lock-tag" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z"/></svg></i></button>
       </div>
+      <p class="note level-note" id="levelNote" hidden></p>
       <div class="diff-pick" id="diffPick" role="radiogroup" aria-label="Difficulty for a new game">
         <button type="button" role="radio" data-diff="easy" aria-checked="false">Easy</button>
         <button type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
@@ -672,6 +698,8 @@ select { border: 2.5px solid var(--ink); }
         <div><b id="vKeep">0</b>town hall health</div>
       </div>
       <p class="gem-reward" id="vGems"><svg class="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg><span id="vGemText">+50 diamonds</span></p>
+      <p class="unlock-note" id="vUnlock" hidden><svg class="unlock-ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 9.6-2l-2.3 1A2.5 2.5 0 0 0 9.5 7v3h9a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10z"/></svg><span id="vUnlockText"></span></p>
+      <button id="nextLevelBtn" class="btn gold" type="button" hidden>Play Level 2</button>
       <button id="againBtn" class="btn" type="button">Play again</button>
       <button class="btn plain" type="button" data-menu>Main menu</button>
     </div></div>

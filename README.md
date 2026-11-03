@@ -1,6 +1,6 @@
 # Crossbow Canyon
 
-A 3D crowd tower-defense game for desktop and phone browsers. Huge swarms of rats scurry along a winding canyon road toward your town. You play the farmer: collect the gold they drop, stand on construction pads to build and upgrade crossbow towers, and survive all 16 waves on Easy, Normal or Hard. There are two maps: **Sunstone Canyon** and **Lonetree Hill**.
+A 3D crowd tower-defense game for desktop and phone browsers. Huge swarms of rats scurry along a winding canyon road toward your town. You play the farmer: collect the gold they drop, stand on construction pads to build and upgrade crossbow towers, and survive all 16 waves on Easy, Normal or Hard. There are three maps, unlocked one after another: **Sunstone Canyon**, **Lonetree Hill** and **Mirage Oasis**.
 
 All characters, models, UI, the map, sounds and the name are original. The game is built from code: three.js geometry and WebAudio synthesis. It ships no image or audio files.
 
@@ -74,15 +74,21 @@ If your device is set to reduce motion, the screen shake is cut to a faint tremo
 
 When `dist/index.html` is hosted on a website, a phone can add it to its home screen, and it then opens full-screen like an app.
 
-## Two maps
+## Three maps
 
-Pick the map on the title screen (the scene behind the menu switches to it straight away). Both maps lead to the same town and use the same 16 waves, towers and bosses.
+Pick the map on the title screen (the scene behind the menu switches to it straight away). All three maps lead to the same town and use the same 16 waves, towers and bosses.
 
-| | Level 1: Sunstone Canyon | Level 2: Lonetree Hill |
-|---|---|---|
-| The road | winds round two raised red-rock plateaus, from a burrow in the bottom-right corner | zig-zags back and forth in four long switchbacks, from a burrow in the bottom-left corner, up and over a big sand hill |
-| Tower spots | mostly up on the plateaus | inside the hairpin bends and on the hillside, where one tower covers two stretches of road; one on a small mesa by the burrow |
-| Rats | as listed below | 30% more health (the long switchback road gives towers more time) |
+**Unlocking:** a new player starts with Level 1 only. Hold all 16 waves of a map (on any difficulty) to unlock the next one:
+- Locked maps are greyed out with a padlock. Tapping one gives it a little shake and says what opens it, such as "Finish Level 1 (Sunstone Canyon) to unlock Lonetree Hill".
+- The victory screen that unlocks a map says so ("Level 2 unlocked: Lonetree Hill!") and has a **Play Level 2** button that starts it straight away (on the same difficulty).
+- A newly unlocked map you haven't played yet wears a **New!** tag.
+- Wins from before maps were locked still count: if you have held Level 1 before, Level 2 is already open. A saved game on a map that is still locked can still be continued.
+
+| | Level 1: Sunstone Canyon | Level 2: Lonetree Hill | Level 3: Mirage Oasis |
+|---|---|---|---|
+| The road | winds round two raised red-rock plateaus, from a burrow in the bottom-right corner | zig-zags back and forth in four long switchbacks, from a burrow in the bottom-left corner, up and over a big sand hill | comes in from the right-hand side, loops all the way round an oasis pool (over a bridge and under a sandstone arch), then winds up through the dunes to the town |
+| Tower spots | mostly up on the plateaus | inside the hairpin bends and on the hillside, where one tower covers two stretches of road; one on a small mesa by the burrow | round the shore of the pool, inside the loop, where they cover two sides of it; one on a small mesa by the entrance and two up in the dunes |
+| Rats | as listed below | 30% more health (the long switchback road gives towers more time) | 20% more health on a shorter road: the hardest map |
 
 ### Level 2: Lonetree Hill
 
@@ -95,6 +101,18 @@ The map is laid out like a footpath winding up a meadow hill, in desert colours:
 - The farmer walks round the tree trunk.
 
 **Balance on Level 2:** an efficient crossbow player wins Normal with 2–3 stars and a distracted player still wins. On Hard, crossbows alone fall on the final wave unless you repair the town hall between waves; cannon players win with 3 stars.
+
+### Level 3: Mirage Oasis
+
+A desert oasis in the middle of the canyon:
+- **The pool:** clear turquoise water deepening to blue in the middle, with a wet sandy bank, an ink outline, lily pads (some in pink flower), clumps of reeds and cattails, stones on the bank and sunlight glinting on the surface. Rings of ripples spread slowly across it and fade. The sand turns green round the water.
+- **The stream** runs out of the pool to the south, with little white ripples flowing downstream, and the road crosses it on a **wooden bridge**: a plank deck with side beams, posts and two rails each side. Rats and bosses march over it.
+- **The sandstone arch:** a natural red-rock arch, built up in layers, spans the road on the west side, and the crowd marches underneath it.
+- **Palm trees** with ringed, curving trunks, drooping fronds and coconuts stand round the pool and out in the dunes, and two **camels** rest by the water, one wearing a striped saddle blanket. Desert flowers grow round the pool.
+- The farmer walks round the pool (it is too deep to wade into), the palm trunks, the camels and the arch's pillars; the shallow stream can be waded.
+- No tower spot or upgrade pad is ever in the water or under a landmark.
+
+**Balance on Level 3:** an efficient crossbow player wins Normal with 2 stars (one fewer than on Level 2). On Hard, crossbows alone fall; cannon players win with 3 stars. On Easy it is a 3-star map.
 
 Saves remember their map: **Continue** and **Retry wave** reopen the game on the map it was played on, whatever is picked on the title screen, and the title shows each map's own best result.
 
@@ -248,6 +266,8 @@ A boss never arrives unannounced:
 3. **When it appears:** the ground rumbles with a dust burst and a roar, a toast announces it, and a health bar with its name and HP appears under the wave counter. The ☠ arrow now follows the boss.
 
 Bosses climb out partway through the crowd, so your towers are already busy with rats when they arrive. In the final wave all six bosses arrive one after another, each with its own warning and health bar.
+
+The boss health bars are slim (a short name line over a thin bar) so they never cover the battlefield. Only the bosses nearest the town hall get a bar: 2 on a phone, 3 on a bigger screen. Any more fold into one small chip, such as "+4 more bosses".
 
 ### Bosses with special abilities
 
@@ -426,6 +446,8 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 **Headless gameplay tests** (77) check:
 - The maps (each check runs on both): the road never cuts through a plateau, every tower slot can reach the road, the town stays clear of the road, and upgrade-choice pads fit beside their towers.
 - Level 2's hill: the road climbs it and the summit rises above the road; the tree and the picnic sit on the summit, clear of the road, the towers and their pads; the town stays on flat ground; towers never float over the slope, and every tower spot is flat out to 2 units; rats walk on the slope, arrows strike at their height and cannonballs land on the slope. A save remembers its map and never loads on another one.
+- Level 3's oasis: the road keeps clear of the pool, crosses the stream exactly once (the bridge) and passes the pool on all four sides; the arch's pillars, the palms and the camels stand off the road and out of the water; every tower spot and pad is on dry ground clear of the landmarks; the farmer stops at the pool's edge and walks round the arch's pillars.
+- Level 3 balance: the bot wins Normal with 1–2 stars, a distracted player still wins, no upgrades falls by wave 8 and idling by wave 3; cannons win Hard with 3 stars, crossbows alone do not comfortably hold Hard, and Easy is 3 stars.
 - Aiming: crossbows and cannons turn round to face the rats before they shoot, and never fire more than about 25° off their target. Arrows close in on the one rat they were fired at. Cannonballs rise above the barrel, land on their aim point and catch groups.
 - Rat types: each kind shows up first in its own wave (fast 2, armored 3, shield 4, healer 6, brood 7, bomb 9, ninja 12, jetpack 14) with the right speed and health.
 - The newest rats: a bomb rat shot down knocks out the rats next to it but not those out of reach, gives giants a smaller hit, sets off a wounded bomb rat beside it, and at the gate blows its 6-damage hole without going off on the crowd. A ninja rat dodges an arrow, is hit by the next one straight after, dodges again after a moment, can't dodge a blast, and can't dodge while stunned. A jetpack rat fires every 4.5 s, each boost carries it the right extra distance, and a stunned one neither moves nor fires. Ratlings only come out of brood rats. Armour blocks arrow damage, Armor Piercer gets through it, and the cannon bonus applies.
@@ -482,6 +504,9 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 
 **Browser tests** (34) check:
 - The newest rats: wave 9 shows the New enemy card for bomb rats with its 3D portrait; in the final wave bomb, ninja and jetpack rats are all drawn with their own models, a bomb rat going off draws a blast, and jetpacks fire.
+- Map unlocks: a new player has only Level 1 (Level 2 shows a padlock, and tapping it keeps Level 1 and says what unlocks it); with Level 1 held, Level 2 opens and Level 3 stays locked.
+- Level 3: winning Level 2 shows "Level 3 unlocked: Mirage Oasis!" and a Play Level 3 button that starts it; the oasis is built (with its ripples), the farmer cannot walk into the pool, a crowd crosses the bridge and passes under the arch, and back on the title all three maps are open.
+- Boss bars on a phone: with six bosses on the road, two slim bars (the boss nearest the town hall first) and a "+4 more bosses" chip, under 80 px tall.
 - Level 2: picking it on the title screen switches the scene (and back again), a new game starts on it, rats are drawn standing on the hill, a saved Level 2 game says so on the Continue button and reopens on Level 2 even with Level 1 picked, and the map is remembered after a reload.
 - Every button: title, how to play, settings toggles, quality, pause/resume, Escape, tab-hide pause, start wave, restart confirmation, main menu, defeat retry, victory play again, and continue after reload.
 - Skip wave: early start, locked with a countdown while rats pour in, a mid-wave skip with the bonus shown on the button, and Space.
@@ -534,10 +559,10 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 ## Project layout
 
 ```
-src/config.js        every balance number: waves, towers, costs, and both maps (MAPS)
-src/world.js         road path (arc-length), plateaus, hills, terrain height, RNG, setLevel()
+src/config.js        every balance number: waves, towers, costs, and the three maps (MAPS)
+src/world.js         road path (arc-length), plateaus, hills, terrain height, Level 3's water and landmarks, RNG, setLevel()
 src/sim.js           deterministic game simulation (runs in Node and browser)
-src/bot.js           autoplayer used by tests and the title-screen demo
+src/bot.js           autoplayer used by tests and the title-screen demo (plans a route round Level 3's pool)
 src/main.js          game shell: loop, screens, HUD, saving, tutorial
 src/towerinfo.js     tower card text: abilities, stats and next-upgrade preview
 src/ratguide.js      Rat guide entries: every enemy's trait, how to beat it, first wave

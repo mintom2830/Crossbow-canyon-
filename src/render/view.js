@@ -1540,6 +1540,15 @@ export class View {
       const k = 0.85 + Math.sin(t * 13 + i * 2.1) * 0.12 + Math.sin(t * 23 + i) * 0.06;
       fl.scale.set(k, k * (1 + this.night * 0.3), k);
     }
+    // ---- Level 3: rings of ripples spread across the oasis pool and fade
+    const ripples = this.env.ripples;
+    if (ripples) for (const r of ripples) {
+      r.t += dt / 2.6;
+      if (r.t >= 1 || !r.placed) { r.t %= 1; const [x, z] = r.pick(); r.mesh.position.x = x; r.mesh.position.z = z; r.placed = true; }
+      const k = 1 + r.t * 4.5;
+      r.mesh.scale.set(k, k, 1);
+      r.mesh.material.opacity = 0.55 * (1 - r.t) * Math.min(1, r.t * 6);
+    }
     // ---- Level 2: the kite drifts and bobs on the breeze above the hill
     const kite = this.env.kite;
     if (kite) {

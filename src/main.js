@@ -15,14 +15,22 @@ const TOWER_NAMES = CROSSBOW_ABILITIES.map((a) => (a ? a[0] : ''));
 const FIXED = CFG.fixedDt;
 const settings = Save.get('settings', DEFAULT_SETTINGS);
 let progress = Save.get('progress', DEFAULT_PROGRESS);
-// the map picked on the title screen (Level 1 or 2) is the one the game opens on
-setLevel(MAPS.some((m) => m.id === settings.level) ? settings.level : 1);
 progress.unlocks = { cannon: false, ...(progress.unlocks || {}) };
 progress.diamonds = Math.max(0, progress.diamonds | 0);
 // best results per map (saves from before Level 2 hold Level 1's results at the top level)
 progress.byLevel = progress.byLevel || {};
-if (!progress.byLevel[1] && (progress.bestWave || progress.cleared)) progress.byLevel[1] = { bestWave: progress.bestWave | 0, cleared: !!progress.cleared, bestStars: progress.bestStars | 0, bestDiff: progress.bestDiff || null };
+if (!Object.keys(progress.byLevel).length && (progress.bestWave || progress.cleared)) progress.byLevel[1] = { bestWave: progress.bestWave | 0, cleared: !!progress.cleared, bestStars: progress.bestStars | 0, bestDiff: progress.bestDiff || null };
 const levelBest = (id = CFG.level) => progress.byLevel[id] || (progress.byLevel[id] = { bestWave: 0, cleared: false, bestStars: 0, bestDiff: null });
+// Maps unlock in order: hold all the waves of one map (on any difficulty) to open the next.
+const levelCleared = (id) => !!(progress.byLevel[id] && progress.byLevel[id].cleared);
+const levelUnlocked = (id) => id <= 1 || levelCleared(id - 1);
+const topUnlocked = () => MAPS.reduce((top, m) => (levelUnlocked(m.id) ? Math.max(top, m.id) : top), 1);
+const mapName = (id) => (MAPS.find((m) => m.id === id) || MAPS[0]).name;
+// the map picked on the title screen is the one the game opens on (if it is unlocked)
+{
+  const want = MAPS.some((m) => m.id === settings.level) ? settings.level : 1;
+  setLevel(levelUnlocked(want) ? want : topUnlocked());
+}
 const cannonUnlocked = () => !!progress.unlocks.cannon;
 const coarse = matchMedia('(pointer: coarse)').matches;
 
@@ -97,7 +105,23 @@ for (const b of document.querySelectorAll('[data-diff]')) {
 // Maps: the title screen picks Level 1 or 2. Switching rebuilds the 3D scene in
 // place (the renderer is kept) and the title-screen demo carries on on the new map.
 function syncLevelPick() {
-  for (const b of document.querySelectorAll('[data-level]')) b.setAttribute('aria-checked', String(+b.dataset.level === CFG.level));
+  for (const b of document.querySelectorAll('[data-level]')) {
+    const id = +b.dataset.level, open = levelUnlocked(id), played = !!(progress.byLevel[id] && progress.byLevel[id].bestWave);
+    b.setAttribute('aria-checked', String(id === CFG.level));
+    b.classList.toggle('locked', !open);
+    b.setAttribute('aria-disabled', String(!open));
+    b.title = open ? '' : `Locked: hold all ${CFG.waves.length} waves of Level ${id - 1} to unlock`;
+    const nt = b.querySelector('.new-tag'), lk = b.querySelector('.lock-tag');
+    if (nt) nt.hidden = !open || played || id === 1;
+    if (lk) lk.hidden = open;
+  }
+}
+let levelNoteTimer = 0;
+function levelNote(text) {
+  const el = $('levelNote');
+  el.textContent = text; el.hidden = !text;
+  clearTimeout(levelNoteTimer);
+  if (text) levelNoteTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
 function switchLevel(id) {
   if (CFG.level === id || !MAPS.some((m) => m.id === id)) return false;
@@ -111,8 +135,17 @@ function switchLevel(id) {
 }
 for (const b of document.querySelectorAll('[data-level]')) {
   b.addEventListener('click', () => {
-    audio.unlock(); audio.click();
+    audio.unlock();
     const id = +b.dataset.level;
+    if (!levelUnlocked(id)) {
+      // a locked map says what opens it, with a little shake
+      audio.denied();
+      levelNote(`Finish Level ${id - 1} (${mapName(id - 1)}) to unlock ${mapName(id)}`);
+      b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope');
+      return;
+    }
+    audio.click();
+    levelNote('');
     settings.level = id; Save.set('settings', settings);
     if (switchLevel(id) && mode === 'title') { sim = makeDemo(); demoBot = makeBot(); view.reset(sim); }
     refreshTitle();
@@ -153,6 +186,7 @@ function goTitle() {
   mode = 'title';
   input.setEnabled(false);
   $('hud').hidden = true;
+  if (!levelUnlocked(CFG.level)) switchLevel(topUnlocked());   // back from a saved game on a map that is still locked
   sim = makeDemo(); demoBot = makeBot();
   view.reset(sim);
   view.arrowTarget = null;
@@ -343,6 +377,12 @@ click('speedBtn', () => { toggleSpeed(); canvas.focus({ preventScroll: true }); 
 click('confirmYes', () => { const a = confirmAction; confirmAction = null; a && a(); });
 click('confirmNo', () => { confirmAction = null; showScreen(backTo); });
 click('againBtn', () => startGame(null, sim.difficulty));
+click('nextLevelBtn', () => {
+  const next = CFG.level + 1, d = sim.difficulty;
+  if (!levelUnlocked(next) || !switchLevel(next)) return;
+  settings.level = next; Save.set('settings', settings);
+  startGame(null, d);
+});
 click('retryBtn', () => { const ws = Save.get('waveStart', null); startGame(ws && ws.v === CFG.version ? ws : null); });
 click('defeatRestartBtn', () => { const d = sim.difficulty; Save.del('checkpoint'); Save.del('waveStart'); startGame(null, d); });
 for (const b of document.querySelectorAll('[data-back]')) b.addEventListener('click', () => { audio.click(); showScreen(backTo); });
@@ -476,8 +516,9 @@ function bossGroups() {
     if (!e.alive || (e.type !== T_BOSS && e.boss !== 'slime')) continue;
     const key = e.boss === 'slime' ? 'slime:' + e.root : 'b:' + e.id;
     let g = groups.get(key);
-    if (!g) { g = { boss: e.boss || 'king', hp: 0, maxHp: 0, n: 0, under: false }; groups.set(key, g); }
+    if (!g) { g = { boss: e.boss || 'king', hp: 0, maxHp: 0, n: 0, under: false, s: -1e9 }; groups.set(key, g); }
     g.n++;
+    g.s = Math.max(g.s, e.s);
     if (e.boss === 'slime') {
       let size = e.maxHp, count = 1, future = 0;
       for (let t = e.tier; t < T; t++) { size *= S.hpFrac; count *= S.n; future += size * count; }
@@ -489,13 +530,24 @@ function bossGroups() {
   }
   return [...groups.values()];
 }
+// Slim bars, and only the few bosses nearest the town hall: the rest fold into
+// a "+3 more bosses" chip, so a crowd of bosses never covers the battlefield.
+const BOSS_BARS = { wide: 3, small: 2 };
+const smallScreen = matchMedia('(max-width: 640px), (max-height: 500px)');
 function updateBossBars() {
   const host = $('bossBars');
-  const bosses = mode === 'play' || mode === 'pause' ? bossGroups() : [];
+  const all = mode === 'play' || mode === 'pause' ? bossGroups() : [];
+  all.sort((a, b) => b.s - a.s);
+  const cap = smallScreen.matches ? BOSS_BARS.small : BOSS_BARS.wide;
+  const bosses = all.slice(0, cap), extra = all.length - bosses.length;
+  let more = host.querySelector('.boss-more');
+  if (!more) { more = document.createElement('div'); more.className = 'boss-more'; more.hidden = true; host.appendChild(more); }
+  const moreText = extra > 0 ? `+${extra} more boss${extra > 1 ? 'es' : ''}` : '';
+  if (more.textContent !== moreText) { more.textContent = moreText; more.hidden = !extra; }
   while (bossRows.length < bosses.length) {
     const row = document.createElement('div'); row.className = 'boss-bar';
     row.innerHTML = '<span></span><div class="bar"><div></div></div>';
-    host.appendChild(row);
+    host.insertBefore(row, more);
     bossRows.push({ row, name: row.firstChild, fill: row.querySelector('.bar > div'), key: '' });
   }
   bossRows.forEach((r, i) => {
@@ -844,6 +896,7 @@ function endGame(won, stars = 0) {
   view.arrowTarget = null;
   tutorial.set(null);
   audio.musicIntensity = 0;
+  let opened = null;   // the map this win unlocks, if any
   if (won) {
     progress.cleared = true;
     progress.clears = (progress.clears | 0) + 1;   // diamonds were already paid wave by wave
@@ -852,6 +905,7 @@ function endGame(won, stars = 0) {
     const rank = (k) => Object.keys(CFG.difficulties).indexOf(k);
     if (!progress.bestDiff || rank(sim.difficulty) > rank(progress.bestDiff)) progress.bestDiff = sim.difficulty;
     const lb = levelBest();
+    opened = MAPS.find((m) => m.id === CFG.level + 1 && !levelUnlocked(m.id)) || null;
     lb.cleared = true; lb.bestWave = CFG.waves.length; lb.bestStars = Math.max(lb.bestStars, stars);
     if (!lb.bestDiff || rank(sim.difficulty) > rank(lb.bestDiff)) lb.bestDiff = sim.difficulty;
     Save.set('progress', progress);
@@ -875,6 +929,12 @@ function endGame(won, stars = 0) {
       $('vGold').textContent = sim.stats.coins;
       $('vKeep').textContent = `${Math.round(sim.fortress.hp / sim.fortress.maxHp * 100)}%`;
       $('vGemText').textContent = `+${sim.stats.diamonds | 0} diamonds on ${diffName(sim.difficulty)} · you have ${progress.diamonds}`;
+      // finishing a map opens the next one: say so, with a button straight to it
+      const next = MAPS.find((m) => m.id === CFG.level + 1);
+      $('vUnlock').hidden = !opened;
+      if (opened) $('vUnlockText').textContent = `Level ${opened.id} unlocked: ${opened.name}!`;
+      $('nextLevelBtn').hidden = !next;
+      if (next) $('nextLevelBtn').textContent = `Play Level ${next.id}`;
       showScreen('victoryScreen');
     } else {
       $('defeatInfo').textContent = `The rats broke through on wave ${sim.waveIndex + 1}. Retry it with the crossbows you had when it began.`;

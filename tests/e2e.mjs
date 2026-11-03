@@ -306,6 +306,13 @@ await test('repair pad: a damaged town hall gets a repair pad; walking onto it w
 await test('Level 2: pick Lonetree Hill on the title screen; rats climb the hill; a saved game reopens on its own map', async () => {
   const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
   assert((await page.getAttribute('[data-level="1"]', 'aria-checked')) === 'true', 'Level 1 should be picked at first');
+  // a new player has only Level 1: Level 2 is locked until Level 1 is held to the end
+  assert(await page.isVisible('[data-level="2"] .lock-tag') && (await page.getAttribute('[data-level="2"]', 'aria-disabled')) === 'true', 'Level 2 should start locked');
+  await page.evaluate(() => document.querySelector('[data-level="2"]').click());
+  assert((await g(page, () => window.__cc.level)) === 1, 'a locked map was picked');
+  assert(/Finish Level 1.*to unlock Lonetree Hill/.test(await page.textContent('#levelNote')), 'no note on what unlocks Level 2: ' + await page.textContent('#levelNote'));
+  await setStorageAndReload(page, 'crossbow-canyon:progress:v1', JSON.stringify({ diamonds: 0, byLevel: { 1: { cleared: true, bestWave: 16, bestStars: 2 } } }));
+  assert(!(await page.isVisible('[data-level="2"] .lock-tag')) && await page.isVisible('[data-level="3"] .lock-tag'), 'clearing Level 1 should open Level 2 only');
   await page.click('[data-level="2"]');
   assert((await page.getAttribute('[data-level="2"]', 'aria-checked')) === 'true', 'Level 2 not picked');
   assert((await page.textContent('#bestLine')).includes('Lonetree Hill'), 'title should name Level 2');
@@ -354,6 +361,59 @@ await test('Level 2: pick Lonetree Hill on the title screen; rats climb the hill
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__cc && window.__cc.screen === 'titleScreen');
   assert((await g(page, () => window.__cc.level)) === 2, 'the picked map was not remembered');
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('Level 3: winning Level 2 unlocks Mirage Oasis; the road loops round an oasis, over a bridge and under an arch', async () => {
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true, level: 2 }, null, await httpURL());
+  await setStorageAndReload(page, 'crossbow-canyon:progress:v1', JSON.stringify({ diamonds: 0, byLevel: { 1: { cleared: true, bestWave: 16, bestStars: 2 } } }));
+  assert((await g(page, () => window.__cc.level)) === 2, 'should open on Level 2');
+  assert(await page.isVisible('[data-level="3"] .lock-tag'), 'Level 3 should be locked before Level 2 is won');
+  await page.evaluate(() => document.querySelector('[data-level="3"]').click());
+  assert((await g(page, () => window.__cc.level)) === 2, 'a locked map was picked');
+  // win Level 2: the victory screen says Level 3 is unlocked and offers to play it
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await g(page, () => { const c = window.__cc, s = c.sim; s.state = 'victory'; s.events.push({ type: 'victory', stars: 2 }); c.advance(0.05); });
+  await page.waitForFunction(() => window.__cc.screen === 'victoryScreen', null, { timeout: 15000 });
+  assert(await page.isVisible('#vUnlock') && (await page.textContent('#vUnlockText')) === 'Level 3 unlocked: Mirage Oasis!', 'no unlock message: ' + await page.textContent('#vUnlockText'));
+  assert((await page.textContent('#nextLevelBtn')) === 'Play Level 3', 'no Play Level 3 button');
+  await page.screenshot({ path: `${SHOTS}/level3-unlocked.png` });
+  await page.click('#nextLevelBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  const m = await g(page, () => ({ level: window.__cc.level, first: window.__cc.sim.slots[0].id, ripples: (window.__cc.view.env.ripples || []).length, saved: JSON.parse(localStorage.getItem('crossbow-canyon:settings:v1')).level, open: JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')).byLevel[2].cleared }));
+  assert(m.level === 3 && m.first === 'O1' && m.ripples === 4 && m.saved === 3 && m.open === true, 'Level 3 did not start: ' + JSON.stringify(m));
+  // the farmer walks round the pool, not into it
+  const pool = await g(page, () => {
+    const c = window.__cc, s = c.sim;
+    const pond = { x: -2, z: 18, rx: 8.8, rz: 5.6 };   // Mirage Oasis's pool (config.js)
+    c.teleport(pond.x, pond.z - pond.rz - 1.5);
+    s.setInput(0, 1); c.advance(2); s.setInput(0, 0);
+    const h = s.hero;
+    return Math.hypot((h.x - pond.x) / pond.rx, (h.z - pond.z) / pond.rz);
+  });
+  assert(pool > 0.95, 'the farmer waded into the pool: ' + pool.toFixed(2));
+  // rats march the loop: over the bridge and under the arch
+  const crowd = await g(page, () => {
+    const c = window.__cc, s = c.sim;
+    s.fortress.hp = s.fortress.maxHp = 99999; s.towers.length = 0; for (const sl of s.slots) sl.tower = null;
+    s.callWave();
+    const near = (x, z, r) => s.enemies.filter((e) => e.alive && Math.hypot(e.x - x, e.z - z) < r).length;
+    let bridge = 0, arch = 0;
+    for (let k = 0; k < 50; k++) { c.advance(1); bridge = Math.max(bridge, near(-0.5, 33.6, 5)); arch = Math.max(arch, near(-25, 16, 5)); }
+    return { bridge, arch, all: s.enemies.length };
+  });
+  assert(crowd.all > 30 && crowd.bridge > 5 && crowd.arch > 5, 'rats did not cross the bridge and pass under the arch: ' + JSON.stringify(crowd));
+  await g(page, () => window.__cc.teleport(-12, 14));
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${SHOTS}/level3-oasis.png` });
+  // back on the title, all three maps are open
+  await g(page, () => { window.__cc.sim.state = 'build'; });
+  await page.keyboard.press('Escape');
+  await page.click('#quitBtn');
+  await page.waitForFunction(() => window.__cc.screen === 'titleScreen');
+  assert((await page.$$eval('[data-level] .lock-tag', (els) => els.filter((e) => !e.hidden).length)) === 0, 'a map is still locked');
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });
@@ -810,6 +870,32 @@ await test('phone: the New enemy card is small, says "Tap for more", opens the f
   await page.screenshot({ path: `${SHOTS}/phone-enemy-card-open.png` });
   await page.tap('#ecName');
   assert(await g(page, () => document.getElementById('enemyCard').hidden), 'the second tap should close the card');
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('phone: six bosses at once show two slim bars and a "+4 more bosses" chip, nearest the town hall first', async () => {
+  const { ctx, page, errors } = await open('phone', { sfx: false, music: false, quality: 'low', tutorialDone: true });
+  await page.tap('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await g(page, () => {
+    const c = window.__cc, s = c.sim;
+    s.fortress.hp = s.fortress.maxHp = 99999; s.callWave(); c.advance(0.2);
+    ['king', 'slime', 'warlord', 'baron', 'mole', 'king'].forEach((b, i) => s.spawnQueue.splice(s.spawnIndex, 0, { t: s.waveTime + 0.05 * i, type: 2, hp: 8000 + i * 1000, boss: b, lat: 0 }));
+    c.advance(6);
+  });
+  await page.waitForFunction(() => document.querySelector('#bossBars .boss-more') && !document.querySelector('#bossBars .boss-more').hidden, null, { timeout: 10000 });
+  const r = await g(page, () => {
+    const rows = [...document.querySelectorAll('#bossBars .boss-bar')].filter((x) => !x.hidden);
+    const host = document.getElementById('bossBars').getBoundingClientRect();
+    const s = window.__cc.sim, lead = s.enemies.filter((e) => e.type === 2).sort((a, b) => b.s - a.s)[0];
+    return { bars: rows.length, more: document.querySelector('#bossBars .boss-more').textContent, height: host.height, first: rows[0].textContent, lead: lead.boss };
+  });
+  assert(r.bars === 2 && r.more === '+4 more bosses', 'boss bars: ' + JSON.stringify(r));
+  assert(r.height < 80, `the boss bars take ${r.height}px of the screen`);
+  const names = { king: 'Rat King', slime: 'Sewer Slime', warlord: 'Rat Warlord', baron: 'Iron Rat Baron', mole: 'Tunnel Mole' };
+  assert(r.first.startsWith(names[r.lead]), `the first bar should be the boss nearest the town hall (${names[r.lead]}): ${r.first}`);
+  await page.screenshot({ path: `${SHOTS}/phone-boss-bars.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

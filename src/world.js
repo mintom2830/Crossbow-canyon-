@@ -160,6 +160,86 @@ export function footHeight(x, z, r = 1.3) {
   return groundHeight(x, z) - hillHeight(x, z) + h;
 }
 
+// ---------- Water (Level 3's oasis) ----------
+// The pool is a slightly wobbly ellipse; the stream that runs out of it is a
+// smooth curve through decor.stream, STREAM_HALF wide either side.
+export const STREAM_HALF = 1.2;
+export function pondEdge(P, a) {   // radius scale of the pool's edge in direction a (about 1)
+  return 1 + 0.05 * Math.sin(3 * a + P.seed) + 0.035 * Math.sin(5 * a + P.seed * 1.7);
+}
+// > 0 inside the pool, roughly the distance in from its edge (< 0 outside)
+export function pondDepth(x, z) {
+  const P = CFG.decor && CFG.decor.pond;
+  if (!P) return -1e9;
+  const dx = (x - P.x) / P.rx, dz = (z - P.z) / P.rz, r = Math.hypot(dx, dz);
+  return (pondEdge(P, Math.atan2(dz, dx)) - r) * Math.min(P.rx, P.rz);
+}
+let streamCache = null;
+export function streamPath() {
+  const pts = CFG.decor && CFG.decor.stream;
+  if (!pts) return null;
+  if (!streamCache || streamCache.src !== pts) streamCache = { src: pts, path: new RoadPath(pts, 0.4) };
+  return streamCache.path;
+}
+// distance from the stream's middle line (Infinity on maps without one)
+export function streamDistance(x, z) {
+  const s = streamPath();
+  return s ? s.distanceTo(x, z) : Infinity;
+}
+// true where something would stand in the water (margin: how far to keep back)
+export function inWater(x, z, margin = 0) {
+  return pondDepth(x, z) > -margin || streamDistance(x, z) < STREAM_HALF + margin;
+}
+
+// Level 3's landmarks that the farmer walks round: the arch's two pillars,
+// the palm trunks and the resting camels. Worked out from the map (seeded), so
+// the scenery and the game agree on where everything stands.
+let oasisCache = null;
+export function oasisLayout() {
+  const D = CFG.decor;
+  if (!D || !D.pond) return null;
+  if (oasisCache && oasisCache.src === D) return oasisCache;
+  const out = { src: D, arch: null, pillars: [], palms: [], solids: [] };
+  if (D.arch) {
+    let best = Infinity, bi = 0;
+    for (let i = 0; i < road.count; i++) { const d = (road.px[i] - D.arch.x) ** 2 + (road.pz[i] - D.arch.z) ** 2; if (d < best) { best = d; bi = i; } }
+    const o = {}; road.sample(bi * road.step, o);
+    const half = CFG.roadHalfWidth + 1.9;
+    out.arch = { x: o.x, z: o.z, nx: o.nx, nz: o.nz, tx: o.tx, tz: o.tz, half };
+    for (const side of [-1, 1]) out.pillars.push({ x: o.x + o.nx * side * half, z: o.z + o.nz * side * half, r: 1.45 });
+  }
+  const rng = makeRng(31);
+  const camels = D.camels || [];
+  // the town, its farms and footpaths stay clear
+  const T = CFG.town, busy = [];
+  for (const h of CFG.huts) busy.push([h.x, h.z, 3.5]);
+  for (const f of T.fields) busy.push([f.x, f.z, Math.hypot(f.w, f.d) / 2 + 1.8]);
+  busy.push([T.windmill.x, T.windmill.z, 4.5], [T.barn.x, T.barn.z, 5.5], [T.well.x, T.well.z, 2.5], [T.market.x, T.market.z, 3], [T.square.x, T.square.z, 7.5], [CFG.fortress.x, CFG.fortress.z, 8], [CFG.fortressPad.x, CFG.fortressPad.z, 3.5]);
+  for (const pts of T.paths) for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k <= 4; k++) busy.push([pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k / 4, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k / 4, 2]);
+  const clear = (x, z, gap) => road.distanceTo(x, z) > CFG.roadHalfWidth + gap
+    && !CFG.slots.some((q) => Math.hypot(q.x - x, q.z - z) < 5.4)
+    && !inWater(x, z, 0.5)
+    && !busy.some(([bx, bz, br]) => Math.hypot(bx - x, bz - z) < br)
+    && !out.pillars.some((q) => Math.hypot(q.x - x, q.z - z) < 3)
+    && !camels.some((c) => Math.hypot(c.x - x, c.z - z) < 2.6)
+    && !out.palms.some((q) => Math.hypot(q.x - x, q.z - z) < 2.4)
+    && x > CFG.walk.minX + 1 && x < CFG.walk.maxX - 1 && z > CFG.walk.minZ + 1 && z < CFG.walk.maxZ - 1;
+  // a ring of palms round the pool, then a few out in the dunes
+  const P = D.pond, want = D.palms || 0;
+  for (let tries = 0; out.palms.length < Math.ceil(want * 0.65) && tries < 400; tries++) {
+    const a = rng() * Math.PI * 2, k = pondEdge(P, a) * (1.18 + rng() * 0.32);
+    const x = P.x + Math.cos(a) * P.rx * k, z = P.z + Math.sin(a) * P.rz * k;
+    if (clear(x, z, 1.6)) out.palms.push({ x, z, h: 4.2 + rng() * 1.2, lean: rng() * Math.PI * 2, tilt: 0.12 + rng() * 0.16, r: 0.4 });
+  }
+  for (let tries = 0; out.palms.length < want && tries < 600; tries++) {
+    const x = rng.range(CFG.walk.minX + 2, CFG.walk.maxX - 2), z = rng.range(-26, CFG.walk.maxZ - 2);
+    if (clear(x, z, 2.2)) out.palms.push({ x, z, h: 4.2 + rng() * 1.4, lean: rng() * Math.PI * 2, tilt: 0.1 + rng() * 0.18, r: 0.4 });
+  }
+  out.solids = [...out.pillars, ...out.palms.map((p) => ({ x: p.x, z: p.z, r: p.r })), ...camels.map((c) => ({ x: c.x, z: c.z, r: 1.1 }))];
+  oasisCache = out;
+  return out;
+}
+
 export let road = new RoadPath(CFG.roadPoints);
 
 // Switches every map field of CFG to another level and rebuilds the road.
@@ -171,6 +251,7 @@ export function setLevel(id) {
   });
   CFG.hero.start = m.heroStart;
   road = new RoadPath(CFG.roadPoints);
+  oasisCache = null; streamCache = null;
   if (!m.moleExit) m.moleExit = Math.round(road.length - 30);
   CFG.bosses.mole.dig.exit = m.moleExit;
   return m;
