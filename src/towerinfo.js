@@ -94,14 +94,15 @@ function towerInfo(kind, level, pads = [], path = null, onPath = null) {
   return out;
 }
 
-// The thing the farmer is standing on or next to, or null.
+// The thing the farmer is standing on or next to, or null. onPad marks a pad
+// underfoot (the full card); walking past a tower gives just its name tag.
 export function describeFocus(sim, near = 3.6) {
   const h = sim.hero;
   const pad = sim.pads.find((p) => p.heroOn);
   if (pad) {
     if (pad.kind === 'build') {
       const info = towerInfo(pad.tower, 0, []);
-      info.build = true;
+      info.build = true; info.onPad = true;
       info.next.cost = pad.cost; info.next.paid = pad.paid;
       info.next.changes = towerStats(pad.tower, 1).map(([k, v]) => [k, null, v]);
       return info;
@@ -109,19 +110,19 @@ export function describeFocus(sim, near = 3.6) {
     if (pad.kind === 'fortress') {
       const f = sim.fortress, nl = pad.level;
       return {
-        kind: 'keep', title: 'Town hall', level: f.level, ability: KEEP_LEVELS[f.level][0], desc: `Health ${f.maxHp}.`, stats: null, max: false,
+        kind: 'keep', title: 'Town hall', level: f.level, ability: KEEP_LEVELS[f.level][0], desc: `Health ${f.maxHp}.`, stats: null, max: false, onPad: true,
         next: { level: nl, ability: KEEP_LEVELS[nl][0], desc: `${KEEP_LEVELS[nl][1]} Health ${f.maxHp} → ${CFG.fortressLevels[nl].hp}, fully repaired.`, cost: pad.cost, paid: pad.paid, changes: [['Health', f.maxHp, CFG.fortressLevels[nl].hp]] },
       };
     }
     if (pad.kind === 'repair') {
       const f = sim.fortress, hp = Math.ceil(f.hp);
       return {
-        kind: 'keep', title: 'Town hall', level: f.level, ability: KEEP_LEVELS[f.level][0], desc: `Damaged: health ${hp} of ${f.maxHp}.`, stats: null, max: false,
+        kind: 'keep', title: 'Town hall', level: f.level, ability: KEEP_LEVELS[f.level][0], desc: `Damaged: health ${hp} of ${f.maxHp}.`, stats: null, max: false, onPad: true,
         next: { repair: true, level: f.level, ability: 'Repair', desc: 'Patches up the walls and restores all lost health.', cost: pad.cost, paid: pad.paid, changes: [['Health', hp, f.maxHp]] },
       };
     }
     const t = sim.slots[pad.slot].tower;
-    if (t) return { ...towerInfo(t.kind, t.level, [pad], t.path, pad.choice ? pad.path : null), slot: pad.slot };
+    if (t) return { ...towerInfo(t.kind, t.level, [pad], t.path, pad.choice ? pad.path : null), slot: pad.slot, onPad: true };
   }
   let best = null, bd = near;
   for (const t of sim.towers) {

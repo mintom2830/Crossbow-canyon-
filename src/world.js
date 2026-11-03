@@ -117,7 +117,22 @@ export function plateauOutline(p, segments = 96) {
 
 // ---------- Hills ----------
 // A smooth sand dome: a cosine bump, slightly uneven round its edge.
+// Every tower spot on a hill gets a flat terrace dug into the slope, so a
+// tower stands level instead of half-buried on the uphill side.
+const TERRACE_IN = 2.1, TERRACE_OUT = 3.4;   // flat out to IN, blending back into the slope by OUT
 export function hillHeight(x, z) {
+  let h = domeHeight(x, z);
+  for (const s of CFG.slots) {
+    const d2 = (x - s.x) ** 2 + (z - s.z) ** 2;
+    if (d2 >= TERRACE_OUT * TERRACE_OUT) continue;
+    const top = s._terrace ?? (s._terrace = domeHeight(s.x, s.z));
+    if (top <= 0 && d2 > 0 && domeHeight(x, z) <= 0) continue;   // nothing to flatten off the hill
+    const d = Math.sqrt(d2), k = d <= TERRACE_IN ? 1 : 1 - (d - TERRACE_IN) / (TERRACE_OUT - TERRACE_IN);
+    h += (top - h) * k * k * (3 - 2 * k);
+  }
+  return h;
+}
+function domeHeight(x, z) {
   let h = 0;
   for (const H of CFG.hills) {
     const dx = (x - H.x) / H.rx, dz = (z - H.z) / H.rz, r2 = dx * dx + dz * dz;

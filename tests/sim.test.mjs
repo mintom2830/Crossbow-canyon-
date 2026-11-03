@@ -1279,6 +1279,14 @@ test('Level 2: the road climbs over a sand hill; rats, arrows and cannonballs fo
     for (const f of CFG.town.fields) assert(hillHeight(f.x, f.z) === 0, 'a field sits on the hill');
     // towers on the hill stand on the lowest point of their footprint
     for (const sl of sim0.slots) assert(sl.y <= groundHeight(sl.x, sl.z) + 1e-9, `tower ${sl.id} floats`);
+    // ...and each one sits on a flat terrace dug into the slope, so its base is never half-buried
+    for (const sl of sim0.slots) {
+      const y0 = groundHeight(sl.x, sl.z);
+      for (let a = 0; a < 16; a++) for (const r of [1, 1.6, 2]) {
+        const y = groundHeight(sl.x + r * Math.cos(a * Math.PI / 8), sl.z + r * Math.sin(a * Math.PI / 8));
+        assert(Math.abs(y - y0) < 0.02, `slot ${sl.id} is on a slope: ${(y - y0).toFixed(2)} at ${r} out`);
+      }
+    }
     // a crowd walking over the hill: each rat stands on the slope, arrows strike at its height
     const sim = new Sim({ seed: 4 });
     sim.towers.length = 0; for (const sl of sim.slots) sl.tower = null;

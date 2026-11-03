@@ -319,6 +319,7 @@ click('pauseSettingsBtn', () => { backTo = 'pauseScreen'; syncSettingsUi(); show
 click('guideBtn', () => { backTo = 'titleScreen'; openGuide(); });
 click('pauseGuideBtn', () => { backTo = 'pauseScreen'; openGuide(); });
 click('ecClose', () => hideEnemyCard());
+$('enemyCard').addEventListener('click', () => hideEnemyCard());   // tap anywhere on the card to close it
 click('pauseBtn', () => pause());
 click('resumeBtn', () => resume());
 click('restartBtn', () => askConfirm('Restart the level?', 'You will start again from wave 1 with no crossbows built.', 'Restart', () => { const d = sim.difficulty; Save.del('checkpoint'); Save.del('waveStart'); startGame(null, d); }));
@@ -517,12 +518,14 @@ const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 let tcKey = '';
 function updateTowerCard() {
   const f = mode === 'play' || mode === 'pause' ? describeFocus(sim) : null;
-  const key = f ? [f.kind, f.level, f.path, f.slot, f.build, f.desc, f.next && f.next.cost, f.next && Math.floor(f.next.paid), f.next && f.next.path, f.choice && f.choice.map((c) => Math.floor(c.paid)).join(',')].join('|') : '';
+  const key = f ? [f.kind, f.level, f.path, f.slot, f.build, f.desc, f.next && f.next.cost, f.next && Math.floor(f.next.paid), f.next && f.next.path, f.choice && f.choice.map((c) => Math.floor(c.paid)).join(','), f.onPad].join('|') : '';
   if (key === tcKey) return;
   tcKey = key;
   const card = $('towerCard');
   if (!f) { card.hidden = true; return; }
   card.hidden = false;
+  // walking past a tower: a small name tag; standing on a pad: the upgrade details
+  card.classList.toggle('mini', !f.onPad);
   $('tcIcon').innerHTML = ICONS[f.path] || ICONS[f.kind] || ICONS.crossbow;
   $('tcTitle').textContent = f.build ? `Build a ${f.title.toLowerCase()}` : f.pathName ? `${f.title} · ${f.pathName}` : f.title;
   $('tcLevel').textContent = f.build ? 'Empty pad' : `Level ${f.level} · ${f.ability}`;
@@ -540,7 +543,7 @@ function updateTowerCard() {
   }
   if (f.next) {
     const n = f.next;
-    $('tcNextTitle').textContent = n.repair ? 'Repair the town hall' : n.pathName ? `${n.pathName} path · Level ${n.level} · ${n.ability}` : `${f.build ? 'Builds' : 'Next:'} Level ${n.level} · ${n.ability}`;
+    $('tcNextTitle').textContent = n.repair ? 'Repair the town hall' : n.pathName ? `${n.pathName} · Level ${n.level} · ${n.ability}` : `${f.build ? 'Builds ' : ''}Level ${n.level} · ${n.ability}`;
     $('tcCost').textContent = n.paid > 0 ? `${Math.floor(n.paid)}/${n.cost}` : String(n.cost);
     $('tcNextDesc').textContent = n.desc;
     $('tcStats').innerHTML = n.changes.map(([k, a, b]) => `<span><em>${esc(k)}</em>${a === null ? '' : esc(a) + ' '}<b>${a === null ? '' : '→ '}${esc(b)}</b></span>`).join('');
@@ -561,10 +564,12 @@ function showEnemyCard(key) {
   $('enemyCard').classList.toggle('boss', boss);
   $('ecName').textContent = g.name;
   $('ecTrait').textContent = g.trait;
-  $('ecCounter').textContent = g.counter;
+  // the first sentence is the main tip; phones leave out the rest
+  const [, tip, more] = /^(.*?[.;])\s+(.+)$/s.exec(g.counter) || [, g.counter, ''];
+  $('ecCounter').innerHTML = esc(tip) + (more ? ` <span class="ec-more">${esc(more)}</span>` : '');
   $('enemyCard').hidden = false;
   $('enemyCard').dataset.key = key;
-  holdEnemyCard(11000);
+  holdEnemyCard(7000);
 }
 // The card stays up for a while; time spent paused does not count.
 let enemyCardLeft = 0, enemyCardFrom = 0;
@@ -640,6 +645,7 @@ const tutorial = {
     this.text = text;
     const el = $('hint');
     if (text) { el.innerHTML = text; el.hidden = false; } else el.hidden = true;
+    $('hud').classList.toggle('has-hint', !!text);   // the tower card moves up out of its way
   },
   update(dt) {
     const s = sim;
@@ -651,7 +657,7 @@ const tutorial = {
     } else if (this.step === 1) {
       const pad = cheapestPad('build');
       if (pad && s.gold >= pad.cost - pad.paid) this.step = 2;
-      else if (s.coins.length) text = 'Rats drop gold. Walk close to the coins to scoop them up';
+      else if (s.coins.length) text = 'Walk over the gold coins to scoop them up';
       else if (s.state === 'build') text = `Rats arrive in ${Math.ceil(s.buildTimer)}s. Your crossbow fires on its own`;
       if (s.builtOrder > 0) this.step = 3;
     } else if (this.step === 2) {
@@ -663,26 +669,26 @@ const tutorial = {
       const fp = s.pads.find((p) => p.kind === 'fortress');
       const up = s.builtOrder > 0 ? s.pads.find((p) => p.kind === 'upgrade') : null;
       if (fp && !this.keepShown && s.fortress.level === 1) {
-        arrow = fp.id; text = 'The town hall can be upgraded now: more health, stone walls, bigger houses and a full repair';
+        arrow = fp.id; text = 'Upgrade the town hall: more health and a full repair';
         this.timer += dt;
-        if (this.timer > 14) { this.keepShown = true; this.timer = 0; }
+        if (this.timer > 9) { this.keepShown = true; this.timer = 0; }
       } else if (up && !this.upShown) {
-        arrow = up.id; text = 'Upgrade pads sit beside each crossbow. Twin bows at level 3, triple bows at level 5';
+        arrow = up.id; text = 'Stand on the pad beside a crossbow to upgrade it';
         this.timer += dt;
-        if (this.timer > 10) { this.upShown = true; this.timer = 0; }
+        if (this.timer > 7) { this.upShown = true; this.timer = 0; }
       }
       const rp = s.pads.find((p) => p.kind === 'repair');
       if (!text && rp && !this.repairShown) {
-        arrow = rp.id; text = 'The town hall is damaged. Stand on the repair pad to patch it up with gold';
+        arrow = rp.id; text = 'Town hall damaged: stand on the repair pad to fix it';
         this.repairT += dt;
-        if (this.repairT > 10) this.repairShown = true;
+        if (this.repairT > 7) this.repairShown = true;
       }
       if (s.stats.repaired) this.repairShown = true;   // already found it
       if (s.fortress.level > 1) this.keepShown = true;
       if (!text && cannonUnlocked() && !this.cannonShown && s.state === 'build') {
         text = input.lastKind === 'touch' ? 'Cannon Tower unlocked: tap the cannon button, then step on a build pad' : 'Cannon Tower unlocked: press <kbd>2</kbd> or click the cannon button, then step on a build pad';
         this.cannonT += dt;
-        if (this.cannonT > 12 || s.buildKind === 'cannon' || s.towers.some((t) => t.kind === 'cannon')) this.cannonShown = true;
+        if (this.cannonT > 8 || s.buildKind === 'cannon' || s.towers.some((t) => t.kind === 'cannon')) this.cannonShown = true;
       }
       if (s.towers.some((t) => t.level > 1)) this.upShown = true;
     }

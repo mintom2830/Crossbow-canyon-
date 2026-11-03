@@ -419,6 +419,8 @@ await test('one crossbow upgrades 1 → 7 by walking onto its pad (keep never up
     await page.waitForFunction(([lv, n]) => { const c = document.getElementById('towerCard'); return !c.hidden && document.getElementById('tcLevel').textContent === `Level ${lv} · ${n}`; }, [lv, ability], { timeout: 10000 });
     if (lv < 7) assert((await page.textContent('#tcNextTitle')).includes(`Level ${lv + 1}`), 'card does not preview the next level');
     else assert(await page.isVisible('#tcMax'), 'card should say max level at 7');
+    // standing on a pad shows the full card; anywhere else beside the tower, just a small name tag
+    await page.waitForFunction(() => { const s = window.__cc.sim, on = s.pads.some((p) => p.heroOn); return document.getElementById('towerCard').classList.contains('mini') === !on; }, null, { timeout: 5000 });
     if (lv === 3) {
       // standing still on the next pad must not buy level 4: the label asks to step off
       await page.waitForFunction(() => { const s = window.__cc.sim; const p = s.pads.find((q) => q.kind === 'upgrade' && q.slot === s.towers[0].slotIndex); return p && (!p.heroOn || !p.armed); }, null, { timeout: 10000 });
@@ -426,6 +428,8 @@ await test('one crossbow upgrades 1 → 7 by walking onto its pad (keep never up
   }
   const view = await g(page, () => [...window.__cc.view.towerViews.values()][0].level);
   assert(view === 7, 'tower model is not level 7');
+  // at max level there is no pad left: the farmer beside it sees the small name tag with "Max level"
+  await page.waitForFunction(() => { const c = document.getElementById('towerCard'); return !c.hidden && c.classList.contains('mini') && !document.getElementById('tcMax').hidden; }, null, { timeout: 5000 });
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${SHOTS}/upgraded-to-7.png` });
   assert(errors.length === 0, errors.join(' | '));
@@ -796,6 +800,9 @@ await test('new rats: bomb, ninja and jetpack rats get their own card and model,
   await g(page, () => { const c = window.__cc, s = c.sim; s.towers.length = 0; for (const sl of s.slots) sl.tower = null; s.fortress.hp = s.fortress.maxHp = 99999; s.waveIndex = 8; s.callWave(); c.advance(2); });
   await page.waitForFunction(() => !document.getElementById('enemyCard').hidden && document.getElementById('ecName').textContent === 'Bomb rat', null, { timeout: 15000 });
   await page.waitForFunction(() => document.getElementById('ecImg').naturalWidth > 0, null, { timeout: 30000 });
+  // tapping anywhere on the card closes it
+  await page.click('#ecName');
+  assert(await g(page, () => document.getElementById('enemyCard').hidden), 'tapping the card did not close it');
   // the final wave has plenty of all three: each drawn with its own model; a bomb rat goes off in the crowd
   const r = await g(page, () => {
     const c = window.__cc, s = c.sim;

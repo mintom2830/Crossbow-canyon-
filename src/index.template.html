@@ -124,11 +124,42 @@ body { background: var(--sky); color: var(--sandstone); font-family: var(--font-
 .tcard-opticon { width: 22px; height: 22px; flex: none; color: var(--gold); }
 .tcard-opticon svg { width: 100%; height: 100%; }
 .tcard-opt .tcard-cost { font-size: 15px; align-self: flex-end; text-shadow: var(--ink-text); }
-@media (max-width: 1100px) { .tcard { bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); } }
-@media (max-width: 640px) {
-  .tcard { left: 50%; transform: translateX(-50%); width: min(340px, calc(100vw - 24px)); padding: 7px 10px 8px; }
-  .tcard-desc { font-size: 12px; }
+/* The card stays small: the level line already names the ability, so the
+   long description is left out. Walking past a tower shows only a name tag
+   (.mini); the upgrade details appear when the farmer stands on a pad. */
+#tcDesc { display: none; }
+.tcard.mini { width: auto; max-width: min(270px, calc(100vw - 24px)); padding: 5px 10px 6px 6px; border-radius: 12px; }
+.tcard.mini .tcard-icon { width: 26px; height: 26px; border-radius: 7px; }
+.tcard.mini .tcard-icon svg { width: 18px; height: 18px; }
+.tcard.mini .tcard-name b { font-size: 15px; }
+.tcard.mini .tcard-name span { font-size: 12px; }
+.tcard.mini .tcard-next { margin-top: 4px; padding-top: 4px; }
+.tcard.mini .tcard-nexthead b { font-size: 12px; }
+.tcard.mini .tcard-cost { font-size: 14px; }
+.tcard.mini .tcard-cost .coin { width: 14px; height: 14px; }
+.tcard.mini #tcNextDesc, .tcard.mini .tcard-stats, .tcard.mini .tcard-paid, .tcard.mini .tcard-choice { display: none; }
+.tcard.mini .tcard-max { margin-top: 3px; font-size: 11.5px; }
+/* lift the card over the tutorial hint only while a hint is showing */
+@media (max-width: 1200px) { #hud.has-hint .tcard { bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); } }
+@media (max-width: 640px), (max-height: 500px) {
+  .tcard { width: min(270px, calc(100vw - 24px)); padding: 6px 9px 7px; }
+  .tcard-icon { width: 28px; height: 28px; border-radius: 8px; }
+  .tcard-icon svg { width: 20px; height: 20px; }
+  .tcard-name b { font-size: 15px; }
+  .tcard-name span { font-size: 12px; }
+  .tcard-next { margin-top: 5px; padding-top: 5px; }
+  .tcard-nexthead b { font-size: 12px; }
+  .tcard-cost { font-size: 15px; }
+  #tcNextDesc { display: none; }
+  .tcard-stats { font-size: 11px; margin-top: 3px; }
+  .tcard-paid { margin-top: 4px; height: 5px; }
+  .tcard-choice { margin-top: 5px; padding-top: 5px; }
+  .tcard-choose { margin-bottom: 4px; font-size: 11.5px; }
+  .tcard-opt p { display: none; }
+  .tcard-opthead b { font-size: 12.5px; }
+  .tcard-opt .tcard-cost { font-size: 13px; }
 }
+@media (max-width: 640px) { #hud.has-hint .tcard { bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); } }
 
 /* ---------- bosses ---------- */
 .wave-sub.alert { color: #ffb3a8; animation: throb 0.6s ease-in-out infinite alternate; }
@@ -343,18 +374,34 @@ select { border: 2.5px solid var(--ink); }
 .ecard-counter em { font-style: normal; font-weight: 900; color: var(--gold); }
 .ecard-close { position: absolute; right: 6px; top: 4px; width: 26px; height: 26px; border: 0; background: none; color: var(--sandstone); font-size: 22px; line-height: 1; cursor: pointer; text-shadow: var(--ink-text); }
 @keyframes ecIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+/* the New enemy card: tap it anywhere to close it; on phones it keeps only
+   the name and how to beat it (the Rat guide has the rest) */
+.ecard { width: min(320px, calc(100vw - 24px)); grid-template-columns: 64px 1fr; gap: 9px; padding: 8px 28px 9px 8px; cursor: pointer; }
+.ecard img { width: 64px; height: 64px; }
+.ecard b { font-size: 19px; }
+.ecard p { font-size: 12px; }
 @media (max-width: 640px) {
-  .ecard { right: auto; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 150px); width: min(340px, calc(100vw - 24px)); grid-template-columns: 52px 1fr; gap: 8px; padding: 7px 28px 8px 7px; animation: none; }
-  .ecard img { width: 52px; height: 52px; }
-  .ecard b { font-size: 16px; }
+  .ecard { right: auto; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 150px); width: min(280px, calc(100vw - 24px)); grid-template-columns: 40px 1fr; gap: 7px; padding: 5px 26px 6px 5px; border-radius: 12px; animation: none; }
+  .ecard img { width: 40px; height: 40px; border-radius: 8px; }
+  .ecard-tag { font-size: 10px; padding: 0 6px; border-width: 1.5px; }
+  .ecard b { font-size: 14px; margin-top: 1px; }
   .ecard p { font-size: 11px; line-height: 1.25; }
+  #ecTrait, .ec-more { display: none; }
+  .ecard-close { width: 24px; height: 24px; font-size: 19px; right: 3px; top: 2px; }
 }
 /* short landscape phones: keep the card below the wave buttons so it never covers Skip, Auto or the speed switch */
 @media (max-height: 500px) and (min-width: 641px) {
-  .ecard { top: calc(env(safe-area-inset-top, 0px) + 136px); width: min(330px, 40vw); grid-template-columns: 52px 1fr; gap: 8px; padding: 7px 28px 8px 7px; }
-  .ecard img { width: 52px; height: 52px; }
-  .ecard b { font-size: 16px; }
+  .ecard { top: calc(env(safe-area-inset-top, 0px) + 136px); width: min(290px, 38vw); grid-template-columns: 40px 1fr; gap: 7px; padding: 5px 26px 6px 5px; }
+  .ecard img { width: 40px; height: 40px; }
+  .ecard b { font-size: 14px; }
   .ecard p { font-size: 11px; line-height: 1.25; }
+  #ecTrait, .ec-more { display: none; }
+}
+/* smaller tutorial hints and wave banners on phones */
+@media (max-width: 640px), (max-height: 500px) {
+  .hint { font-size: 13px; padding: 6px 12px; border-radius: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); max-width: min(calc(100vw - 32px), 400px); }
+  .hint kbd { font-size: 11.5px; }
+  .banner { font-size: clamp(24px, 7vw, 40px); top: 17%; }
 }
 /* rat guide */
 .guide-list { display: grid; gap: 10px; text-align: left; }

@@ -91,7 +91,7 @@ The map is laid out like a footpath winding up a meadow hill, in desert colours:
 - **On the summit:** a lone desert tree with a twisted trunk and a wide, flat canopy covered in white and yellow blossom, and a picnic in its shade: a striped, fringed blanket with a wicker basket, a straw hat, a jar of wildflowers and a book. A kite flies high above the hill on a string from the blanket, drifting and bobbing on the breeze.
 - **Wildflowers** in yellow, orange, white, purple, red and blue grow in clumps all over the hill, clear of the road and the build spots.
 - **Two red-rock mesas:** one beside the burrow carries a tower spot, the other stands on its own on the east side.
-- **Everything follows the slope:** rats, giants and bosses walk up and down the hill, arrows aim at their height, cannonballs land on the slope, splats, puffs and blast rings sit on the ground, the road and build pads lie on the slope, and towers stand on the lowest point of their footprint so their bases never float.
+- **Everything follows the slope:** rats, giants and bosses walk up and down the hill, arrows aim at their height, cannonballs land on the slope, splats, puffs and blast rings sit on the ground, the road and build pads lie on the slope, and every tower spot on the hill sits on a small flat terrace dug into the slope, so towers stand level instead of half-buried on the uphill side.
 - The farmer walks round the tree trunk.
 
 **Balance on Level 2:** an efficient crossbow player wins Normal with 2–3 stars and a distracted player still wins. On Hard, crossbows alone fall on the final wave unless you repair the town hall between waves; cannon players win with 3 stars.
@@ -190,7 +190,7 @@ Late in a game every tower is usually at level 7 and gold piles up with nothing 
 | **Jetpack rat** | ginger fur, leather aviator cap with ear flaps and goggles, white flying scarf, a red twin-tank jetpack with yellow nose cones and little flames | 1× | 85% | every 4.5 s its **jetpack fires** for 0.9 s and it rockets forward at 3.2× speed, hopping on two jets of flame | Frost Arrows slow it even mid-boost; frozen or stunned it can't fire; strong towers near the end of the road |
 
   - Wave 1 is plain rats. Wave 2 adds fast rats, wave 3 armored rats, wave 4 shield rats, wave 6 healer rats, wave 7 brood rats, wave 9 bomb rats, wave 12 ninja rats and wave 14 jetpack rats.
-  - The wave that introduces a kind always includes it, has its own title ("Shield rats raise their shields!") and shows a **New enemy** card for 11 s: a 3D portrait, what the rat does and how to beat it.
+  - The wave that introduces a kind always includes it, has its own title ("Shield rats raise their shields!") and shows a **New enemy** card for 7 s: a 3D portrait, what the rat does and how to beat it. Tap or click anywhere on the card to close it sooner. On phones the card is smaller and shows only the rat's name and the main tip for beating it; the Rat guide has the full details.
   - From the second half on, the rows are roughly 17% fast, 17% armored, 11% shield and 7% brood rats, plus 5–6% bomb rats from wave 9, 6–7% ninja rats from wave 12 and 7% jetpack rats from wave 14, and one row in ten has a healer.
   - The **Rat guide** (title screen and pause menu) lists every enemy, from plain rats to the six bosses: a 3D portrait rendered with the game's own toon shading, speed, health, armour, the wave it first appears in, what it does and how to beat it.
   - Cannons count armored rats as armoured, so the Thunder Mortar's bonus damage applies to them (and Rapid Launcher shells glance off them), and Frost Arrows slow fast rats down.
@@ -271,12 +271,12 @@ Arrows aimed up at the buzzard pass over the rats on the road, and arrows aimed 
   - The setting is saved and stays on for future games.
 
 ### Tower card
-Walk up to a tower, or stand on a pad, and a card appears in the corner of the screen (above the controls on phones). It shows:
-- **The tower:** its type, current level and ability, with a one-line description.
-- **The next upgrade:** its level, ability name, description and cost. The cost reads `20/80` once you've started paying, with a blue bar filling up. Below that are the stat changes it brings, such as `Damage 8 → 11 · Pierce 1 → 2 · Range 11.5 → 12`.
-- **At level 7:** "Max level: every ability unlocked".
+A small card in the bottom-left corner tells you about the tower or pad beside the farmer. It is kept small so it never hides the action:
+- **Walking past a tower:** just a name tag with the tower's type, level and ability, and one line with the next upgrade and its price (or "Max level: every ability unlocked" at level 7).
+- **Standing on a pad:** the upgrade details as well: the next level's ability and cost, the stat changes it brings (such as `Damage 8 → 11 · Pierce 1 → 2 · Range 11.5 → 12`) and a blue bar filling up as you pay (the cost reads `20/80` once you've started). On a computer it also has a one-line description of the new ability; on phones that line is left out.
 - **On a build pad:** what you'll build (Level 1 crossbow or cannon) and its stats.
 - **On the town hall pad:** the town hall's next level and its new health.
+- While a tutorial hint is showing at the bottom of the screen, the card moves up out of its way.
 
 The card follows exactly what you would buy, so you know what each level adds before you spend.
 
@@ -425,7 +425,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 
 **Headless gameplay tests** (77) check:
 - The maps (each check runs on both): the road never cuts through a plateau, every tower slot can reach the road, the town stays clear of the road, and upgrade-choice pads fit beside their towers.
-- Level 2's hill: the road climbs it and the summit rises above the road; the tree and the picnic sit on the summit, clear of the road, the towers and their pads; the town stays on flat ground; towers never float over the slope; rats walk on the slope, arrows strike at their height and cannonballs land on the slope. A save remembers its map and never loads on another one.
+- Level 2's hill: the road climbs it and the summit rises above the road; the tree and the picnic sit on the summit, clear of the road, the towers and their pads; the town stays on flat ground; towers never float over the slope, and every tower spot is flat out to 2 units; rats walk on the slope, arrows strike at their height and cannonballs land on the slope. A save remembers its map and never loads on another one.
 - Aiming: crossbows and cannons turn round to face the rats before they shoot, and never fire more than about 25° off their target. Arrows close in on the one rat they were fired at. Cannonballs rise above the barrel, land on their aim point and catch groups.
 - Rat types: each kind shows up first in its own wave (fast 2, armored 3, shield 4, healer 6, brood 7, bomb 9, ninja 12, jetpack 14) with the right speed and health.
 - The newest rats: a bomb rat shot down knocks out the rats next to it but not those out of reach, gives giants a smaller hit, sets off a wounded bomb rat beside it, and at the gate blows its 6-damage hole without going off on the crowd. A ninja rat dodges an arrow, is hit by the next one straight after, dodges again after a moment, can't dodge a blast, and can't dodge while stunned. A jetpack rat fires every 4.5 s, each boost carries it the right extra distance, and a stunned one neither moves nor fires. Ratlings only come out of brood rats. Armour blocks arrow damage, Armor Piercer gets through it, and the cannon bonus applies.
@@ -493,7 +493,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - The touch joystick, driven with real touch events.
 - HUD fit on a phone screen, including the Skip and Auto buttons.
 - Rotating between landscape and portrait.
-- Walking one crossbow up from level 1 to level 7 with the keyboard, without ever upgrading the town hall. Each new ability is announced, and the tower card shows the new level, previews the next one and says "max level" at 7.
+- Walking one crossbow up from level 1 to level 7 with the keyboard, without ever upgrading the town hall. Each new ability is announced, and the tower card shows the new level, previews the next one and says "max level" at 7. It is the full card on a pad and the small name tag beside the tower.
 - Frozen rats drawn in ice and Crystal Storm arrows falling, in the real renderer.
 - Tower attacks drawn in the browser: tower heads match the aim, crossbows tilt down at their rat, cannon barrels rise for the shot, and every cannonball in the air has a landing ring.
 - Rat animations: all three rat types are drawn with their own models, each rat gets its own walk phase, no rat appears before the burrow, rats at the gate carry an attack phase, defeated rats keep animating and are then removed, and a defeated giant rat falls over before it disappears.
@@ -511,7 +511,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
   - Rats in the square make villagers panic, show alarmed speech bubbles and hide indoors, and everyone comes back out once the wave is over.
   - A win swings the camera to the square, most villagers cheer, and the victory card follows.
 - Enemies that need tactics, in the browser:
-  - Wave 4 shows the New enemy card for shield rats, with a 3D portrait and the cannon tip, and its × closes it.
+  - Wave 4 shows the New enemy card for shield rats, with a 3D portrait and the cannon tip, and its × closes it. The bomb rat card closes when you tap anywhere on it.
   - In wave 7 a shield breaks, a brood rat bursts into ratlings and a healer heals. All eight rat models draw (including the shield rat without its shield), and green plus signs rise.
   - The Rat guide opens from the pause menu and the title screen. Every entry, all six bosses included, gets a real (not blank) 3D portrait, and Back returns to where you came from.
 - Bosses with special abilities, in the browser:
