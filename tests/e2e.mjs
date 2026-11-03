@@ -485,7 +485,7 @@ await test('rat animations: burrow spawn, walk cycle, gate attack, defeat flip a
   assert(walk.n > 20 && walk.distinct > walk.n * 0.5, `walk phases ${walk.distinct} for ${walk.n} rats`);
   // the three rat types of wave 3 are drawn, each with its own model
   const types = await g(page, () => window.__cc.view.ratMeshes.map((m) => m.count));
-  assert(types.length === 8 && types.slice(0, 3).every((n) => n > 0), `rat types drawn: ${types.join('/')}`);
+  assert(types.length === 11 && types.slice(0, 3).every((n) => n > 0), `rat types drawn: ${types.join('/')}`);
   assert(walk.minS >= 7.99, 'a rat appeared before the burrow');
   // attacking: rats at the gate carry an attack phase in [0, 1)
   const atk = await g(page, () => {
@@ -543,7 +543,8 @@ await test('tower attacks in the browser: heads turn and tilt at rats, barrels e
   // wait until a frame has drawn the frozen simulation
   await page.waitForFunction(() => { const c = window.__cc; return c.sim.towers.every((t) => Math.abs(c.view.towerViews.get(t.slotIndex).head.rotation.y - t.yaw) < 1e-6); }, null, { timeout: 20000 });
   // the bow jerks up as it looses: let the last shot's recoil spring settle before measuring its tilt
-  await page.waitForFunction(() => { const c = window.__cc; const t = c.sim.towers[1]; return c.view.towerViews.get(t.slotIndex).head.rotation.x > 0.02; }, null, { timeout: 15000 }).catch(() => {});
+  // (a busy test machine can briefly hide the page, which pauses the game and holds the tilt still: resume it)
+  await page.waitForFunction(() => { const c = window.__cc; if (c.mode === 'pause') c.resume(); const t = c.sim.towers[1]; return c.view.towerViews.get(t.slotIndex).head.rotation.x > 0.02; }, null, { timeout: 15000 }).catch(() => {});
   const r = await g(page, () => {
     const c = window.__cc, s = c.sim, v = c.view;
     const views = s.towers.map((t) => ({ t, v: v.towerViews.get(t.slotIndex) }));
@@ -764,8 +765,8 @@ await test('enemies that need tactics: shield, healer and brood rats are drawn; 
   assert(r.shieldGone && r.ratlings >= 4, 'shield / brood: ' + JSON.stringify({ ...r, events: undefined }));
   assert(['shieldBreak', 'split', 'heal'].every((k) => r.events.includes(k)), 'missing events: ' + r.events.filter((k) => /shield|split|heal/.test(k)));
   await g(page, () => { const c = window.__cc; for (const e of c.sim.events) c.view.handleEvent(e, c.sim); c.sim.events.length = 0; });
-  // all eight rat meshes draw: plain, fast, armored, shield, healer, brood, ratling and the shield rat without its shield
-  await page.waitForFunction(() => window.__cc.view.ratMeshes.every((m) => m.count > 0), null, { timeout: 30000 });
+  // the first eight rat meshes draw: plain, fast, armored, shield, healer, brood, ratling and the shield rat without its shield (10)
+  await page.waitForFunction(() => window.__cc.view.ratMeshes.every((m, v) => v > 6 && v < 10 || m.count > 0), null, { timeout: 30000 });
   const plusses = await g(page, () => window.__cc.view.fx.plusses.items.length);
   assert(plusses > 0, 'no green plus signs over healed rats');
   await page.screenshot({ path: `${SHOTS}/new-enemies.png` });
@@ -783,6 +784,38 @@ await test('enemies that need tactics: shield, healer and brood rats are drawn; 
   await page.screenshot({ path: `${SHOTS}/rat-guide.png` });
   await page.click('#guideScreen [data-back]');
   assert(await g(page, () => window.__cc.screen) === 'pauseScreen', 'Back should return to the pause menu');
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('new rats: bomb, ninja and jetpack rats get their own card and model, and their tricks show', async () => {
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true });
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  // wave 9 brings the first bomb rats, with a New enemy card
+  await g(page, () => { const c = window.__cc, s = c.sim; s.towers.length = 0; for (const sl of s.slots) sl.tower = null; s.fortress.hp = s.fortress.maxHp = 99999; s.waveIndex = 8; s.callWave(); c.advance(2); });
+  await page.waitForFunction(() => !document.getElementById('enemyCard').hidden && document.getElementById('ecName').textContent === 'Bomb rat', null, { timeout: 15000 });
+  await page.waitForFunction(() => document.getElementById('ecImg').naturalWidth > 0, null, { timeout: 30000 });
+  // the final wave has plenty of all three: each drawn with its own model; a bomb rat goes off in the crowd
+  const r = await g(page, () => {
+    const c = window.__cc, s = c.sim;
+    s.state = 'build'; s.waveIndex = 15; s.callWave(); c.advance(40);
+    const by = (v) => s.enemies.filter((e) => e.alive && e.type === 0 && e.v === v);
+    const counts = [by(7).length, by(8).length, by(9).length];
+    const bomb = by(7)[0];
+    s._buildGrid(); s.events.length = 0;
+    if (bomb) s._damage(bomb, 1e7);
+    const blast = s.events.some((e) => e.type === 'bomb');
+    for (const e of s.events) c.view.handleEvent(e, s);
+    s.events.length = 0;
+    return { counts, blast, jets: s.stats.jets | 0, scorch: c.view.fx.scorch.items.length };
+  });
+  assert(r.counts.every((n) => n > 0), 'new rats on the road: ' + r.counts.join('/'));
+  assert(r.blast && r.scorch > 0 && r.jets > 0, 'tricks: ' + JSON.stringify(r));
+  await page.waitForFunction(() => [7, 8, 9].every((v) => window.__cc.view.ratMeshes[v].count > 0), null, { timeout: 30000 });
+  await g(page, () => { const c = window.__cc, s = c.sim, e = s.enemies.find((q) => q.v === 8) || s.enemies[0]; c.teleport(e.x + 1, e.z + 2); s.step = () => {}; });
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${SHOTS}/new-rats.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });
@@ -918,7 +951,7 @@ await test('satisfying effects: towers recoil and spring back, arrows burst and 
     out.splatColours = new Set(v.fx.dust.items.map((d) => d.color)).size;
     s.events.length = 0;
     // a blast throws a rat back: it is drawn flying back in a hop, then lands where the simulation put it
-    const k = s.enemies.find((e) => e.alive && e.type === 0 && e.s > 30 && !(e.stun > 0));
+    const k = s.enemies.find((e) => e.alive && e.type === 0 && e.s > 30 && !(e.stun > 0)) || s.enemies.find((e) => e.alive && e.type === 0 && !(e.stun > 0));
     v.sync(s, 1 / 60);
     k.s -= 1.5; s._placeEnemy(k);
     v.sync(s, 1 / 60);

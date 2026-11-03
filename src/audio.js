@@ -151,6 +151,20 @@ export class Audio {
     this._osc('sine', 110, 35, t, 0.6, 0.28);
     this._osc('sawtooth', 140, 60, t + 0.05, 0.5, 0.08);
   }
+  // a ninja rat flipping clear of an arrow: a quick whoosh
+  dodge() {
+    if (!this._ok('dodge', 6)) return;
+    const t = this.ctx.currentTime;
+    this._noise(t, 0.12, 0.08, 'bandpass', 2400, 1.2);
+    this._osc('sine', 900, 1600, t, 0.1, 0.03);
+  }
+  // a jetpack rat firing its jetpack: a short roar
+  jet() {
+    if (!this._ok('jet', 4)) return;
+    const t = this.ctx.currentTime;
+    this._noise(t, 0.5, 0.12, 'lowpass', 1400, 0.8);
+    this._osc('sawtooth', 160, 320, t, 0.4, 0.04);
+  }
   // the Canyon Buzzard letting go of rats: a falling whistle
   drop() {
     if (!this._ok('drop', 1)) return;

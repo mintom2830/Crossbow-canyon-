@@ -174,7 +174,7 @@ Late in a game every tower is usually at level 7 and gold piles up with nothing 
 
 ## Characters
 - **The farmer** (you): straw hat with a red band, red shirt, blue denim overalls and a pitchfork slung across the back.
-- **Rats**: seven kinds of small rat, and each needs a different plan. They march one kind per row of the crowd, and healers walk in the middle of some rows.
+- **Rats**: ten kinds of small rat, and each needs a different plan. They march one kind per row of the crowd, and healers walk in the middle of some rows.
 
 | Rat | Look | Speed | Health | What it does | How to beat it |
 |---|---|---|---|---|---|
@@ -185,10 +185,13 @@ Late in a game every tower is usually at level 7 and gold piles up with nothing 
 | **Healer rat** | pale fur, green hooded cape with a white cross, a staff with a glowing green orb | 0.9× | 140% | every 3 s heals the 5 most hurt rats within 3.6 units by 10% of their health (giants and bosses 0.4%), with a green ring and rising green plus signs; healed rats glow green | twin and triple crossbows (L3+) aim their extra arrows at healers; freezing or stunning it stops the heal; big blasts outpace it |
 | **Brood rat** | fat, mottled purple-grey, a burlap sack on its back with three ratlings peeking out | 0.72× | 160% | when killed it bursts into 4 ratlings with a puff of burlap (not when it is spent at the gate) | area damage: cannon blasts, cluster bomblets, burning ground; kill it early on the road |
 | **Ratling** | tiny pink-grey baby rat with big ears | 1.5× | 12% of its brood rat | tumbles out of the sack and runs on; bites the gate once | blasts and bouncing arrows |
+| **Bomb rat** | sooty brown fur, a big round black bomb strapped on its back with a fizzing, sparking fuse, welding goggles pushed up on its forehead | 0.85× | 130% | shot down, it **blows up**: every rat within 1.5 takes 80% of the bomb rat's health in damage (enough for plain rats; a wounded bomb rat caught in it goes off too), giants and bosses a little. At the gate it blows a big hole in one go (6 damage) | pop it early, right in the middle of the crowd, and never let one reach the gate |
+| **Ninja rat** | black fur, black hood and face mask with a white eye slit, red headband with trailing ties, a sword with a gold guard slung on its back, red sash | 1.35× | 90% | **dodges** one arrow every 1.3 s with a backflip in a puff of smoke; the arrow flies on | twin and triple crossbows fire more arrows than it can dodge; cannon blasts, burning ground and Crystal Storm rain can't be dodged; frozen or stunned it can't dodge |
+| **Jetpack rat** | ginger fur, leather aviator cap with ear flaps and goggles, white flying scarf, a red twin-tank jetpack with yellow nose cones and little flames | 1× | 85% | every 4.5 s its **jetpack fires** for 0.9 s and it rockets forward at 3.2× speed, hopping on two jets of flame | Frost Arrows slow it even mid-boost; frozen or stunned it can't fire; strong towers near the end of the road |
 
-  - Wave 1 is plain rats. Wave 2 adds fast rats, wave 3 armored rats, wave 4 shield rats, wave 6 healer rats and wave 7 brood rats.
+  - Wave 1 is plain rats. Wave 2 adds fast rats, wave 3 armored rats, wave 4 shield rats, wave 6 healer rats, wave 7 brood rats, wave 9 bomb rats, wave 12 ninja rats and wave 14 jetpack rats.
   - The wave that introduces a kind always includes it, has its own title ("Shield rats raise their shields!") and shows a **New enemy** card for 11 s: a 3D portrait, what the rat does and how to beat it.
-  - From the second half on, the rows are roughly 17% fast, 17% armored, 11% shield and 7% brood rats, and one row in ten has a healer.
+  - From the second half on, the rows are roughly 17% fast, 17% armored, 11% shield and 7% brood rats, plus 5–6% bomb rats from wave 9, 6–7% ninja rats from wave 12 and 7% jetpack rats from wave 14, and one row in ten has a healer.
   - The **Rat guide** (title screen and pause menu) lists every enemy, from plain rats to the six bosses: a 3D portrait rendered with the game's own toon shading, speed, health, armour, the wave it first appears in, what it does and how to beat it.
   - Cannons count armored rats as armoured, so the Thunder Mortar's bonus damage applies to them (and Rapid Launcher shells glance off them), and Frost Arrows slow fast rats down.
 - **Villagers**: farmers, villager women, townsmen and two children. See "A town worth protecting" above.
@@ -224,12 +227,12 @@ Health numbers below are for Normal. Easy multiplies every one of them by 0.6 an
 | 5 | **Boss wave: the Rat Warlord!** 210 rats, three giants and the Warlord with 1,000 HP. Two coins per rat from here to wave 8. |
 | 6–7 | 260 → 360 tougher rats and giants up to 360 HP. Wave 6 brings the first **healer rats** and wave 7 the first **brood rats**. |
 | 8 | **Boss wave: the Sewer Slime!** 440 rats, four giants of up to 400 HP and the Sewer Slime with 700 HP (1,708 counting every piece it splits into). |
-| 9 | Night falls. 460 rats with 48 HP each and four giants of up to 1,200 HP. |
+| 9 | Night falls, and **bomb rats** join the march. 460 rats with 48 HP each and four giants of up to 1,200 HP. |
 | 10 | **Boss wave: the Iron Rat Baron!** 500 rats, four giants of up to 1,600 HP and the Baron with 9,000 HP. |
 | 11 | **Boss wave: the Tunnel Mole!** 540 rats with 80 HP each, four giants of up to 2,000 HP and the Tunnel Mole with 4,500 HP. |
-| 12 | **The Great Swarm!** 700 rats at once with three 3,000 HP giants. |
+| 12 | **The Great Swarm, with ninja rats!** 700 rats at once with three 3,000 HP giants. |
 | 13 | **Boss wave: the Canyon Buzzard!** 560 tougher rats (153 HP), four giants of up to 4,400 HP and the Canyon Buzzard with 8,000 HP. |
-| 14 | **Giant rat stampede!** 520 rats with 247 HP and seven giants of up to 6,800 HP. |
+| 14 | **Giant rat stampede, with jetpack rats!** 520 rats with 247 HP and seven giants of up to 6,800 HP. |
 | 15 | **Boss wave: the Rat King!** 640 rats with 350 HP, four giants of up to 9,800 HP and the Rat King with 14,000 HP. |
 | 16 | **Final wave: every boss returns!** 760 rats with 362 HP, a 10,600 HP giant and all six bosses one after another: the Sewer Slime (3,000), the Warlord (5,000), the Canyon Buzzard (5,000), the Baron (5,500), the Tunnel Mole (5,000) and the Rat King (7,500). |
 
@@ -420,11 +423,12 @@ ONLY="skip|auto" npm run test:e2e   # run just the matching browser tests
 CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already have
 ```
 
-**Headless gameplay tests** (74) check:
+**Headless gameplay tests** (77) check:
 - The maps (each check runs on both): the road never cuts through a plateau, every tower slot can reach the road, the town stays clear of the road, and upgrade-choice pads fit beside their towers.
 - Level 2's hill: the road climbs it and the summit rises above the road; the tree and the picnic sit on the summit, clear of the road, the towers and their pads; the town stays on flat ground; towers never float over the slope; rats walk on the slope, arrows strike at their height and cannonballs land on the slope. A save remembers its map and never loads on another one.
 - Aiming: crossbows and cannons turn round to face the rats before they shoot, and never fire more than about 25° off their target. Arrows close in on the one rat they were fired at. Cannonballs rise above the barrel, land on their aim point and catch groups.
-- Rat types: each kind shows up first in its own wave (fast 2, armored 3, shield 4, healer 6, brood 7) with the right speed and health. Ratlings only come out of brood rats. Armour blocks arrow damage, Armor Piercer gets through it, and the cannon bonus applies.
+- Rat types: each kind shows up first in its own wave (fast 2, armored 3, shield 4, healer 6, brood 7, bomb 9, ninja 12, jetpack 14) with the right speed and health.
+- The newest rats: a bomb rat shot down knocks out the rats next to it but not those out of reach, gives giants a smaller hit, sets off a wounded bomb rat beside it, and at the gate blows its 6-damage hole without going off on the crowd. A ninja rat dodges an arrow, is hit by the next one straight after, dodges again after a moment, can't dodge a blast, and can't dodge while stunned. A jetpack rat fires every 4.5 s, each boost carries it the right extra distance, and a stunned one neither moves nor fires. Ratlings only come out of brood rats. Armour blocks arrow damage, Armor Piercer gets through it, and the cannon bonus applies.
 - Enemies that need tactics:
   - Shield rats: the shield soaks up an arrow and stops it, so a piercing arrow never reaches the rat behind. Armor Piercer splits shields 3× faster. A breaking shield passes the rest of the damage on. Cannon blasts and Crystal Storm arrows hit the rat itself.
   - Healer rats: they heal the 5 most hurt rats in reach by the right share, nothing out of reach, then wait out the cooldown. A stunned or frozen healer does nothing, and giants get only a sliver.
@@ -476,7 +480,8 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
   - Cannon players (two cannons for every crossbow) win with 3 stars on either path.
 - Simulation speed.
 
-**Browser tests** (33) check:
+**Browser tests** (34) check:
+- The newest rats: wave 9 shows the New enemy card for bomb rats with its 3D portrait; in the final wave bomb, ninja and jetpack rats are all drawn with their own models, a bomb rat going off draws a blast, and jetpacks fire.
 - Level 2: picking it on the title screen switches the scene (and back again), a new game starts on it, rats are drawn standing on the hill, a saved Level 2 game says so on the Continue button and reopens on Level 2 even with Level 1 picked, and the map is remembered after a reload.
 - Every button: title, how to play, settings toggles, quality, pause/resume, Escape, tab-hide pause, start wave, restart confirmation, main menu, defeat retry, victory play again, and continue after reload.
 - Skip wave: early start, locked with a countdown while rats pour in, a mid-wave skip with the bonus shown on the button, and Space.

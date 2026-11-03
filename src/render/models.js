@@ -28,7 +28,9 @@ export const RAT_PART = { body: 0, legFL: 1, legFR: 2, legBL: 3, legBR: 4, tail:
 // variant 0: normal rat · 1: fast rat (slim, sandy, red bandana) · 2: armored rat (helmet, back plates)
 // 3: shield rat (leather cap, big round shield) · 4: healer rat (green hood, staff with a glowing orb)
 // 5: brood rat (fat, mottled, a sack of ratlings on its back) · 6: ratling (tiny pink-grey baby rat)
-// 7: a shield rat whose shield has broken (drawn without it)
+// 7: bomb rat (a big black bomb with a sparking fuse strapped on its back, goggles)
+// 8: ninja rat (black, masked, red headband, a sword on its back) · 9: jetpack rat (aviator cap, goggles, jetpack)
+// 10: a shield rat whose shield has broken (drawn without it)
 const RAT_LOOKS = [
   { fur: RAT.fur, dark: RAT.furDark, light: RAT.furLight, belly: RAT.belly, body: [0.95, 0.85, 1.45] },
   { fur: 0xb4895a, dark: 0x8d6740, light: 0xd8b98c, belly: 0xe6d2b0, body: [0.8, 0.76, 1.55] },
@@ -37,9 +39,12 @@ const RAT_LOOKS = [
   { fur: 0xb8b0b4, dark: 0x948b90, light: 0xd8d2d4, belly: 0xece6e4, body: [0.92, 0.85, 1.4] },
   { fur: 0x7c6478, dark: 0x5e4a5c, light: 0x9f879b, belly: 0xd9b0bc, body: [1.3, 1.12, 1.55] },
   { fur: 0xa08c94, dark: 0x85727a, light: 0xc4b0b8, belly: 0xeed6dc, body: [0.92, 0.85, 1.3] },
+  { fur: 0x7d6e62, dark: 0x5e5148, light: 0xa09080, belly: 0xcbb9a6, body: [1.02, 0.9, 1.45] },
+  { fur: 0x34303c, dark: 0x24202c, light: 0x4c4658, belly: 0x5e5868, body: [0.86, 0.8, 1.5] },
+  { fur: 0xc47a46, dark: 0x9c5a30, light: 0xe2a46e, belly: 0xf2d6b4, body: [0.95, 0.86, 1.45] },
 ];
-RAT_LOOKS[7] = RAT_LOOKS[3];
-export const SHIELDLESS = 7;
+export const SHIELDLESS = 10;
+RAT_LOOKS[SHIELDLESS] = RAT_LOOKS[3];
 export function gruntGeometry(variant = 0) {
   const L = RAT_LOOKS[variant];
   const b = new GB({ parts: true });
@@ -54,7 +59,7 @@ export function gruntGeometry(variant = 0) {
   b.add(P.box(0.08, 0.05, 0.03), RAT.tooth, { y: 0.28, z: 0.66, ...head });                       // teeth
   for (const sx of [-1, 1]) {
     const earUp = variant === 1 ? 0.06 : 0;
-    b.add(P.sph(0.12, 6, 4), RAT.pink, { x: sx * 0.14, y: 0.57 + earUp, z: 0.3, sz: 0.35, sy: variant === 1 ? 1.25 : 1, ...head });  // ears
+    b.add(P.sph(0.12, 6, 4), variant === 8 ? L.dark : RAT.pink, { x: sx * 0.14, y: 0.57 + earUp, z: 0.3, sz: 0.35, sy: variant === 1 ? 1.25 : 1, ...head });  // ears
     b.add(P.box(0.05, 0.05, 0.03), RAT.eye, { x: sx * 0.09, y: 0.46, z: 0.52, ...head });         // eyes
     // legs hang from hip joints so they can swing; the foot is part of the leg
     const fl = { part: sx < 0 ? RAT_PART.legFL : RAT_PART.legFR, pivot: [sx * 0.15, 0.26, 0.2] };
@@ -64,7 +69,7 @@ export function gruntGeometry(variant = 0) {
     b.add(P.cyl(0.05, 0.04, 0.2, 5), L.dark, { x: sx * 0.17, y: 0.16, z: -0.3, ...bl });
     b.add(P.box(0.1, 0.07, 0.19), RAT.pink, { x: sx * 0.17, y: 0.04, z: -0.27, ...bl });         // back feet
   }
-  if (variant === 3 || variant === 7) {
+  if (variant === 3 || variant === SHIELDLESS) {
     // shield rat: a leather cap with a red feather, and (until it breaks) a round shield held out front
     b.add(P.sph(0.215, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x6e4527, { y: 0.45, z: 0.37, sz: 1.1, ...head });
     b.add(P.box(0.03, 0.2, 0.06), 0xd8262d, { x: 0.1, y: 0.62, z: 0.28, rx: -0.5, ...head });
@@ -120,6 +125,55 @@ export function gruntGeometry(variant = 0) {
       b.add(P.sph(0.03, 4, 3), rivet, { x: sx * 0.2, y: 0.55, z: 0.0 });
       b.add(P.sph(0.03, 4, 3), rivet, { x: sx * 0.2, y: 0.53, z: -0.3 });
     }
+  } else if (variant === 7) {
+    // bomb rat: a big round black bomb strapped on its back, the fuse fizzing with sparks
+    b.add(P.sph(0.3, 10, 8), 0x2a2830, { y: 0.84, z: -0.14 });
+    b.add(P.sph(0.08, 6, 4), 0x8a8894, { x: -0.13, y: 0.99, z: -0.02 });   // shine
+    b.add(P.cyl(0.1, 0.11, 0.09, 8), 0x9a9aa4, { y: 1.14, z: -0.14 });
+    b.add(P.cyl(0.024, 0.024, 0.24, 5), 0xd8c08a, { x: 0.05, y: 1.27, z: -0.14, rz: -0.45 });
+    b.add(P.ico(0.08, 0), 0xffd23a, { x: 0.11, y: 1.39, z: -0.14 });
+    for (let k = 0; k < 4; k++) b.add(P.cone(0.03, 0.13, 4), k % 2 ? 0xff7a2a : 0xfff1a0, { x: 0.11 + Math.cos(k * 1.6) * 0.08, y: 1.41 + Math.sin(k * 1.6) * 0.06, z: -0.14 + Math.sin(k * 2.1) * 0.05, rz: k * 1.6 - Math.PI / 2 });
+    for (const sx of [-1, 1]) b.add(P.box(0.06, 0.34, 0.07), 0x7a4a26, { x: sx * 0.21, y: 0.6, z: -0.12, rz: -sx * 0.4 });   // straps
+    // welding goggles pushed up on its forehead
+    b.add(P.box(0.3, 0.045, 0.05), 0x5a3a20, { y: 0.55, z: 0.44, ...head });
+    for (const sx of [-1, 1]) {
+      b.add(P.tor(0.062, 0.024, 4, 10), 0x3a3a40, { x: sx * 0.075, y: 0.56, z: 0.47, rx: -0.3, ...head });
+      b.add(P.ico(0.052, 0), 0x6fd0e0, { x: sx * 0.075, y: 0.56, z: 0.47, sz: 0.5, ...head });
+    }
+  } else if (variant === 8) {
+    // ninja rat: a black hood and face mask, a red headband with trailing ties, a sword on its back
+    b.add(P.sph(0.215, 8, 6), 0x24202c, { y: 0.39, z: 0.37, sz: 1.22, ...head });
+    b.add(P.cone(0.145, 0.24, 6), 0x24202c, { y: 0.34, z: 0.58, rx: Math.PI / 2, ...head });
+    b.add(P.box(0.3, 0.075, 0.05), 0xf2f0f4, { y: 0.46, z: 0.555, ...head });   // eye slit
+    for (const sx of [-1, 1]) b.add(P.box(0.05, 0.05, 0.03), RAT.eye, { x: sx * 0.08, y: 0.46, z: 0.585, ...head });
+    b.add(P.tor(0.205, 0.035, 4, 14), 0xd8262d, { y: 0.52, z: 0.36, rx: Math.PI / 2 - 0.25, sz: 1.15, ...head });
+    b.add(P.box(0.05, 0.03, 0.3), 0xd8262d, { x: 0.06, y: 0.56, z: 0.08, rx: -0.4, ry: 0.35, ...head });
+    b.add(P.box(0.05, 0.03, 0.26), 0xb31a22, { x: -0.05, y: 0.54, z: 0.1, rx: -0.25, ry: -0.3, ...head });
+    // the sword slung across its back: blade, gold guard and red-wrapped hilt
+    b.add(P.box(0.045, 0.03, 0.82), 0xdce4ec, { x: 0.04, y: 0.62, z: -0.26, rx: 0.55, ry: 0.35 });
+    b.add(P.box(0.15, 0.04, 0.05), 0xffc63a, { x: 0.13, y: 0.83, z: 0.07, rx: 0.55, ry: 0.35 });
+    b.add(P.box(0.055, 0.055, 0.24), 0x8a1a20, { x: 0.18, y: 0.92, z: 0.18, rx: 0.55, ry: 0.35 });
+    b.add(P.tor(0.27, 0.04, 4, 14), 0xd8262d, { y: 0.33, z: 0.06, sy: 0.85 });   // sash
+  } else if (variant === 9) {
+    // jetpack rat: aviator cap and goggles, a red scarf, a twin-tank jetpack with little flames
+    b.add(P.sph(0.222, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x7a4a26, { y: 0.44, z: 0.36, sz: 1.15, ...head });
+    for (const sx of [-1, 1]) {
+      b.add(P.box(0.05, 0.16, 0.12), 0x7a4a26, { x: sx * 0.19, y: 0.37, z: 0.34, ...head });   // ear flaps
+      b.add(P.tor(0.064, 0.026, 4, 10), 0x3a3a40, { x: sx * 0.078, y: 0.53, z: 0.5, rx: -0.35, ...head });
+      b.add(P.ico(0.054, 0), 0xffb84a, { x: sx * 0.078, y: 0.53, z: 0.5, sz: 0.5, ...head });
+    }
+    b.add(P.tor(0.17, 0.045, 5, 12), 0xffe9b8, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1, ...head });   // a white flying scarf
+    b.add(P.box(0.07, 0.03, 0.3), 0xffe9b8, { x: -0.08, y: 0.5, z: -0.02, rx: -0.3, ry: -0.3 });
+    b.add(P.box(0.34, 0.3, 0.1), 0x5a5f6a, { y: 0.64, z: -0.2 });   // back plate
+    for (const sx of [-1, 1]) {
+      b.add(P.cyl(0.095, 0.095, 0.42, 8), 0xe0302a, { x: sx * 0.13, y: 0.66, z: -0.31 });
+      b.add(P.cyl(0.1, 0.1, 0.06, 8), 0xe8eaf0, { x: sx * 0.13, y: 0.74, z: -0.31 });
+      b.add(P.cyl(0.1, 0.1, 0.05, 8), 0xe8eaf0, { x: sx * 0.13, y: 0.56, z: -0.31 });
+      b.add(P.cone(0.095, 0.13, 8), 0xffc63a, { x: sx * 0.13, y: 0.935, z: -0.31 });
+      b.add(P.cyl(0.06, 0.085, 0.08, 8), 0x3a3a40, { x: sx * 0.13, y: 0.415, z: -0.31 });
+      b.add(P.cone(0.07, 0.24, 6), 0xff8a24, { x: sx * 0.13, y: 0.26, z: -0.31, rx: Math.PI });   // flames
+      b.add(P.cone(0.04, 0.15, 6), 0xffe27a, { x: sx * 0.13, y: 0.3, z: -0.31, rx: Math.PI });
+    }
   }
   // pink tail curling behind
   const tail = { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] };
@@ -151,7 +205,7 @@ export function gruntInkGeometry(variant = 0) {
     b.add(P.cyl(0.05, 0.04, 0.2, 4, 1, true), 0, { x: sx * 0.17, y: 0.16, z: -0.3, ...bl });
     b.add(P.box(0.1, 0.07, 0.19), 0, { x: sx * 0.17, y: 0.04, z: -0.27, ...bl });
   }
-  if (variant === 3 || variant === 7) {
+  if (variant === 3 || variant === SHIELDLESS) {
     b.add(P.sph(0.215, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.45, z: 0.37, sz: 1.1, ...head });
     if (variant === 3) b.add(P.cyl(0.37, 0.37, 0.09, 12), 0, { y: 0.42, z: 0.86, rx: Math.PI / 2 - 0.12 });
   } else if (variant === 4) {
@@ -175,6 +229,20 @@ export function gruntInkGeometry(variant = 0) {
     b.add(P.box(0.34, 0.05, 0.06), 0, { y: 0.47, z: 0.56, ...head });
     for (let i = 0; i < 3; i++) b.add(P.sph(0.3, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.4 - i * 0.015, z: 0.12 - i * 0.24, sx: 1.05, sy: 0.7, sz: 0.55 });
     for (const sx of [-1, 1]) b.add(P.sph(0.12, 5, 2, 0, Math.PI * 2, 0, Math.PI / 2), 0, { x: sx * 0.24, y: 0.38, z: 0.2, sx: 0.8, rz: -sx * 0.6 });
+  } else if (variant === 7) {
+    b.add(P.sph(0.3, 8, 6), 0, { y: 0.84, z: -0.14 });
+    b.add(P.cyl(0.1, 0.11, 0.09, 6), 0, { y: 1.14, z: -0.14 });
+  } else if (variant === 8) {
+    b.add(P.sph(0.215, 6, 4), 0, { y: 0.39, z: 0.37, sz: 1.22, ...head });
+    b.add(P.box(0.045, 0.03, 0.82), 0, { x: 0.04, y: 0.62, z: -0.26, rx: 0.55, ry: 0.35 });
+    b.add(P.box(0.055, 0.055, 0.24), 0, { x: 0.18, y: 0.92, z: 0.18, rx: 0.55, ry: 0.35 });
+  } else if (variant === 9) {
+    b.add(P.sph(0.222, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.44, z: 0.36, sz: 1.15, ...head });
+    b.add(P.box(0.34, 0.3, 0.1), 0, { y: 0.64, z: -0.2 });
+    for (const sx of [-1, 1]) {
+      b.add(P.cyl(0.095, 0.095, 0.42, 6), 0, { x: sx * 0.13, y: 0.66, z: -0.31 });
+      b.add(P.cone(0.095, 0.13, 6), 0, { x: sx * 0.13, y: 0.935, z: -0.31 });
+    }
   }
   const tail = { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] };
   const tl = variant === 1 ? 1.25 : 1;

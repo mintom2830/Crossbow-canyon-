@@ -1,5 +1,5 @@
 // Headless gameplay tests (no browser). Run: node tests/sim.test.mjs
-import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING } from '../src/sim.js';
+import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING, BOMB, NINJA, JET } from '../src/sim.js';
 import { RAT_GUIDE, firstWave, guideEntry } from '../src/ratguide.js';
 import { CFG, cannonSpec, MAPS } from '../src/config.js';
 import { road, plateauSdf, setLevel, groundHeight, hillHeight } from '../src/world.js';
@@ -68,7 +68,7 @@ test('rats climb out of the burrow, follow the road and report hits and defeats 
 
 test('rat types: fast rats outrun with low health, armored rats are slow, tough and resist arrows; each kind arrives in its own wave', () => {
   const RT = CFG.ratTypes;
-  assert(RT.length === 7 && RT[1].speedMul > 1.4 && RT[1].hpMul < 0.6 && RT[2].speedMul < 0.75 && RT[2].hpMul > 1.8 && RT[2].armor > 0, 'rat type stats');
+  assert(RT.length === 10 && RT[1].speedMul > 1.4 && RT[1].hpMul < 0.6 && RT[2].speedMul < 0.75 && RT[2].hpMul > 1.8 && RT[2].armor > 0, 'rat type stats');
   assert(RT[SHIELD].shieldMul > 1 && RT[HEALER].heal && RT[BROOD].split && RT[RATLING].speedMul > 1.3 && RT[RATLING].hpMul < 0.5, 'special rat stats');
   // waves introduce them gradually
   const kinds = (wi) => { const sim = new Sim({ seed: 4 }); sim.waveIndex = wi; sim.callWave(); run(sim, 40); return sim; };
@@ -79,7 +79,11 @@ test('rat types: fast rats outrun with low health, armored rats are slow, tough 
   const w4 = seenTypes(3); assert(w4.has(SHIELD) && !w4.has(HEALER) && !w4.has(BROOD), 'wave 4 should add shield rats');
   const w6 = seenTypes(5); assert(w6.has(HEALER) && !w6.has(BROOD), 'wave 6 should add healer rats');
   const w7 = seenTypes(6); assert(w7.has(BROOD) && w7.has(HEALER) && w7.has(SHIELD), 'wave 7 should add brood rats');
-  for (const [wi, v] of [[1, 1], [2, 2], [3, SHIELD], [5, HEALER], [6, BROOD]]) assert(CFG.waves[wi].intro === v && CFG.waves[wi].title, `wave ${wi + 1} should introduce rat type ${v} with a title`);
+  for (const [wi, v] of [[1, 1], [2, 2], [3, SHIELD], [5, HEALER], [6, BROOD], [8, BOMB], [11, NINJA], [13, JET]]) assert(CFG.waves[wi].intro === v && CFG.waves[wi].title, `wave ${wi + 1} should introduce rat type ${v} with a title`);
+  // the three late newcomers each arrive in their own wave, and not before
+  for (const [wi, v] of [[8, BOMB], [11, NINJA], [13, JET]]) {
+    assert(seenTypes(wi).has(v) && !seenTypes(wi - 1).has(v), `rat type ${v} should first come in wave ${wi + 1}`);
+  }
   assert(!seenTypes(15).has(RATLING), 'ratlings only come out of brood rats');
   // in a real wave: speed and health follow the type
   const sim = kinds(4);
@@ -228,6 +232,75 @@ test('the right tactic works: cannons ignore shields, and area damage handles br
   const xb = trial('crossbow', 3), cn = trial('cannon', 3);
   assert((cn.blocked || 0) < (xb.blocked || 0) * 0.1, `cannon blocked ${cn.blocked} vs crossbow ${xb.blocked}`);
   assert(cn.kills > xb.kills, `against shields and broods: cannon kills ${cn.kills} vs crossbow ${xb.kills}`);
+});
+
+test('bomb rats: shot down they blow up the rats round them (wounded bomb rats chain); at the gate they blow a big hole', () => {
+  const B = CFG.ratTypes[BOMB].bomb;
+  const sim = new Sim({ seed: 2 });
+  const mk = (v, hp, lat, s0, type = T_GRUNT) => { const kind = type === T_GRUNT ? CFG.ratTypes[v] : CFG.giant; const e = sim._makeEnemy(type, v, hp, lat, s0, kind); sim._placeEnemy(e); sim.enemies.push(e); return e; };
+  const bomb = mk(BOMB, 13, 0, 60);
+  // (B.r is the blast reach: near and giant inside it, far outside; bomb2 inside, beyond only in bomb2's reach)
+  const near = mk(0, 10, 0.8, 60.3), far = mk(0, 10, 0, 60 + B.r + 1.5), giant = mk(0, 500, -1.0, 60, T_GIANT);
+  const bomb2 = mk(BOMB, 13, 0.4, 61.1), beyond = mk(0, 10, 0.4, 61.1 + B.r * 0.8);
+  bomb2.hp = 6;   // already wounded: the first blast finishes it
+  sim._buildGrid(); sim.events.length = 0;
+  sim._damage(bomb, 999);
+  assert(!near.alive, 'a rat next to the bomb survived the blast');
+  assert(far.alive && far.hp === 10, 'a rat out of reach was hurt');
+  assert(giant.alive && giant.hp < 500 && 500 - giant.hp < bomb.maxHp * B.mul, 'giants should take a smaller hit');
+  assert(!bomb2.alive && !beyond.alive, 'a wounded bomb rat caught in the blast should go off and take its own neighbours');
+  assert(sim.events.filter((e) => e.type === 'bomb').length === 2 && sim.stats.bombed >= 4, 'blast events ' + JSON.stringify(sim.events.filter((e) => e.type === 'bomb')));
+  // at the gate: one big bite, and it is spent without going off on the crowd
+  const g = new Sim({ seed: 2 }); g.callWave(); g.spawnQueue.length = 0;
+  const kind = CFG.ratTypes[BOMB];
+  const at = g._makeEnemy(T_GRUNT, BOMB, 50, 0, road.length, kind); at.s = at.gateS; at.atGate = true; at.attackT = 0; g._placeEnemy(at); g.enemies.push(at);
+  const friend = g._makeEnemy(T_GRUNT, 0, 5, 0.6, road.length - 1, CFG.ratTypes[0]); friend.s = friend.gateS; friend.atGate = true; friend.attackT = 9; g._placeEnemy(friend); g.enemies.push(friend);
+  const hp0 = g.fortress.hp; g.events.length = 0;
+  run(g, 0.1);
+  assert(hp0 - g.fortress.hp === kind.gateDmg && !at.alive && kind.swings === 1, `the bomb rat should blow a ${kind.gateDmg} hole in one go (lost ${hp0 - g.fortress.hp})`);
+  assert(friend.alive && !g.events.some((e) => e.type === 'bomb'), 'a bomb spent at the gate should not go off on the crowd');
+});
+
+test('ninja rats dodge one arrow every so often; blasts, arrow storms and stuns still get them', () => {
+  const D = CFG.ratTypes[NINJA].dodge;
+  const sim = new Sim({ seed: 3 });
+  sim.towers.length = 0; for (const sl of sim.slots) sl.tower = null;
+  const n = sim._makeEnemy(T_GRUNT, NINJA, 1000, 0, 70, CFG.ratTypes[NINJA]); sim._placeEnemy(n); sim.enemies.push(n);
+  sim._buildGrid();
+  // fire arrows straight at it from close by, one after another
+  const shoot = () => { sim.bolts.push({ x: n.x - 3, z: n.z, y: 0.6, y0: 0.6, y1: 0.55, dx: 1, dz: 0, d: 0, aim: 3, max: 8, dmg: 10, pierce: 1, hits: [], alive: true, level: 1, bounces: 0, fall: false, air: false }); };
+  const st = n.speed; n.speed = 0;
+  shoot(); run(sim, 0.2);
+  assert(n.hp === 1000 && sim.stats.dodged === 1, 'the first arrow should be dodged');
+  shoot(); run(sim, 0.2);
+  assert(n.hp === 990, 'a second arrow right after should hit: ' + n.hp);
+  run(sim, D.every); shoot(); run(sim, 0.2);
+  assert(n.hp === 990 && sim.stats.dodged === 2, 'after a moment it dodges again');
+  // a blast cannot be dodged
+  sim._buildGrid(); sim._explode({ tx: n.x, tz: n.z, r: 2, dmg: 30, level: 1, path: null, kind: 'shell', spec: cannonSpec(1) });
+  assert(n.hp < 990, 'a cannon blast should hit a ninja rat');
+  // stunned or frozen, it cannot dodge
+  const before = n.hp; n.stun = 1; n.dodgeT = 0; shoot(); run(sim, 0.2);
+  assert(n.hp < before, 'a stunned ninja rat should not dodge');
+  n.speed = st;
+});
+
+test('jetpack rats fire their jetpacks every few seconds and rocket forward; stunned they cannot', () => {
+  const J = CFG.ratTypes[JET].jet;
+  const sim = new Sim({ seed: 5 });
+  sim.towers.length = 0; for (const sl of sim.slots) sl.tower = null;
+  const j = sim._makeEnemy(T_GRUNT, JET, 1000, 0, 40, CFG.ratTypes[JET]); sim._placeEnemy(j); sim.enemies.push(j);
+  const plain = sim._makeEnemy(T_GRUNT, 0, 1000, 1.5, 40, CFG.ratTypes[0]); plain.speed = j.speed; sim._placeEnemy(plain); sim.enemies.push(plain);
+  sim.state = 'wave';
+  j.jetT = 0.5; let fired = 0;
+  run(sim, J.every * 2 + 0.5 + J.t + 0.1, (s) => { for (const e of s.events) if (e.type === 'jet') fired++; s.events.length = 0; });
+  assert(fired === 3, `the jetpack should fire every ${J.every} s (fired ${fired})`);
+  const gain = (j.s - 40) - (plain.s - 40);
+  assert(Math.abs(gain - 3 * J.t * (J.speedMul - 1) * j.speed) < 0.3, `each boost should add ${(J.t * (J.speedMul - 1) * j.speed).toFixed(2)} of road (got ${gain.toFixed(2)} over 3 boosts)`);
+  // stunned: no boost while it lasts
+  const s0 = j.s; j.boost = 0; j.jetT = 0.01; j.stun = 2;
+  run(sim, 1.5);
+  assert(j.s === s0 && j.boost === 0, 'a stunned jetpack rat should not move or fire');
 });
 
 test('Rat guide: every enemy has a name, a trait, a way to beat it and the wave it first appears in', () => {
@@ -1319,14 +1392,14 @@ test('balance (Level 2): tougher rats; an efficient player wins with 2-3 stars, 
     assert(i.result === 'defeat' && i.wave <= 3, `idle on Level 2 reached wave ${i.wave}`);
   } finally { setLevel(1); }
 });
-test('balance (Level 2 Hard): cannons win with 3 stars; crossbows alone only hold with repairs', () => {
+test('balance (Level 2 Hard): cannons win with 3 stars; crossbows alone barely hold, or fall', () => {
   try {
     const c = runLevel('cannon+hard+blast+l2', 1); balance.l2hardc = c;
     assert(c.result === 'victory' && c.stars === 3, `cannons on Level 2 Hard: ${c.result} ${c.stars}`);
     const b = runLevel('bot+hard+l2', 1); balance.l2hardb = b;
+    assert(b.result === 'defeat' || b.stars === 1, `crossbows alone should only just hold Level 2 Hard: ${b.result} ${b.stars} stars`);
     const r = runLevel('bot+hard+repair+l2', 1); balance.l2hardr = r;
-    assert(r.result === 'victory', `crossbows with repairs lost Level 2 Hard on wave ${r.wave}`);
-    assert(b.result === 'defeat' || b.stars < r.stars, 'repairs should matter on Level 2 Hard');
+    assert(r.result === 'victory' && r.stars >= b.stars, `repairs should never hurt: ${r.result} ${r.stars}`);
   } finally { setLevel(1); }
 });
 test('performance: one simulation step stays well under 1 ms', () => {

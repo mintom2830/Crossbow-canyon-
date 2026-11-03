@@ -588,6 +588,9 @@ function guideStats(key) {
     const out = [['Speed', speedWord(RT.speedMul)], ['Health', key === 'rat:6' ? `${Math.round(CFG.ratTypes[5].split.hpFrac * 100)}% of its brood rat` : `×${RT.hpMul} a rat`], ['Bites', RT.gateDmg * RT.swings]];
     if (RT.shieldMul) out.push(['Shield', `×${RT.shieldMul} its health`]);
     if (RT.armor) out.push(['Armour', `${Math.round(RT.armor * 100)}%`]);
+    if (RT.bomb) out.push(['Blast', `${RT.bomb.r} wide`]);
+    if (RT.dodge) out.push(['Dodges', `1 arrow every ${RT.dodge.every} s`]);
+    if (RT.jet) out.push(['Jetpack', `${RT.jet.speedMul}× speed every ${RT.jet.every} s`]);
     return out;
   }
   if (key === 'giant') return [['Speed', speedWord(CFG.giant.speedMul || 0.8)], ['Health', '32 to 10,600'], ['Armour', `${Math.round(CFG.giant.armor * 100)}%`]];
@@ -742,6 +745,10 @@ function processEvents() {
       case 'block': audio.shieldBlock(); break;
       case 'shieldBreak': audio.shieldBreak(); break;
       case 'heal': audio.heal(); break;
+      case 'bomb': audio.explosion('shell', 2); break;
+      case 'dodge': audio.dodge(); break;
+      case 'jet': audio.jet(); break;
+      case 'spent': if (e.kind === T_GRUNT && e.v === 7) audio.explosion('shell', 2); break;
       case 'split': audio.broodSplit(); break;
       case 'storm': audio.storm(); break;
       case 'stormHit': audio.stormHit(); break;

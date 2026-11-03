@@ -261,9 +261,22 @@ export const CFG = {
       split: { n: 4, v: 6, hpFrac: 0.12, spread: 1.1 } },
     // 6 Ratling: what comes out of a brood rat. Tiny, quick and weak.
     { name: 'Ratling', speedMul: 1.5, hpMul: 0.4, gateDmg: 1, swings: 1, coins: -1, armor: 0, pierceCost: 1, knockMul: 1.3, scale: 0.68, radius: 0.3 },
+    // 7 Bomb rat: carries a lit bomb. Shot down, it blows up and hurts every rat within r
+    //   (mul x its own health: enough for plain rats, and a wounded bomb rat goes off in turn;
+    //   giants and bosses take bigMul of that). At the gate it blows a big hole in one go.
+    { name: 'Bomb rat', speedMul: 0.85, hpMul: 1.3, gateDmg: 6, swings: 1, coins: 1, armor: 0, pierceCost: 1, knockMul: 0.8, scale: 1.15, radius: 0.46,
+      bomb: { r: 1.5, mul: 0.8, bigMul: 0.4 } },
+    // 8 Ninja rat: quick, and flips out of the way of one arrow every `every` seconds.
+    //   Blasts, burning ground and Crystal Storm rain still hit it; stunned or frozen it cannot dodge.
+    { name: 'Ninja rat', speedMul: 1.35, hpMul: 0.9, gateDmg: 1, swings: 2, coins: 1, armor: 0, pierceCost: 1, knockMul: 1.1, scale: 1.0, radius: 0.4,
+      dodge: { every: 1.3 } },
+    // 9 Jetpack rat: every `every` seconds its jetpack fires for t seconds and it rockets forward at speedMul.
+    //   Stunned or frozen it cannot fire; frost still slows it.
+    { name: 'Jetpack rat', speedMul: 1.0, hpMul: 0.85, gateDmg: 1, swings: 2, coins: 1, armor: 0, pierceCost: 1, knockMul: 1.1, scale: 1.05, radius: 0.42,
+      jet: { every: 4.5, t: 0.9, speedMul: 3.2 } },
   ],
   // the rat types a player meets, in the order the Rat guide lists them
-  ratGuide: [0, 1, 2, 3, 4, 5, 6],
+  ratGuide: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
   giant: { radius: 1.05, speedMul: 0.93, gateDmg: 4, gateRate: 1.5, swings: 4, armor: 0.3 },
   boss: { radius: 1.5, speedMul: 0.8, gateDmg: 10, gateRate: 1.5, swings: 6, armor: 0.4 },
   // Bosses. Each overrides the boss defaults above. The three rat bosses are
@@ -308,7 +321,7 @@ export const CFG = {
   // coins: gold coins each rat drops (later waves pay more)
   // title: optional banner text when the wave starts
   // mix: [fast, armored] share of rat rows that are fast rats / armored rats
-  // mix: share of rows that are [fast, armored, shield, brood] rats (the rest are plain rats)
+  // mix: share of rows that are [fast, armored, shield, brood, bomb, ninja, jetpack] rats (the rest are plain rats)
   // healers: share of rows with a healer rat in the middle · intro: the rat type this wave introduces
   waves: [
     { coins: 1, grunts: 45, hp: 3, perRow: 6, giants: [[32, 0.0]] },
@@ -320,15 +333,15 @@ export const CFG = {
     { mix: [0.17, 0.15, 0.12, 0.06], healers: 0.12, coins: 2, grunts: 360, hp: 14, perRow: 8, intro: 5, title: 'Brood rats burst into ratlings!', giants: [[360, 0.0], [240, 0.3], [240, 0.36], [200, 0.7], [160, 0.9]] },
     { mix: [0.18, 0.15, 0.12, 0.07], healers: 0.14, coins: 2, grunts: 440, hp: 17, perRow: 8, title: 'Boss wave: the Sewer Slime!', giants: [[400, 0.0], [400, 0.05], [260, 0.3], [700, 0.5, 'slime'], [260, 0.85]] },
     // ---- second half: night falls, crowds and giants keep growing
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 460, hp: 48, perRow: 8, giants: [[1200, 0.0], [800, 0.25], [800, 0.5], [1200, 0.75]] },
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 500, hp: 62, perRow: 8, title: 'Boss wave: the Iron Rat Baron!', giants: [[1600, 0.0], [1600, 0.04], [1000, 0.3], [9000, 0.5, 'baron'], [1600, 0.85]] },
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 540, hp: 80, perRow: 8, title: 'Boss wave: the Tunnel Mole!', giants: [[2000, 0.0], [1300, 0.2], [1300, 0.4], [4500, 0.5, 'mole'], [1300, 0.9]] },
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 700, hp: 97, perRow: 8, title: 'The Great Swarm!', giants: [[3000, 0.0], [3000, 0.5], [3000, 0.95]] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.06], healers: 0.1, coins: 1, grunts: 460, hp: 48, perRow: 8, intro: 7, title: 'Bomb rats carry lit bombs!', giants: [[1200, 0.0], [800, 0.25], [800, 0.5], [1200, 0.75]] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.06], healers: 0.1, coins: 1, grunts: 500, hp: 62, perRow: 8, title: 'Boss wave: the Iron Rat Baron!', giants: [[1600, 0.0], [1600, 0.04], [1000, 0.3], [9000, 0.5, 'baron'], [1600, 0.85]] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.06], healers: 0.1, coins: 1, grunts: 540, hp: 80, perRow: 8, title: 'Boss wave: the Tunnel Mole!', giants: [[2000, 0.0], [1300, 0.2], [1300, 0.4], [4500, 0.5, 'mole'], [1300, 0.9]] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.05, 0.07], healers: 0.1, coins: 1, grunts: 700, hp: 97, perRow: 8, intro: 8, title: 'The Great Swarm, with ninja rats!', giants: [[3000, 0.0], [3000, 0.5], [3000, 0.95]] },
     // waves 13-16 are tuned against fully upgraded crystal crossbows and cannons
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 560, hp: 153, perRow: 8, title: 'Boss wave: the Canyon Buzzard!', giants: [[4400, 0.0], [2900, 0.2], [2900, 0.35], [8000, 0.5, 'buzzard'], [2900, 0.8]] },
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 520, hp: 247, perRow: 8, title: 'Giant rat stampede!', giants: [[6800, 0.0], [6800, 0.1], [5300, 0.25], [5300, 0.4], [6800, 0.55], [5300, 0.7], [6800, 0.85]] },
-    { mix: [0.17, 0.17, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 640, hp: 350, perRow: 8, title: 'Boss wave: the Rat King!', giants: [[9800, 0.0], [9800, 0.05], [7700, 0.3], [14000, 0.5, 'king'], [9800, 0.9]] },
-    { mix: [0.17, 0.12, 0.11, 0.07], healers: 0.1, coins: 1, grunts: 760, hp: 362, perRow: 8, title: 'Final wave: every boss returns!', giants: [[10600, 0.0], [3000, 0.1, 'slime'], [5000, 0.25, 'warlord'], [5000, 0.38, 'buzzard'], [5500, 0.5, 'baron'], [5000, 0.62, 'mole'], [7500, 0.75, 'king']] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.05, 0.07], healers: 0.1, coins: 1, grunts: 560, hp: 153, perRow: 8, title: 'Boss wave: the Canyon Buzzard!', giants: [[4400, 0.0], [2900, 0.2], [2900, 0.35], [8000, 0.5, 'buzzard'], [2900, 0.8]] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.05, 0.06, 0.07], healers: 0.1, coins: 1, grunts: 520, hp: 247, perRow: 8, intro: 9, title: 'Giant rat stampede, with jetpack rats!', giants: [[6800, 0.0], [6800, 0.1], [5300, 0.25], [5300, 0.4], [6800, 0.55], [5300, 0.7], [6800, 0.85]] },
+    { mix: [0.17, 0.17, 0.11, 0.07, 0.05, 0.06, 0.07], healers: 0.1, coins: 1, grunts: 640, hp: 350, perRow: 8, title: 'Boss wave: the Rat King!', giants: [[9800, 0.0], [9800, 0.05], [7700, 0.3], [14000, 0.5, 'king'], [9800, 0.9]] },
+    { mix: [0.17, 0.12, 0.11, 0.07, 0.05, 0.06, 0.07], healers: 0.1, coins: 1, grunts: 760, hp: 362, perRow: 8, title: 'Final wave: every boss returns!', giants: [[10600, 0.0], [3000, 0.1, 'slime'], [5000, 0.25, 'warlord'], [5000, 0.38, 'buzzard'], [5500, 0.5, 'baron'], [5000, 0.62, 'mole'], [7500, 0.75, 'king']] },
   ],
 };
 

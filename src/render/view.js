@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CFG } from '../config.js';
 import { groundHeight, hillHeight, road } from '../world.js';
-import { T_GRUNT, T_BOSS, SHIELD } from '../sim.js';
+import { T_GRUNT, T_BOSS, SHIELD, BOMB, NINJA, JET } from '../sim.js';
 import { buildEnvironment } from './env.js';
 import { FX } from './fx.js';
 import { radialTexture, GB, P } from './geo.js';
@@ -30,10 +30,10 @@ export function giantScale(e) {
   return e.maxHp <= 40 ? 1.2 : e.maxHp <= 80 ? 1.3 : e.maxHp <= 170 ? 1.4 : e.maxHp <= 260 ? 1.5 : 1.6;
 }
 // events at an enemy: their effects are raised onto the ground (a hill) under it
-const LIFTED = new Set(['death', 'poke', 'spent', 'hit', 'freeze', 'bossSpawn', 'clink', 'block', 'shieldBreak', 'split', 'slimeSplit', 'digDown', 'digUp', 'drop', 'heal', 'stormHit', 'explode']);
+const LIFTED = new Set(['death', 'poke', 'spent', 'hit', 'freeze', 'bossSpawn', 'clink', 'block', 'shieldBreak', 'split', 'slimeSplit', 'digDown', 'digUp', 'drop', 'heal', 'stormHit', 'explode', 'bomb', 'dodge', 'jet']);
 const _road = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 // colour of the cartoon splat each kind of enemy leaves behind
-const RAT_SPLAT = [0xb08fcc, 0xd2a8de, 0x9d93b5, 0xbfa2cf, 0x9fdcae, 0xd49ac6, 0xe6b4da];
+const RAT_SPLAT = [0xb08fcc, 0xd2a8de, 0x9d93b5, 0xbfa2cf, 0x9fdcae, 0xd49ac6, 0xe6b4da, 0xc9b8a8, 0xa59ab8, 0xd8b49a];
 const BOSS_SPLAT = { warlord: 0xd8907c, baron: 0x9fb6d8, king: 0xbd8ade, slime: 0x8ad85a, mole: 0xb8916c, buzzard: 0xc2a07e };
 const splatOf = (e) => (e.kind === T_GRUNT ? RAT_SPLAT[e.v] || RAT_SPLAT[0] : BOSS_SPLAT[e.boss] || 0xa98ac2);
 const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -896,6 +896,7 @@ export class View {
         break;
       case 'spent':
         fx.puff(e.x, 0, e.z, 0xcfc4d6, e.kind === T_GRUNT ? 0.8 : 1.6);
+        if (e.kind === T_GRUNT && e.v === BOMB) { fx.explosion(e.x, e.z, 2.2, 'fire'); this.shake = Math.max(this.shake, 0.35); }   // a bomb rat blows a hole in the gate
         if (e.kind === T_GRUNT) this._ratDies(e, true); else this._giantDies(e, true);
         break;
       case 'hit': {
@@ -916,6 +917,12 @@ export class View {
         break;
       }
       case 'clink': if (Math.random() < 0.6) fx.glow(e.x, 0.75, e.z, 0.9, 0xfff0b0, 0.1); break;   // arrow glancing off an armored rat
+      // a bomb rat goes off: a cartoon blast that knocks over the rats round it
+      case 'bomb': fx.explosion(e.x, e.z, e.r * 0.85, 'fire'); this.shake = Math.max(this.shake, 0.18); break;
+      // a ninja rat flips clear of an arrow in a puff of smoke
+      case 'dodge': fx.puff(e.x, 0.1, e.z, 0x6a6078, 0.7); fx.star(e.x, 0.7, e.z, 0.45, 0xdcd4ee, 0.12, 0.4); break;
+      // a jetpack rat fires its jetpack
+      case 'jet': fx.glow(e.x, 0.4, e.z, 1.6, 0xffa040, 0.2); fx.puff(e.x, 0, e.z, 0xd9d0c8, 0.6); break;
       case 'block': if (Math.random() < 0.5) { fx.glow(e.x, 0.6, e.z, 0.8, 0xffe6b0, 0.09); fx.star(e.x, 0.6, e.z, 0.5, 0xe8b878, 0.13, 0.5); } break;   // arrow thuds into a shield
       case 'shieldBreak': fx.shieldBreak(e.x, e.z); break;
       case 'split': fx.burst(e.x, e.z); this.shake = Math.max(this.shake, 0.06); break;
@@ -1025,6 +1032,7 @@ export class View {
     let bn = 0, icn = 0, dzn = 0;
     const dzm = this.dizzyMesh;
     this.pokeBudget = Math.min(6, this.pokeBudget + dt * 60);
+    this.jetBudget = Math.min(6, (this.jetBudget || 0) + dt * 40);
     this.sparkBudget = Math.min(3, this.sparkBudget + dt * 10);
     this.dustBudget = Math.min(4, (this.dustBudget || 0) + dt * 14);
     const seen = this._seen || (this._seen = new Set());
@@ -1051,6 +1059,17 @@ export class View {
           y += e.fallH * (1 - u * u); pitch += Math.sin(u * 9 + e.phase) * 0.8;
           if (e.fall < 0.05 && Math.random() < 0.35) { this._lift(e.x, e.z).puff(e.x, 0, e.z, 0xd9c7a8, 0.7); this.fx.lift = 0; }
         }
+        // the new rats' tricks: a ninja backflips out of an arrow's way, a jetpack rat
+        // hops forward on two jets of flame, a bomb's fuse fizzes
+        let trick = 0;
+        if (e.v === NINJA && e.dodgeT > 0) {
+          const k = 1 - (e.dodgeT - (CFG.ratTypes[NINJA].dodge.every - 0.42)) / 0.42;
+          if (k < 1) { y += Math.sin(k * Math.PI) * 0.75; pitch -= k * Math.PI * 2; }
+        } else if (e.v === JET && e.boost > 0) {
+          const k = 1 - e.boost / CFG.ratTypes[JET].jet.t;
+          y += Math.sin(k * Math.PI) * 0.55; pitch += 0.28 * Math.sin(k * Math.PI);
+          trick = 1;
+        } else if (e.v === BOMB && this.sparkBudget >= 1 && Math.random() < 0.05) trick = 2;
         // thrown back by a blast: the simulation moves the rat at once; it is drawn flying
         // back along the road in a hop (a big blast flips it head over heels)
         let ex = e.x, ez = e.z;
@@ -1065,6 +1084,15 @@ export class View {
         }
         const gy = this._gy(ex, ez);
         y += gy;
+        if (trick === 1 && this.jetBudget >= 1) {   // flames and smoke out of the jetpack
+          this.jetBudget--;
+          const bx = ex - Math.sin(e.yaw) * 0.45 * sc, bz = ez - Math.cos(e.yaw) * 0.45 * sc;
+          this.fx.glow(bx, y + 0.35 * sc, bz, 0.9, 0xff8a24, 0.14);
+          if (Math.random() < 0.5) this.fx.trail(bx, y + 0.3 * sc, bz, 0.26, 0xd9d0c8);
+        } else if (trick === 2) {   // sparks fizzing off the bomb's fuse
+          this.sparkBudget -= 0.5;
+          this.fx.glow(ex + Math.sin(e.yaw) * 0.1, y + 1.45 * sc, ez + Math.cos(e.yaw) * 0.1, 0.5, 0xffd23a, 0.12);
+        }
         _p.set(ex, y, ez);
         _e.set(pitch, e.yaw, 0, 'YXZ'); _q.setFromEuler(_e);
         _s.set(sc, sc, sc);

@@ -6,8 +6,8 @@ import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf } from 
 
 export const T_GRUNT = 0, T_GIANT = 1, T_BOSS = 2;
 // small rat types (CFG.ratTypes index) with special abilities
-export const SHIELD = 3, HEALER = 4, BROOD = 5, RATLING = 6;
-const ROW_TYPES = [1, 2, SHIELD, BROOD];   // what wave.mix shares stand for
+export const SHIELD = 3, HEALER = 4, BROOD = 5, RATLING = 6, BOMB = 7, NINJA = 8, JET = 9;
+const ROW_TYPES = [1, 2, SHIELD, BROOD, BOMB, NINJA, JET];   // what wave.mix shares stand for
 const healBuf = [];
 
 const GRID_MIN_X = -46, GRID_MIN_Z = -56, CELL = 2, GW = 52, GH = 54;
@@ -359,13 +359,15 @@ export class Sim {
       stun: 0, slow: 0, slowMul: 1, broken: 0,
       frost: 0, frostT: 0, frozen: 0, freezeCd: 0, hitT: 0,
       shield: 0, shieldMax: 0, healT: 0, healed: 0, gy: 0,
+      dodgeT: 0, jetT: 0, boost: 0,   // ninja rat: until it can dodge again · jetpack rat: until it fires, and how long it still burns
       // boss abilities: kind (stats), boss (name), slime size (tier) and family (root, rootHp),
       // mole tunnelling (dig, digT, under), buzzard flight (fly, dropT), rats falling from it (fall)
       kind: null, boss: null, tier: 0, root: 0, rootHp: 0, dig: 0, digT: 0, under: false,
       fly: 0, dropT: 0, fall: 0, fallT: 0, fallH: 0, born: 0,
     };
     if (kind.shieldMul) e.shield = e.shieldMax = hp * kind.shieldMul;      // shield rats
-    if (kind.heal) e.healT = this.rng() * kind.heal.every;                // healers pulse out of step
+    if (kind.heal) e.healT = this.rng() * kind.heal.every;
+    if (kind.jet) e.jetT = (0.4 + this.rng() * 0.6) * kind.jet.every;                // healers pulse out of step
     return e;
   }
 
@@ -387,6 +389,21 @@ export class Sim {
     this.waveTotal += n;
     this.stats.ratlings = (this.stats.ratlings || 0) + n;
     this.events.push({ type: 'split', x: e.x, z: e.z, n, id: e.id });
+  }
+
+  // A bomb rat shot down blows up: every rat close by takes a big hit (giants and
+  // bosses less), so popping one in the middle of the crowd takes its friends with it.
+  // Another bomb rat caught in the blast goes off too.
+  _bombBlast(e) {
+    const B = CFG.ratTypes[e.v].bomb, R = B.r, R2 = R * R, dmg = e.maxHp * B.mul;
+    let hits = 0;
+    this.events.push({ type: 'bomb', x: e.x, z: e.z, r: R, id: e.id });
+    this._query(e.x - R, e.z - R, e.x + R, e.z + R, (o) => {
+      if (o === e || !o.alive || o.under || o.fly > AIR || (o.x - e.x) ** 2 + (o.z - e.z) ** 2 > R2) return;
+      hits++;
+      this._damage(o, o.type === T_GRUNT ? dmg : dmg * B.bigMul, 1);
+    });
+    this.stats.bombed = (this.stats.bombed || 0) + hits;
   }
 
   // Healer rats: every few seconds, mend the rats around them (not while stunned or frozen).
@@ -604,6 +621,7 @@ export class Sim {
       if (e.frozen > 0) e.frozen -= dt;
       if (e.freezeCd > 0) e.freezeCd -= dt;
       if (e.hitT > 0) e.hitT -= dt;
+      if (e.dodgeT > 0) e.dodgeT -= dt;
       if (e.fall > 0) {            // dropped by the buzzard: still falling
         e.fall -= dt;
         e.flash = Math.max(0, e.flash - dt);
@@ -621,7 +639,18 @@ export class Sim {
         if (e.kind.fly) this._updateFlier(e, dt);
       }
       if (!e.atGate) {
-        e.s += e.speed * (e.slow > 0 ? e.slowMul : 1) * dt;
+        // a jetpack rat fires its jetpack every few seconds and rockets forward
+        let jet = 1;
+        if (e.v === JET && e.type === T_GRUNT) {
+          const J = CFG.ratTypes[JET].jet;
+          if (e.boost > 0) { e.boost -= dt; jet = J.speedMul; }
+          if ((e.jetT -= dt) <= 0) {
+            e.jetT += J.every; e.boost = J.t; jet = J.speedMul;
+            this.stats.jets = (this.stats.jets || 0) + 1;
+            this.events.push({ type: 'jet', x: e.x, z: e.z, id: e.id });
+          }
+        }
+        e.s += e.speed * (e.slow > 0 ? e.slowMul : 1) * jet * dt;
         if (e.type === T_GRUNT && giants.length) {
           for (const g of giants) {
             const ds = e.s - g.s; const R = g.radius + 0.35;
@@ -714,6 +743,7 @@ export class Sim {
     }
     this.events.push({ type: 'death', x: e.x, z: e.z, kind: e.type, v: e.v, id: e.id, yaw: e.yaw, dir: e.id & 1 ? 1 : -1, sh: e.shield > 0, boss: e.boss, tier: e.tier, fly: e.fly });
     if (e.type === T_GRUNT && CFG.ratTypes[e.v].split) this._split(e, CFG.ratTypes[e.v].split);
+    if (e.type === T_GRUNT && CFG.ratTypes[e.v].bomb) this._bombBlast(e);
     if (e.boss === 'slime' && e.tier < CFG.bosses.slime.split.tiers.length) this._slimeSplit(e);
   }
 
@@ -1192,6 +1222,13 @@ export class Sim {
         const rr = e.radius + 0.14;
         if (px * px + pz * pz > rr * rr) return;
         b.hits.push(e.id);
+        // a ninja rat flips out of the way and the arrow flies on (not while stunned or frozen)
+        if (e.v === NINJA && e.type === T_GRUNT && e.dodgeT <= 0 && !(e.stun > 0)) {
+          e.dodgeT = CFG.ratTypes[NINJA].dodge.every;
+          this.stats.dodged = (this.stats.dodged || 0) + 1;
+          this.events.push({ type: 'dodge', x: e.x, z: e.z, id: e.id });
+          return;
+        }
         // (view only) where the arrow strikes: a comic burst; arrows stick in giants
         if (e.type !== T_GRUNT) this.events.push({ type: 'hit', x: e.x, z: e.z, y: e.fly > 0 ? e.fly + 1.2 : e.type === T_BOSS ? 2.6 : 1.9, giant: true, id: e.id, dx: b.dx, dz: b.dz, level: b.level });
         else if (!(e.shield > 0)) this.events.push({ type: 'poke', x: e.x - b.dx * 0.3, y: b.air ? b.y - e.gy : 0.6, z: e.z - b.dz * 0.3 });

@@ -23,6 +23,15 @@ export const RAT_GUIDE = [
   { key: 'rat:5', name: 'Brood rat', tag: 'Splitter',
     trait: 'A fat rat with a sack on its back. When it falls, four quick ratlings burst out and run on.',
     counter: 'Area damage mops up the ratlings: cannon blasts, cluster bomblets and burning ground. Kill brood rats early, far from the town hall.' },
+  { key: 'rat:7', name: 'Bomb rat', tag: 'Explosive',
+    trait: 'Carries a big black bomb with a fizzing fuse. Shot down, it blows up and knocks out the rats around it. If it reaches the gate it blows a big hole in one go.',
+    counter: 'Pop it early, right in the middle of the crowd: its blast does your work for you, and a wounded bomb rat caught in it goes off too. Never let one reach the gate.' },
+  { key: 'rat:8', name: 'Ninja rat', tag: 'Dodger',
+    trait: 'Quick and masked. Every second or so it backflips out of the way of an arrow, and the arrow flies on.',
+    counter: 'Twin and triple crossbows fire more arrows than it can dodge. Cannon blasts, burning ground and Crystal Storm rain cannot be dodged, and a frozen or stunned ninja cannot dodge at all.' },
+  { key: 'rat:9', name: 'Jetpack rat', tag: 'Rocket',
+    trait: 'Every few seconds its jetpack fires and it rockets forward at three times its speed, leaping past your towers.',
+    counter: 'Frost Arrows slow it even mid-boost, and a frozen or stunned rat cannot fire its jetpack. Keep strong towers near the end of the road.' },
   { key: 'rat:6', name: 'Ratling', tag: 'From a brood rat',
     trait: 'Tiny, quick and weak. It bites the town hall once, but they come in litters.',
     counter: 'Blasts and bouncing arrows hit several at once. Don\'t let a brood rat fall right at the gate.' },
@@ -61,7 +70,7 @@ export function firstWave(key) {
   const v = +key.slice(4);
   if (v === 0) return 1;
   if (v === 6) return firstWave('rat:5');   // ratlings come with the brood rats
-  const row = { 1: 0, 2: 1, 3: 2, 5: 3 }[v];
+  const row = { 1: 0, 2: 1, 3: 2, 5: 3, 7: 4, 8: 5, 9: 6 }[v];
   for (let i = 0; i < CFG.waves.length; i++) {
     const w = CFG.waves[i];
     if (w.intro === v) return i + 1;
