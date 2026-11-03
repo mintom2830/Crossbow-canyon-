@@ -179,6 +179,24 @@ export const CFG = {
   // falls short still earns some. They add up to diamondsPerClear for a full clear.
   waveDiamonds: [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 20],
   cannonUnlockCost: 100,
+  // Rides, bought in the Shop with diamonds: the farmer rides into every game
+  // on the one picked, and runs faster on it (speedMul). The cow's bell also
+  // pulls coins in from further away (magnetMul).
+  rides: {
+    horse: { name: 'Horse', cost: 50, speedMul: 1.5, magnetMul: 1, blurb: 'The fastest ride: the farmer gallops 50% faster.' },
+    cow: { name: 'Cow', cost: 50, speedMul: 1.35, magnetMul: 1.4, blurb: '35% faster, and her bell pulls coins in from 40% further away.' },
+  },
+  // Weapon skins, bought in the Shop: they recolour every crossbow and cannon,
+  // their arrows and shells, and the farmer's pitchfork. colors: dark, mid and
+  // light shades the skin paints the weapons in (the classic look keeps them).
+  skins: {
+    classic: { name: 'Classic', cost: 0, colors: null, blurb: 'Wood, iron and stone, as built.' },
+    candy: { name: 'Candy', cost: 30, colors: [0xd23c7c, 0xff8fc0, 0xfff0f6], accent: 0x6fe0c4, blurb: 'Strawberry pink with mint trim.' },
+    jungle: { name: 'Jungle', cost: 40, colors: [0x2c5a1c, 0x5f9a34, 0xc8ec7a], accent: 0xffd23a, blurb: 'Leafy green with sunny yellow.' },
+    frost: { name: 'Frost', cost: 60, colors: [0x1e4f80, 0x5ab4e8, 0xeefcff], accent: 0xffffff, blurb: 'Ice blue and snow white.' },
+    golden: { name: 'Golden', cost: 80, colors: [0x5a3203, 0xc27a0c, 0xe8a820], accent: 0xffe27a, blurb: 'Solid gold, top to bottom.' },
+    lava: { name: 'Lava', cost: 100, colors: [0x1a1214, 0x4a2c26, 0xff5a10], accent: 0xffb020, blurb: 'Black rock with glowing orange.' },
+  },
 
   // ---------- Difficulty ----------
   // Picked when a new game starts. hp scales the health of every rat, giant

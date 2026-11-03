@@ -4,14 +4,16 @@
 // at it, and the frame is read back into an image (data URL).
 import * as THREE from 'three';
 import { CFG } from '../config.js';
-import { gruntGeometry, gruntInkGeometry } from './models.js';
-import { inkInstanced, inkNormals, inkUniforms, INK_PX } from './toon.js';
+import { gruntGeometry, gruntInkGeometry, heroParts, mountParts, towerParts } from './models.js';
+import { inkInstanced, inkNormals, inkUniforms, INK_PX, toon, addInk } from './toon.js';
+import { applySkin } from './skins.js';
 
 const SIZE = 192;          // CSS pixels of the portrait image
 const SS = 2;              // rendered at twice the size, then scaled down (smooth edges)
 const AWAY = new THREE.Vector3(900, 0, 900);   // far outside the canyon
 const DAYLIGHT = { sky: 0xfff6ea, gnd: 0x9a6a4a, hemi: 1.05, sun: 0xfff8ec, sunI: 2.3 };
 const BACKDROP = new THREE.Color(0xf2d39a);   // warm sand behind every portrait
+const KEY = new THREE.Color(0xff00ff);        // backdrop keyed out for a see-through picture
 
 export class Portraits {
   constructor(view) {
@@ -22,11 +24,13 @@ export class Portraits {
 
   // data URL of the portrait for a Rat guide key ('rat:N', 'giant', 'boss:NAME').
   // redraw false: leave repainting the game to a later flush() (when drawing several).
-  get(key, redraw = true) {
-    if (this.cache.has(key)) return this.cache.get(key);
+  // opts.clear: a see-through background instead of the sand backdrop
+  get(key, redraw = true, opts = {}) {
+    const ck = key + (opts.clear ? '|clear' : '');
+    if (this.cache.has(ck)) return this.cache.get(ck);
     let url = '';
-    try { url = this._render(key); } catch (err) { url = ''; }
-    this.cache.set(key, url);
+    try { url = this._render(key, opts); } catch (err) { url = ''; }
+    this.cache.set(ck, url);
     this.dirty = true;
     if (redraw) this.flush();
     return url;
@@ -40,6 +44,47 @@ export class Portraits {
 
   _subject(key) {
     const v = this.view;
+    // the farmer, on foot or riding the horse or the cow (Shop, title screen)
+    if (key.startsWith('ride:')) {
+      const kind = key.slice(5), mat = toon(), group = new THREE.Group(), geos = [];
+      const add = (geo, parent, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); addInk(m, INK_PX.unit); parent.add(m); geos.push(geo); return m; };
+      const hp = heroParts(), fb = new THREE.Group();
+      add(hp.body, fb); add(hp.fork, fb);
+      const legL = add(hp.leg, fb, -0.12, 0.38, 0), legR = add(hp.leg, fb, 0.12, 0.38, 0);
+      const armL = add(hp.arm, fb, -0.33, 0.86, 0), armR = add(hp.arm, fb, 0.33, 0.86, 0);
+      group.add(fb);
+      let frame = { size: 1.5, h: 1.05 };
+      if (kind === 'horse' || kind === 'cow') {
+        const mp = mountParts(kind);
+        add(mp.body, group); add(mp.tail, group, ...mp.tailPivot).rotation.x = 0.3;
+        const head = add(mp.head, group, ...mp.headPivot); head.rotation.x = -0.08;
+        mp.legs.forEach((p, i) => { add(mp.leg, group, ...p).rotation.x = [0.35, -0.15, -0.3, 0.2][i]; });
+        fb.position.y = mp.seat - 0.4;
+        legL.rotation.set(-0.35, 0, -0.55); legR.rotation.set(-0.35, 0, 0.55);
+        armL.rotation.x = armR.rotation.x = -0.95;
+        frame = { size: 1.55, h: 1.05 };
+      } else { armR.rotation.x = -0.5; armL.rotation.z = -0.25; }
+      group.scale.setScalar(1.35);
+      group.position.copy(AWAY);
+      group.rotation.y = kind === 'none' ? 0.95 : 1.65;   // a rider side-on, nose to the right
+      return { obj: group, size: frame.size * 1.35, h: frame.h * 1.35, dx: 0, dz: 0, done: () => { for (const g of new Set(geos)) g.dispose(); } };
+    }
+    // a level 5 crossbow tower painted in a weapon skin (Shop)
+    if (key.startsWith('skin:')) {
+      const id = key.slice(5), g = towerParts(5), mat = toon(), glow = new THREE.MeshBasicMaterial({ vertexColors: true });
+      applySkin(g.base, id); applySkin(g.head, id);
+      const group = new THREE.Group();
+      const base = new THREE.Mesh(g.base, mat), head = new THREE.Mesh(g.head, mat);
+      head.position.y = g.headY; head.rotation.y = 0.5;
+      addInk(base, INK_PX.unit); addInk(head, INK_PX.unit);
+      group.add(base, head);
+      if (g.baseGlow.attributes.position) group.add(new THREE.Mesh(g.baseGlow, glow));
+      if (g.headGlow.attributes.position) { const hg = new THREE.Mesh(g.headGlow, glow); hg.position.y = g.headY; hg.rotation.y = 0.5; group.add(hg); }
+      group.position.copy(AWAY);
+      g.base.computeBoundingBox();
+      const top = g.headY + 1.4;
+      return { obj: group, size: top * 0.52, h: top * 0.5, dx: 0, dz: 0, done: () => { for (const x of [g.base, g.head, g.baseGlow, g.headGlow]) x.dispose(); } };
+    }
     if (key.startsWith('rat:')) {
       const t = +key.slice(4);
       const geo = gruntGeometry(t);
@@ -80,7 +125,7 @@ export class Portraits {
   // Drawn straight into a corner of the game canvas (so every material keeps
   // the shader it already has), copied out, then the game frame is redrawn
   // over it in the same moment, so the portrait never shows on screen.
-  _render(key) {
+  _render(key, opts = {}) {
     const v = this.view, r = v.renderer, canvas = r.domElement, pr = r.getPixelRatio();
     const W = Math.min(SIZE * SS, canvas.width, canvas.height);
     const sub = this._subject(key);
@@ -96,7 +141,7 @@ export class Portraits {
       bg: v.scene.background, hemi: v.hemi.color.getHex(), gnd: v.hemi.groundColor.getHex(), hi: v.hemi.intensity,
       sun: v.sun.color.getHex(), si: v.sun.intensity, res: inkUniforms.uRes.value.clone(), dpr: inkUniforms.uDpr.value,
     };
-    v.scene.background = BACKDROP;
+    v.scene.background = opts.clear ? KEY : BACKDROP;
     v.hemi.color.set(DAYLIGHT.sky); v.hemi.groundColor.set(DAYLIGHT.gnd); v.hemi.intensity = DAYLIGHT.hemi;
     v.sun.color.set(DAYLIGHT.sun); v.sun.intensity = DAYLIGHT.sunI;
     inkUniforms.uRes.value.set(W, W); inkUniforms.uDpr.value = (W / SIZE) * 1.1;
@@ -112,6 +157,7 @@ export class Portraits {
       const ox = out.getContext('2d');
       ox.imageSmoothingQuality = 'high';
       ox.drawImage(canvas, 0, canvas.height - W, W, W, 0, 0, SIZE, SIZE);
+      if (opts.clear) keyOut(ox);
     } finally {
       for (const o of hidden) o.visible = true;
       r.setScissorTest(false);
@@ -125,4 +171,21 @@ export class Portraits {
     }
     return out.toDataURL('image/png');
   }
+}
+
+// Turn the magenta backdrop see-through, with soft edges: how magenta a pixel
+// is sets its transparency, and the magenta mixed into its edge is taken out.
+function keyOut(ctx) {
+  const img = ctx.getImageData(0, 0, SIZE, SIZE), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const m = Math.min(r, b) - g;                 // 255 on the backdrop, about 0 on the model
+    const a = Math.max(0, Math.min(1, 1 - (m - 70) / 150));
+    if (a >= 1) continue;
+    if (a <= 0.02) { d[i + 3] = 0; continue; }
+    d[i] = Math.max(0, Math.min(255, (r - (1 - a) * 255) / a));
+    d[i + 2] = Math.max(0, Math.min(255, (b - (1 - a) * 255) / a));
+    d[i + 3] = Math.round(a * 255);
+  }
+  ctx.putImageData(img, 0, 0);
 }

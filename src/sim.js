@@ -96,6 +96,7 @@ export class Sim {
   constructor(opts = {}) {
     this.seed = opts.seed ?? 1234;
     this.unlocked = { cannon: !!opts.cannon };
+    this.ride = CFG.rides[opts.ride] ? opts.ride : null;   // the farmer rides a horse or a cow (Shop)
     this.autoSkip = !!opts.autoSkip;
     this.difficulty = CFG.difficulties[opts.difficulty] ? opts.difficulty : 'normal';
     this.cellCount = new Int32Array(GW * GH + 1);
@@ -169,6 +170,8 @@ export class Sim {
   }
 
   get waveCount() { return CFG.waves.length; }
+  // how far coins fly to the farmer (further with the cow's bell)
+  get magnetRadius() { return CFG.hero.magnetRadius * (this.ride ? CFG.rides[this.ride].magnetMul : 1); }
   // Difficulty: every enemy's health is scaled by this.
   get hpMul() { return CFG.difficulties[this.difficulty].hp * CFG.levelHp; }
   // Diamonds a wave pays on this difficulty.
@@ -571,7 +574,8 @@ export class Sim {
   _updateHero(dt) {
     const h = this.hero, H = CFG.hero;
     const active = this.state !== 'defeat';
-    const tx = active ? this.input.x * H.speed : 0, tz = active ? this.input.z * H.speed : 0;
+    const speed = H.speed * (this.ride ? CFG.rides[this.ride].speedMul : 1);
+    const tx = active ? this.input.x * speed : 0, tz = active ? this.input.z * speed : 0;
     const k = 1 - Math.exp(-14 * dt);
     h.vx += (tx - h.vx) * k; h.vz += (tz - h.vz) * k;
     h.x += h.vx * dt; h.z += h.vz * dt;
@@ -1380,7 +1384,7 @@ export class Sim {
 
   _updateCoins(dt) {
     const C = CFG.coin, h = this.hero, W = CFG.walk;
-    const R2 = CFG.hero.magnetRadius ** 2;
+    const R2 = this.magnetRadius ** 2;
     const cs = this.coins;
     let j = 0;
     for (let i = 0; i < cs.length; i++) {

@@ -321,6 +321,13 @@ export class Audio {
     const seq = win ? [523, 659, 784, 1046, 784, 1046, 1318] : [392, 349, 311, 262];
     seq.forEach((f, i) => this._osc(win ? 'triangle' : 'sawtooth', f, f, t + i * (win ? 0.11 : 0.22), win ? 0.25 : 0.35, win ? 0.14 : 0.08));
   }
+  // a hoof on hard sand: a short knock and a woody tick (riding the horse or cow)
+  clop(hi) {
+    if (!this._ok('clop', 60)) return;
+    const t = this.ctx.currentTime;
+    this._osc('triangle', hi ? 520 : 430, hi ? 300 : 250, t, 0.05, 0.05);
+    this._noise(t, 0.03, 0.04, 'bandpass', hi ? 2400 : 1900, 3);
+  }
   click() {
     if (!this._ok('click', 20)) return;
     const t = this.ctx.currentTime;

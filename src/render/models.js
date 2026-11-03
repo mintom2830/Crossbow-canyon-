@@ -501,7 +501,9 @@ export function heroParts() {
     .add(P.cyl(0.56, 0.56, 0.05, 16), PAL.straw, { y: 1.28 })                                   // hat brim
     .add(P.cyl(0.22, 0.28, 0.26, 12), PAL.straw, { y: 1.43 })
     .add(P.cyl(0.285, 0.285, 0.07, 12), 0xc8402f, { y: 1.34 })                                  // hat band
-    // pitchfork across the back
+    .build();
+  // pitchfork across the back (its own mesh, so a weapon skin can recolour it)
+  const fork = new GB()
     .add(P.cyl(0.035, 0.035, 1.5, 6), PAL.woodLight, { y: 0.95, z: -0.3, rz: 0.55 })
     .add(P.box(0.32, 0.05, 0.05), PAL.iron, { x: -0.4, y: 1.58, z: -0.3, rz: 0.55 })
     .add(P.cyl(0.02, 0.01, 0.3, 4), PAL.stoneLight, { x: -0.43, y: 1.78, z: -0.3, rz: 0.55 })
@@ -516,7 +518,100 @@ export function heroParts() {
     .add(P.cyl(0.07, 0.065, 0.34, 6), shirt, { y: -0.17 })
     .add(P.sph(0.08, 6, 5), PAL.skin, { y: -0.36 })
     .build();
-  return { body, leg, arm };
+  return { body, leg, arm, fork };
+}
+
+// ---------------------------------------------------------------- rides
+// A horse or a cow for the farmer to ride (Shop), at the farmer's own scale,
+// facing +Z. body carries the saddle; head turns about headPivot; one leg
+// geometry (hanging from its hip at the origin) is used at the four hips;
+// the tail swings about tailPivot; seat is the height of the saddle's top.
+export function mountParts(kind) {
+  const ink = PAL.ink;
+  if (kind === 'cow') {
+    const coat = 0xf6f1e8, spot = 0x2e2629, pink = 0xf2a6a6, horn = 0xf0e2c0, hoof = 0x3a302a;
+    const body = new GB()
+      .add(P.sph(1, 14, 10), coat, { y: 0.78, sx: 0.37, sy: 0.33, sz: 0.62 })
+      .add(P.sph(0.3, 10, 8), coat, { y: 0.8, z: -0.38 })
+      .add(P.sph(0.28, 10, 8), coat, { y: 0.8, z: 0.36 });
+    // black patches on both flanks and the back
+    for (const [x, y, z, r] of [[0.33, 0.82, 0.12, 0.17], [0.31, 0.7, -0.3, 0.13], [-0.33, 0.85, -0.12, 0.18], [-0.3, 0.68, 0.3, 0.12], [0.1, 1.08, -0.38, 0.13]]) {
+      body.add(P.sph(r, 9, 7), spot, { x, y, z, sx: x ? 0.45 : 1, sy: x ? 1 : 0.35, sz: 1.3 });
+    }
+    body
+      .add(P.sph(0.11, 8, 6), pink, { y: 0.47, z: -0.24, sy: 0.7 })                            // udder
+      .add(P.box(0.62, 0.05, 0.56), 0xc8402f, { y: 1.09, z: 0.04 })                             // saddle blanket
+      .add(P.box(0.5, 0.05, 0.44), 0xfff1d6, { y: 1.11, z: 0.04 })
+      .add(P.box(0.42, 0.08, 0.38), 0x7a4a26, { y: 1.15, z: 0.04 })                            // saddle
+      .add(P.cyl(0.04, 0.05, 0.12, 6), 0x5e3a1e, { y: 1.22, z: 0.2 });
+    const head = new GB()
+      .add(P.cyl(0.16, 0.2, 0.28, 8), coat, { y: 0.02, z: 0.06, rx: 0.9 })                      // neck
+      .add(P.box(0.3, 0.3, 0.36), coat, { y: 0.12, z: 0.28 })
+      .add(P.box(0.16, 0.16, 0.06), spot, { x: 0.08, y: 0.18, z: 0.45 })                       // patch round one eye
+      .add(P.box(0.32, 0.17, 0.16), pink, { y: 0.0, z: 0.47 })                                  // muzzle
+      .add(P.sph(0.025, 5, 4), ink, { x: -0.06, y: 0.02, z: 0.555 })
+      .add(P.sph(0.025, 5, 4), ink, { x: 0.06, y: 0.02, z: 0.555 })
+      .add(P.sph(0.035, 6, 4), ink, { x: -0.09, y: 0.19, z: 0.465 })                           // eyes
+      .add(P.sph(0.035, 6, 4), ink, { x: 0.09, y: 0.19, z: 0.465 })
+      .add(P.cone(0.04, 0.16, 6), horn, { x: -0.13, y: 0.33, z: 0.2, rz: 0.7 })                 // horns
+      .add(P.cone(0.04, 0.16, 6), horn, { x: 0.13, y: 0.33, z: 0.2, rz: -0.7 })
+      .add(P.box(0.14, 0.05, 0.08), coat, { x: -0.22, y: 0.2, z: 0.2, rz: 0.25 })               // ears
+      .add(P.box(0.14, 0.05, 0.08), coat, { x: 0.22, y: 0.2, z: 0.2, rz: -0.25 })
+      .add(P.box(0.06, 0.04, 0.06), pink, { x: -0.27, y: 0.21, z: 0.21 })
+      .add(P.box(0.06, 0.04, 0.06), pink, { x: 0.27, y: 0.21, z: 0.21 })
+      .add(P.tor(0.17, 0.03, 5, 14), 0xc8402f, { y: -0.08, z: 0.06, rx: Math.PI / 2 + 0.9 })   // collar and bell
+      .add(P.sph(0.07, 8, 6), PAL.gold, { y: -0.24, z: 0.18 })
+      .add(P.cyl(0.02, 0.02, 0.03, 5), PAL.goldDark, { y: -0.3, z: 0.18 });
+    const leg = new GB()
+      .add(P.cyl(0.085, 0.07, 0.44, 7), coat, { y: -0.22 })
+      .add(P.cyl(0.075, 0.085, 0.1, 7), hoof, { y: -0.49 })
+      .build();
+    const tail = new GB()
+      .add(P.cyl(0.025, 0.03, 0.5, 5), coat, { y: -0.24, z: -0.06, rx: -0.25 })
+      .add(P.sph(0.07, 7, 5), spot, { y: -0.5, z: -0.12, sy: 1.4 })
+      .build();
+    return { body: body.build(), head: head.build(), headPivot: [0, 0.94, 0.56], leg, legs: [[-0.19, 0.54, 0.36], [0.19, 0.54, 0.36], [-0.19, 0.54, -0.38], [0.19, 0.54, -0.38]], tail, tailPivot: [0, 0.98, -0.6], seat: 1.19 };
+  }
+  // the horse: chestnut with a dark mane, a white blaze and a blue saddle cloth
+  const coat = 0x9a6236, dark = 0x4a2a18, muzzle = 0xc89a72, hoof = 0x2e2420;
+  const body = new GB()
+    .add(P.sph(1, 14, 10), coat, { y: 0.8, sx: 0.3, sy: 0.3, sz: 0.62 })
+    .add(P.sph(0.28, 10, 8), coat, { y: 0.82, z: 0.42 })
+    .add(P.sph(0.3, 10, 8), coat, { y: 0.84, z: -0.42 })
+    .add(P.box(0.6, 0.04, 0.62), 0x2f6fb8, { y: 1.07, z: 0.02 })                               // saddle cloth with a gold edge
+    .add(P.box(0.64, 0.03, 0.66), PAL.gold, { y: 1.055, z: 0.02 })
+    .add(P.box(0.44, 0.09, 0.46), 0x7a3a22, { y: 1.12, z: 0.02 })                              // saddle
+    .add(P.box(0.4, 0.06, 0.12), 0x5e2a16, { y: 1.18, z: -0.18 })
+    .add(P.cyl(0.04, 0.05, 0.14, 6), 0x5e2a16, { y: 1.22, z: 0.22 })                           // horn
+    .add(P.box(0.03, 0.34, 0.03), 0x3a2416, { x: -0.31, y: 0.92, z: 0.02 })                    // stirrups
+    .add(P.box(0.03, 0.34, 0.03), 0x3a2416, { x: 0.31, y: 0.92, z: 0.02 })
+    .add(P.box(0.08, 0.03, 0.12), PAL.iron, { x: -0.31, y: 0.75, z: 0.02 })
+    .add(P.box(0.08, 0.03, 0.12), PAL.iron, { x: 0.31, y: 0.75, z: 0.02 });
+  const head = new GB()
+    .add(P.cyl(0.12, 0.19, 0.62, 8), coat, { y: 0.22, z: 0.1, rx: 0.55 })                     // neck
+    .add(P.cap(0.13, 0.3, 4, 8), coat, { y: 0.5, z: 0.36, rx: 1.15 })                          // head
+    .add(P.sph(0.13, 8, 6), muzzle, { y: 0.4, z: 0.55, sz: 1.15 })
+    .add(P.box(0.05, 0.03, 0.3), 0xfff6e8, { y: 0.56, z: 0.42, rx: 1.15 })                     // blaze
+    .add(P.sph(0.025, 5, 4), ink, { x: -0.05, y: 0.42, z: 0.67 })                              // nostrils
+    .add(P.sph(0.025, 5, 4), ink, { x: 0.05, y: 0.42, z: 0.67 })
+    .add(P.sph(0.035, 6, 4), ink, { x: -0.11, y: 0.58, z: 0.38 })                              // eyes
+    .add(P.sph(0.035, 6, 4), ink, { x: 0.11, y: 0.58, z: 0.38 })
+    .add(P.cone(0.05, 0.16, 6), coat, { x: -0.07, y: 0.74, z: 0.24, rx: -0.2 })                // ears
+    .add(P.cone(0.05, 0.16, 6), coat, { x: 0.07, y: 0.74, z: 0.24, rx: -0.2 })
+    .add(P.box(0.27, 0.04, 0.04), 0x3a2416, { y: 0.47, z: 0.48 })                               // bridle
+    .add(P.box(0.03, 0.03, 0.42), 0x3a2416, { x: -0.14, y: 0.42, z: 0.24, rx: -0.5 })         // reins
+    .add(P.box(0.03, 0.03, 0.42), 0x3a2416, { x: 0.14, y: 0.42, z: 0.24, rx: -0.5 });
+  for (let i = 0; i < 6; i++) head.add(P.box(0.06, 0.16, 0.12), dark, { y: 0.06 + i * 0.12, z: -0.06 + i * 0.07, rx: 0.55 });   // mane
+  head.add(P.box(0.08, 0.1, 0.1), dark, { y: 0.72, z: 0.33, rx: 0.9 });                         // forelock
+  const leg = new GB()
+    .add(P.cyl(0.075, 0.058, 0.54, 7), coat, { y: -0.27 })
+    .add(P.cyl(0.07, 0.082, 0.1, 7), hoof, { y: -0.56 })
+    .build();
+  const tail = new GB()
+    .add(P.cyl(0.05, 0.11, 0.62, 6), dark, { y: -0.26, z: -0.12, rx: -0.42 })
+    .add(P.cone(0.1, 0.22, 6), dark, { y: -0.62, z: -0.27, rx: Math.PI - 0.42 })
+    .build();
+  return { body: body.build(), head: head.build(), headPivot: [0, 0.98, 0.52], leg, legs: [[-0.16, 0.62, 0.42], [0.16, 0.62, 0.42], [-0.16, 0.62, -0.42], [0.16, 0.62, -0.42]], tail, tailPivot: [0, 0.98, -0.62], seat: 1.17 };
 }
 
 // ---------------------------------------------------------------- towers

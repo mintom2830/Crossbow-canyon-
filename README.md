@@ -74,6 +74,45 @@ If your device is set to reduce motion, the screen shake is cut to a faint tremo
 
 When `dist/index.html` is hosted on a website, a phone can add it to its home screen, and it then opens full-screen like an app.
 
+## Title screen
+
+The menu floats over the live canyon on wooden signs, in the style of the game's own art:
+- **The logo:** "Crossbow" in gold and "Canyon" in blue, with thick ink outlines, under a crossbow with flaming arrows. The farmer (riding your horse or cow, if you have one) and the Rat King stand on either side of it, drawn in 3D by the game itself.
+- A wooden plank with the tagline, and your **diamonds** with a green **+** that opens the Shop.
+- **Map cards** with a picture of each map (red-rock arch, the lone tree on the hill, the oasis), the stars you have earned on it, a glow round the one picked and a padlock on maps still locked.
+- **Difficulty** planks with a gold crown over the one picked, and a plank saying what a full clear pays.
+- A big green **New game** button with a sparkling diamond, wooden **How to play** and **Settings** buttons, a purple **Shop** (it says when there is something you can afford) and the **Rat guide**.
+- On a laptop-sized screen it all fits without scrolling; on a phone it scrolls.
+
+## Shop
+
+Spend the diamonds you earn on three tabs. Every purchase asks before spending, and everything is saved in the browser.
+
+**Towers:** the Cannon Tower (100 diamonds), with its full ability list (see below).
+
+**Rides:** pick how the farmer gets around. The ride you pick carries the farmer into every game, and the title-screen farmer rides it too.
+
+| Ride | Cost | What it does |
+|---|---|---|
+| On foot | free | the farmer runs at the usual speed |
+| **Horse** | 50 diamonds | the fastest: the farmer gallops **50% faster** |
+| **Cow** | 50 diamonds | **35% faster**, and her bell pulls coins in from **40% further away** (the coin ring on the ground grows to match) |
+
+The horse is chestnut with a dark mane, a white blaze, a blue saddle cloth and stirrups; the cow is black and white with little horns, a pink nose and a gold bell on a red collar. The farmer sits in the saddle holding the reins and leans in at a gallop. The legs swing in a gallop, the body rocks, the head nods, the tail flicks and the hooves kick up dust, with a clip-clop as you ride.
+
+**Weapon skins:** repaint every crossbow and cannon tower, their arrows and the farmer's pitchfork. Skins only change the look. Each card shows a 3D tower in that skin and its colours.
+
+| Skin | Cost | Look |
+|---|---|---|
+| Classic | free | wood, iron and stone, as built |
+| Candy | 30 | strawberry pink with mint trim |
+| Jungle | 40 | leafy green with sunny yellow |
+| Frost | 60 | ice blue and snow white |
+| Golden | 80 | solid gold |
+| Lava | 100 | black rock with glowing orange |
+
+A skin keeps each part's own light and shade: every colour is matched by its brightness to the skin's dark, middle and light shades, and brightly coloured trim takes the skin's accent colour.
+
 ## Three maps
 
 Pick the map on the title screen (the scene behind the menu switches to it straight away). All three maps lead to the same town and use the same 16 waves, towers and bosses.
@@ -336,7 +375,7 @@ Hard pays double every wave (**100** for a full clear). Easy pays half, rounded 
 - A skipped wave pays when the merged crowd is cleared.
 - Restarting the level starts a new run.
 
-In the **Armory** on the title screen, the Cannon Tower costs **100 diamonds**: two full clears on Normal, or one on Hard. The game asks you to confirm before spending them, and the Armory button glows gold once you can afford it. Diamonds and unlocks are saved in the browser.
+In the **Shop** (Towers tab) the Cannon Tower costs **100 diamonds**: two full clears on Normal, or one on Hard. The game asks you to confirm before spending them. Diamonds and unlocks are saved in the browser.
 
 Once the cannon is unlocked, a **Build** picker appears under the town hall's health bar in a game: tap the crossbow or cannon button, or press `1` / `2` (`Q` toggles). Empty build pads then show which tower they make and its price. A cannon costs about 25% more gold than a crossbow. Upgrade pads beside a cannon upgrade that cannon.
 
@@ -424,7 +463,7 @@ At the same level a cannon kills far more rats than a crossbow, on either path. 
 Progress is saved in the browser's local storage, and every access is guarded so private windows still play normally.
 - **Checkpoint:** saved at the start of every wave, after every purchase between waves and every 5 s between waves. **Continue** on the title screen resumes from it.
 - **Wave start:** used by **Retry wave** after a defeat. It restores the towers and gold you had when that wave began.
-- **Settings and progress:** sound, music, graphics level, Auto skip, game speed, difficulty, the map last played, tutorial done, best wave, best stars and hardest difficulty beaten (overall and for each map), diamonds and unlocks.
+- **Settings and progress:** sound, music, graphics level, Auto skip, game speed, difficulty, the map last played, tutorial done, best wave, best stars and hardest difficulty beaten (overall and for each map), diamonds, unlocks (the cannon, the horse and the cow), the weapon skins you own, and the ride and skin in use.
 - Checkpoints remember the game's map and difficulty and any gold already poured into a repair. A save only loads on its own map; saves from before Level 2 load on Level 1.
 
 ## Performance
@@ -446,6 +485,8 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 **Headless gameplay tests** (77) check:
 - The maps (each check runs on both): the road never cuts through a plateau, every tower slot can reach the road, the town stays clear of the road, and upgrade-choice pads fit beside their towers.
 - Level 2's hill: the road climbs it and the summit rises above the road; the tree and the picnic sit on the summit, clear of the road, the towers and their pads; the town stays on flat ground; towers never float over the slope, and every tower spot is flat out to 2 units; rats walk on the slope, arrows strike at their height and cannonballs land on the slope. A save remembers its map and never loads on another one.
+- Rides: each costs 50 diamonds; the horse carries the farmer 50% faster and the cow 35% faster; the cow's reach picks up a coin the farmer on foot would leave; no ride unless a real one is picked.
+- Weapon skins: classic is free and unpainted; at least five more cost diamonds, each with its own colours.
 - Level 3's oasis: the road keeps clear of the pool, crosses the stream exactly once (the bridge) and passes the pool on all four sides; the arch's pillars, the palms and the camels stand off the road and out of the water; every tower spot and pad is on dry ground clear of the landmarks; the farmer stops at the pool's edge and walks round the arch's pillars.
 - Level 3 balance: the bot wins Normal with 1–2 stars, a distracted player still wins, no upgrades falls by wave 8 and idling by wave 3; cannons win Hard with 3 stars, crossbows alone do not comfortably hold Hard, and Easy is 3 stars.
 - Aiming: crossbows and cannons turn round to face the rats before they shoot, and never fire more than about 25° off their target. Arrows close in on the one rat they were fired at. Cannonballs rise above the barrel, land on their aim point and catch groups.
@@ -523,7 +564,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - Tower attacks drawn in the browser: tower heads match the aim, crossbows tilt down at their rat, cannon barrels rise for the shot, and every cannonball in the air has a landing ring.
 - Rat animations: all three rat types are drawn with their own models, each rat gets its own walk phase, no rat appears before the burrow, rats at the gate carry an attack phase, defeated rats keep animating and are then removed, and a defeated giant rat falls over before it disappears.
 - All seven tower levels rendering.
-- The Armory: unlock disabled without diamonds, confirmation before spending 100, purchase saved.
+- The Shop: the cannon's unlock is disabled without diamonds, asks before spending 100 and is saved; the + by the diamonds opens the Shop; the horse costs 50 and the farmer then rides it (on the title screen too); the Candy skin costs 30 and the view wears it, while Lava (100) is out of reach; in a game the farmer rides the horse 50% faster and the towers are repainted in the skin.
 - Picking the cannon, building it by walking onto a pad, and upgrading it to level 3. Two choice pads then appear, and the tower card offers both paths. It goes on to a level 7 Rapid Launcher, a second cannon becomes a level 7 Thunder Mortar, and together they fight a wave with rocket salvos and Novas.
 - Diamonds: paid wave by wave (2 after two waves), shown on the defeat screen when the town hall falls on wave 3, not paid twice after Retry wave, and 50 in total after clearing the level.
 - Boss waves: the red "Boss next" notice before wave 5, the "Boss incoming!" banner, red vignette, burrow alarm and ☠ edge arrow 4–5 s before the Rat Warlord climbs out, the appearance toast, the Warlord's own model, and its health bar, which goes away once it is defeated.
@@ -566,7 +607,8 @@ src/bot.js           autoplayer used by tests and the title-screen demo (plans a
 src/main.js          game shell: loop, screens, HUD, saving, tutorial
 src/towerinfo.js     tower card text: abilities, stats and next-upgrade preview
 src/ratguide.js      Rat guide entries: every enemy's trait, how to beat it, first wave
-src/render/portraits.js  3D enemy portraits for the Rat guide and New enemy card
+src/render/portraits.js  3D portraits: enemies (Rat guide, New enemy card), rides and skins (Shop), the title-screen farmer and Rat King
+src/render/skins.js  weapon skins: repaints towers, arrows and the pitchfork
 src/input.js         keyboard + floating touch/mouse joystick
 src/audio.js         synthesized SFX and music (WebAudio)
 src/save.js          guarded localStorage

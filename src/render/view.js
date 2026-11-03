@@ -10,9 +10,10 @@ import { toon, toonGradient, INK_PX, inkUniforms, addInk, inkInstanced, inkGeome
 import { ratMaterial, attackPhase } from './ratanim.js';
 import { TownView } from './town.js';
 import { Portraits } from './portraits.js';
+import { applySkin, skinColor } from './skins.js';
 import { turn } from '../town.js';
 import {
-  PAL, gruntGeometry, gruntInkGeometry, SHIELDLESS, giantParts, heroParts, towerParts, cannonParts, CANNON_REST_PITCH, fortressGeometry, houseParts, hallGlow,
+  PAL, gruntGeometry, gruntInkGeometry, SHIELDLESS, giantParts, heroParts, mountParts, towerParts, cannonParts, CANNON_REST_PITCH, fortressGeometry, houseParts, hallGlow,
   windmillSailsGeometry, WINDMILL_HUB,
   wallGeometry, coinGeometry, boltGeometry,
 } from './models.js';
@@ -400,10 +401,14 @@ export class View {
     const armL = new THREE.Group(), armR = new THREE.Group();
     armL.add(new THREE.Mesh(parts.arm, mat)); armR.add(new THREE.Mesh(parts.arm, mat));
     armL.position.set(-0.33, 0.86, 0); armR.position.set(0.33, 0.86, 0);
+    const fork = new THREE.Mesh(parts.fork, mat);
+    // fb: the farmer; inner also carries the ride (horse or cow) when there is one
+    const fb = new THREE.Group();
+    fb.add(body, fork, legL, legR, armL, armR);
     const inner = new THREE.Group();
-    inner.add(body, legL, legR, armL, armR);
+    inner.add(fb);
     inner.scale.setScalar(1.35);
-    for (const m of [body, legL.children[0], legR.children[0], armL.children[0], armR.children[0]]) addInk(m, INK_PX.unit);
+    for (const m of [body, fork, legL.children[0], legR.children[0], armL.children[0], armR.children[0]]) addInk(m, INK_PX.unit);
     group.add(inner);
     group.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     // magnet ring hint on the ground
@@ -411,7 +416,36 @@ export class View {
     const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, depthWrite: false }));
     ring.position.y = 0.09;
     group.add(ring);
-    return { group, inner, legL, legR, armL, armR, ring, phase: 0 };
+    return { group, inner, fb, fork, mat, legL, legR, armL, armR, ring, phase: 0, gallop: 0, rideKind: null, mounts: {}, mount: null };
+  }
+  // the horse or cow under the farmer, built the first time it is needed
+  _mount(kind) {
+    const hv = this.hero;
+    if (hv.mounts[kind]) return hv.mounts[kind];
+    const parts = mountParts(kind), mat = hv.mat;
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(parts.body, mat);
+    const head = new THREE.Group(); head.position.set(...parts.headPivot);
+    const headMesh = new THREE.Mesh(parts.head, mat); head.add(headMesh);
+    const tail = new THREE.Group(); tail.position.set(...parts.tailPivot);
+    const tailMesh = new THREE.Mesh(parts.tail, mat); tail.add(tailMesh);
+    const legs = parts.legs.map((p) => { const g = new THREE.Group(); g.position.set(...p); const m = new THREE.Mesh(parts.leg, mat); g.add(m); addInk(m, INK_PX.unit); return g; });
+    for (const m of [body, headMesh, tailMesh]) addInk(m, INK_PX.unit);
+    group.add(body, head, tail, ...legs);
+    group.visible = false;
+    hv.inner.add(group);
+    return (hv.mounts[kind] = { group, head, tail, legs, seat: parts.seat });
+  }
+  // Paint the towers, their arrows and the farmer's pitchfork in a weapon skin
+  setSkin(id) {
+    id = CFG.skins[id] ? id : 'classic';
+    if (this.skin === id) return;
+    this.skin = id;
+    for (const set of [this.towerGeo, this.cannonGeo, this.rapidGeo]) for (const g of set) if (g) { applySkin(g.base, id); applySkin(g.head, id); if (g.gun) applySkin(g.gun, id); }
+    applySkin(this.hero.fork.geometry, id);
+    if (!this.boltBase) this.boltBase = this.boltColors.map((c) => c.clone());
+    this.boltColors.forEach((c, i) => { const b = this.boltBase[i]; if (id === 'classic' || i >= 6) c.copy(b); else skinColor(id, 0.95, 0.95, 0.95, c); });
+    this.shadowDirty = true;
   }
 
   // -------------------------------------------------------------- giants
@@ -1260,14 +1294,47 @@ export class View {
     let dy = targetYaw - hv.inner.rotation.y; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
     hv.inner.rotation.y += dy * Math.min(1, dt * 14);
     const speed = Math.hypot(h.vx, h.vz);
-    hv.phase += dt * (6 + speed * 1.6);
-    const sw = h.moving ? Math.sin(hv.phase) : 0;
-    hv.legL.rotation.x = sw * 0.7; hv.legR.rotation.x = -sw * 0.7;
-    hv.armL.rotation.x = -sw * 0.6; hv.armR.rotation.x = sw * 0.6;
-    hv.inner.position.y = h.moving ? Math.abs(Math.cos(hv.phase)) * 0.1 : Math.sin(t * 2) * 0.02;
+    // the ride (Shop): show the horse or cow the farmer is sitting on
+    const rideKind = sim.ride || null;
+    if (rideKind !== hv.rideKind) {
+      if (hv.mount) hv.mount.group.visible = false;
+      hv.rideKind = rideKind;
+      hv.mount = rideKind ? this._mount(rideKind) : null;
+      if (hv.mount) hv.mount.group.visible = true;
+      hv.fb.position.set(0, hv.mount ? hv.mount.seat - 0.4 : 0, hv.mount ? -0.02 : 0);
+      hv.ring.scale.setScalar(sim.magnetRadius / CFG.hero.magnetRadius);
+    }
+    if (hv.mount) {
+      // galloping: the legs swing in a gallop, the body rocks, the head nods and the tail flicks
+      const M = hv.mount, a = h.moving ? Math.min(1, speed / 6) : 0;
+      hv.gallop += dt * (h.moving ? 6 + speed * 0.9 : 0);
+      const p = hv.gallop;
+      M.legs[0].rotation.x = Math.sin(p) * 0.8 * a; M.legs[1].rotation.x = Math.sin(p + 0.6) * 0.8 * a;
+      M.legs[2].rotation.x = Math.sin(p + Math.PI) * 0.8 * a; M.legs[3].rotation.x = Math.sin(p + Math.PI + 0.6) * 0.8 * a;
+      M.group.rotation.x = Math.sin(p) * 0.06 * a;
+      M.head.rotation.x = Math.sin(p + 0.8) * 0.14 * a + (h.moving ? 0 : Math.sin(t * 1.3) * 0.06);
+      M.tail.rotation.x = 0.2 + Math.sin(p * 0.5) * 0.3 * a + Math.sin(t * 2.1) * 0.08;
+      M.tail.rotation.z = Math.sin(t * 1.7) * 0.25;
+      // the farmer sits astride, holding the reins, leaning in at a gallop
+      hv.legL.rotation.set(-0.35, 0, -0.55); hv.legR.rotation.set(-0.35, 0, 0.55);
+      hv.armL.rotation.set(-0.95 + Math.sin(p) * 0.08 * a, 0, 0.15); hv.armR.rotation.set(-0.95 + Math.sin(p) * 0.08 * a, 0, -0.15);
+      hv.fb.rotation.x = 0.12 * a;
+      hv.inner.position.y = h.moving ? Math.abs(Math.sin(p)) * 0.14 * a : Math.sin(t * 2) * 0.012;
+      // dust kicked up by the hooves
+      if (h.moving && speed > 4 && this.dustBudget >= 1 && Math.random() < dt * 6) { this.dustBudget--; this.fx.puff(h.x - Math.sin(h.facing) * 0.9, h.y + 0.15, h.z - Math.cos(h.facing) * 0.9, 0xeadbb8, 0.4); }
+    } else {
+      hv.phase += dt * (6 + speed * 1.6);
+      const sw = h.moving ? Math.sin(hv.phase) : 0;
+      hv.legL.rotation.set(sw * 0.7, 0, 0); hv.legR.rotation.set(-sw * 0.7, 0, 0);
+      hv.armL.rotation.set(-sw * 0.6, 0, 0); hv.armR.rotation.set(sw * 0.6, 0, 0);
+      hv.fb.rotation.x = 0;
+      hv.inner.position.y = h.moving ? Math.abs(Math.cos(hv.phase)) * 0.1 : Math.sin(t * 2) * 0.02;
+    }
     hv.ring.material.opacity = 0.1 + (h.collect > 0 ? 0.25 : 0) + (sim.coins.length ? 0.06 : 0);
     hv.ring.position.y = groundHeight(h.x, h.z) - h.y + 0.09;
-    _p.set(h.x, h.y + 0.06, h.z); _s.set(1.3, 1, 1.3); _m.compose(_p, _q.identity(), _s); bm.setMatrixAt(bn++, _m);
+    if (hv.mount) { _p.set(h.x, h.y + 0.06, h.z); _s.set(1.45, 1, 2.3); _q.setFromAxisAngle(UP, hv.inner.rotation.y); }
+    else { _p.set(h.x, h.y + 0.06, h.z); _s.set(1.3, 1, 1.3); _q.identity(); }
+    _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m);
     // ---- townsfolk go about their day (and react to the rats)
     this.town.update(dt, sim);
     bn = this.town.writeBlobs(bm, bn, 1500);

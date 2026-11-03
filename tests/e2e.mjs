@@ -210,7 +210,7 @@ await test('Auto skip: button and T key toggle it, it is saved, and the next wav
   });
   assert(t.state === 'wave' && t.wave === 1, 'wave 2 did not start automatically');
   assert(t.gap <= 3.05, `auto start took ${t.gap}s`);
-  // the setting survives a reload (same commit wait as the Armory test)
+  // the setting survives a reload (same commit wait as the Shop test)
   await page.waitForTimeout(6000);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__cc && window.__cc.screen === 'titleScreen');
@@ -696,7 +696,7 @@ await test('cartoon look: every lit surface is toon shaded and models get ink ou
       bad, toon, inks,
       rats: v.ratMeshes.every((m) => m.userData.ink && m.userData.ink.isInstancedMesh && m.userData.ink.count === m.count),
       ratCount: v.ratMeshes.reduce((a, m) => a + m.count, 0),
-      hero: !!v.hero.inner.children[0].userData.ink, keep: !!v.fortress.userData.ink,
+      hero: !!v.hero.fb.children[0].userData.ink, keep: !!v.fortress.userData.ink,
       terrain: !!v.env.group.children.find((m) => m.userData.ink),
       giant: !!(giant && giant.group.children[0].children[0].userData.ink),
       tower: !!(tower && tower.base.userData.ink && tower.base.userData.ink.visible && tower.headMesh.userData.ink.visible),
@@ -1111,31 +1111,76 @@ await test('Rat guide opens from the title screen', async () => {
   await ctx.close();
 });
 
-await test('Armory: the cannon costs 100 diamonds, unlocks after confirming, and is saved', async () => {
+await test('Shop: the cannon costs 100 diamonds; a horse (50) carries the farmer faster; a weapon skin repaints the towers; all saved', async () => {
   const { ctx, page, errors } = await open();
-  await page.click('#armoryBtn');
-  assert(await visible(page, '#armoryScreen'), 'armory hidden');
+  await page.click('#shopBtn');
+  assert(await visible(page, '#shopScreen'), 'shop hidden');
   const xb = await page.locator('.tower-card').first().locator('.levels li').allTextContents();
   assert(xb.length === 7 && xb[0].includes('Single Shot') && xb[5].includes('Frost Arrows') && xb[6].includes('Crystal Storm'), 'crossbow ability list missing');
   assert(await page.isDisabled('#buyCannon'), 'unlock button should be disabled with 0 diamonds');
   assert((await page.textContent('#cannonNote')).includes('100 more'), 'missing diamonds note');
   assert((await page.textContent('#buyCannon')).includes('100'), 'unlock button shows the wrong price');
-  await page.click('#armoryScreen [data-back]');
+  await page.click('#shopScreen [data-back]');
   const prog = await g(page, () => { const p = JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1') || '{}'); p.diamonds = 230; return JSON.stringify(p); });
   await setStorageAndReload(page, 'crossbow-canyon:progress:v1', prog);
   await page.waitForFunction(() => document.getElementById('gemVal').textContent === '230', null, { timeout: 5000 }).catch(() => {});
-  assert((await page.textContent('#gemVal')) === '230', 'title diamond count: ' + (await page.textContent('#gemVal')) + ' / stored ' + (await g(page, () => localStorage.getItem('crossbow-canyon:progress:v1') + ' keys=' + Object.keys(localStorage).join(','))));
-  await page.click('#armoryBtn');
+  assert((await page.textContent('#gemVal')) === '230', 'title diamond count: ' + (await page.textContent('#gemVal')));
+  assert(/can buy/.test(await page.textContent('#shopInfo')), 'the Shop button should say there is something to buy');
+  // the + by the diamonds opens the Shop too
+  await page.click('#gemPlus');
+  assert(await visible(page, '#shopScreen'), 'the + did not open the shop');
   await page.click('#buyCannon');
   assert(await visible(page, '#confirmScreen'), 'no confirmation before spending diamonds');
   await page.click('#confirmNo');
-  assert(await visible(page, '#armoryScreen'), 'cancel did not return to the armory');
+  assert(await visible(page, '#shopScreen'), 'cancel did not return to the shop');
   await page.click('#buyCannon');
   await page.click('#confirmYes');
-  const p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
+  let p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
   assert(p.diamonds === 130 && p.unlocks.cannon === true, 'purchase not saved ' + JSON.stringify(p));
   assert(await visible(page, '#cannonOwned'), 'unlocked badge hidden');
-  await page.screenshot({ path: `${SHOTS}/armory-unlocked.png` });
+  await page.screenshot({ path: `${SHOTS}/shop-towers.png` });
+  // rides: buy the horse for 50 and the farmer rides it
+  await page.click('[data-tab="rides"]');
+  await page.waitForFunction(() => document.querySelector('[data-item="horse"] img').naturalWidth > 0, null, { timeout: 20000 });
+  assert((await page.textContent('[data-item="none"] .btn')).includes('Walking'), 'on foot should be picked at first');
+  assert((await page.textContent('[data-buy="horse"]')).includes('50'), 'the horse should cost 50');
+  await page.click('[data-buy="horse"]');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => window.__cc.screen === 'shopScreen');
+  p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
+  let st = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:settings:v1')));
+  assert(p.diamonds === 80 && p.unlocks.horse === true && st.ride === 'horse', 'horse not bought and ridden: ' + JSON.stringify({ p, ride: st.ride }));
+  assert((await page.textContent('[data-item="horse"] .btn')).includes('Riding'), 'the horse card should say Riding');
+  assert((await g(page, () => window.__cc.sim.ride)) === 'horse', 'the title-screen farmer is not riding');
+  await page.screenshot({ path: `${SHOTS}/shop-rides.png` });
+  // skins: buy Candy for 30 and it is worn
+  await page.click('[data-tab="skins"]');
+  await page.waitForFunction(() => document.querySelector('[data-item="candy"] img').naturalWidth > 0, null, { timeout: 20000 });
+  await page.click('[data-buy="candy"]');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => window.__cc.screen === 'shopScreen');
+  p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
+  st = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:settings:v1')));
+  assert(p.diamonds === 50 && p.skins.includes('candy') && st.skin === 'candy' && (await g(page, () => window.__cc.view.skin)) === 'candy', 'candy skin not bought and worn');
+  assert(await page.isDisabled('[data-buy="lava"]'), 'Lava (100) should be out of reach with 50 diamonds');
+  await page.screenshot({ path: `${SHOTS}/shop-skins.png` });
+  // in a game: the farmer rides the horse, 50% faster, and the towers wear the skin
+  await page.click('#shopScreen [data-back]');
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  const r = await g(page, () => {
+    const c = window.__cc, s = c.sim, v = c.view;
+    s.setInput(1, 0); const x0 = s.hero.x;
+    for (let i = 0; i < 60; i++) s.step(1 / 60);
+    s.setInput(0, 0);
+    const geo = v.towerGeo[1].base, a = geo.attributes.color.array, b = geo.userData.baseColors;
+    let diff = 0; for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
+    return { ride: s.ride, dist: s.hero.x - x0, mount: !!(v.hero.mount && v.hero.mount.group.visible), painted: diff > 1 };
+  });
+  assert(r.ride === 'horse' && r.mount && r.dist > 9.5 && r.painted, 'riding / skin in the game: ' + JSON.stringify(r));
+  await page.keyboard.down('ArrowRight'); await page.waitForTimeout(600);
+  await page.screenshot({ path: `${SHOTS}/riding-horse.png` });
+  await page.keyboard.up('ArrowRight');
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

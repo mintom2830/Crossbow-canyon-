@@ -1495,6 +1495,33 @@ test('balance (Level 3, Hard and Easy): cannons win Hard with 3 stars; crossbows
     assert(e.result === 'victory' && e.stars === 3, `Level 3 Easy: ${e.result} ${e.stars}`);
   } finally { setLevel(1); }
 });
+test('rides (Shop): the horse and the cow cost 50 diamonds; the farmer rides 50% / 35% faster, the cow pulls coins in from further', () => {
+  assert(CFG.rides.horse.cost === 50 && CFG.rides.cow.cost === 50, 'each ride costs 50 diamonds');
+  const dist = (ride) => { const s = new Sim({ seed: 1, ride }); s.setInput(1, 0); const x0 = s.hero.x; run(s, 1); return { d: s.hero.x - x0, s }; };
+  const walk = dist(null), horse = dist('horse'), cow = dist('cow');
+  assert(walk.s.ride === null && dist('unicorn').s.ride === null, 'no ride unless a real one is picked');
+  assert(Math.abs(horse.d / walk.d - 1.5) < 0.05, `horse ${horse.d.toFixed(2)} vs walk ${walk.d.toFixed(2)}`);
+  assert(Math.abs(cow.d / walk.d - 1.35) < 0.05, `cow ${cow.d.toFixed(2)} vs walk ${walk.d.toFixed(2)}`);
+  assert(Math.abs(cow.s.magnetRadius - CFG.hero.magnetRadius * 1.4) < 1e-9 && horse.s.magnetRadius === CFG.hero.magnetRadius, 'coin reach');
+  // the cow's wider reach really picks up a coin the farmer on foot would leave
+  const pick = (ride) => {
+    const s = new Sim({ seed: 1, ride });
+    s.coins.length = 0;
+    s._dropCoin(s.hero.x + CFG.hero.magnetRadius * 1.25, s.hero.z, 0.2, 1, 0);
+    const g0 = s.gold; run(s, 3); return s.gold - g0;
+  };
+  assert(pick('cow') > 0 && pick(null) === 0, 'the cow should reach a coin just out of the farmer\'s reach');
+});
+
+test('weapon skins (Shop): classic is free, the rest cost diamonds and each has its own colours', () => {
+  const S = CFG.skins;
+  assert(S.classic.cost === 0 && !S.classic.colors, 'classic is the free, unpainted look');
+  const paid = Object.entries(S).filter(([k]) => k !== 'classic');
+  assert(paid.length >= 5, 'at least five skins to buy');
+  for (const [k, v] of paid) assert(v.cost > 0 && v.colors && v.colors.length === 3 && v.name && v.blurb, 'skin ' + k);
+  assert(new Set(paid.map(([, v]) => v.colors.join())).size === paid.length, 'every skin looks different');
+});
+
 test('performance: one simulation step stays well under 1 ms', () => {
   const r = balance.bot1 || runLevel('bot', 1);
   assert(r.avgStepMs < 1, 'avg step ' + r.avgStepMs);

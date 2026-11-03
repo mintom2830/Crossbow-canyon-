@@ -15,7 +15,14 @@ const TOWER_NAMES = CROSSBOW_ABILITIES.map((a) => (a ? a[0] : ''));
 const FIXED = CFG.fixedDt;
 const settings = Save.get('settings', DEFAULT_SETTINGS);
 let progress = Save.get('progress', DEFAULT_PROGRESS);
-progress.unlocks = { cannon: false, ...(progress.unlocks || {}) };
+progress.unlocks = { cannon: false, horse: false, cow: false, ...(progress.unlocks || {}) };
+progress.skins = Array.isArray(progress.skins) ? progress.skins.filter((k) => CFG.skins[k]) : [];
+if (!progress.skins.includes('classic')) progress.skins.unshift('classic');
+// Shop: the ride and the weapon skin in use (only ever one the player owns)
+const rideOwned = (k) => !!(CFG.rides[k] && progress.unlocks[k]);
+const skinOwned = (k) => !!CFG.skins[k] && progress.skins.includes(k);
+const currentRide = () => (rideOwned(settings.ride) ? settings.ride : null);
+const currentSkin = () => (skinOwned(settings.skin) ? settings.skin : 'classic');
 progress.diamonds = Math.max(0, progress.diamonds | 0);
 // best results per map (saves from before Level 2 hold Level 1's results at the top level)
 progress.byLevel = progress.byLevel || {};
@@ -46,6 +53,7 @@ const canvas = $('game');
 let view;
 try {
   view = new View(canvas, $('labels'), quality);
+  view.setSkin(currentSkin());
 } catch (err) {
   $('loading').textContent = 'This browser could not start 3D graphics (WebGL). Try another browser or turn on hardware acceleration.';
   throw err;
@@ -83,7 +91,7 @@ const input = new Input(canvas, $('joy'), {
 input.setEnabled(false);
 
 function makeDemo() {
-  const d = new Sim({ seed: 4242 });
+  const d = new Sim({ seed: 4242, ride: currentRide() });   // the title-screen farmer rides your ride
   d.buildTimer = 2.5;
   d.gold = 60;
   return d;
@@ -111,6 +119,8 @@ function syncLevelPick() {
     b.classList.toggle('locked', !open);
     b.setAttribute('aria-disabled', String(!open));
     b.title = open ? '' : `Locked: hold all ${CFG.waves.length} waves of Level ${id - 1} to unlock`;
+    const stars = (progress.byLevel[id] && progress.byLevel[id].bestStars) | 0;
+    b.querySelectorAll('.lc-stars i').forEach((st, i) => st.classList.toggle('on', i < stars));
     const nt = b.querySelector('.new-tag'), lk = b.querySelector('.lock-tag');
     if (nt) nt.hidden = !open || played || id === 1;
     if (lk) lk.hidden = open;
@@ -129,6 +139,7 @@ function switchLevel(id) {
   const old = view;
   old.dispose();
   view = new View(canvas, $('labels'), quality, old.renderer);
+  view.setSkin(currentSkin());
   hudCache = {}; tcKey = '';
   needsRender = true;
   return true;
@@ -152,7 +163,7 @@ for (const b of document.querySelectorAll('[data-level]')) {
   });
 }
 
-const SCREENS = ['titleScreen', 'helpScreen', 'settingsScreen', 'pauseScreen', 'confirmScreen', 'victoryScreen', 'defeatScreen', 'armoryScreen', 'guideScreen'];
+const SCREENS = ['titleScreen', 'helpScreen', 'settingsScreen', 'pauseScreen', 'confirmScreen', 'victoryScreen', 'defeatScreen', 'shopScreen', 'guideScreen'];
 function showScreen(id) {
   for (const s of SCREENS) $(s).hidden = s !== id;
   screen = id;
@@ -172,8 +183,10 @@ function refreshTitle() {
   for (const el of document.querySelectorAll('.cannonCost')) el.textContent = CFG.cannonUnlockCost;
   const p = progress;
   $('gemVal').textContent = p.diamonds;
-  $('armoryInfo').textContent = cannonUnlocked() ? 'cannon unlocked' : p.diamonds >= CFG.cannonUnlockCost ? 'cannon ready to unlock!' : `cannon: ${CFG.cannonUnlockCost} diamonds`;
-  $('armoryBtn').classList.toggle('ready', !cannonUnlocked() && p.diamonds >= CFG.cannonUnlockCost);
+  const affordable = shopItems().filter((it) => !it.owned && it.cost <= p.diamonds);
+  $('shopInfo').textContent = affordable.length ? `${affordable.length} thing${affordable.length > 1 ? 's' : ''} you can buy!` : 'rides, skins and towers';
+  $('shopBtn').classList.toggle('ready', affordable.length > 0);
+  titleArt();
   const b = levelBest(), map = levelMap();
   $('bestLine').textContent = `Level ${map.id} · ${map.name} · ` + (b.cleared
     ? `held${b.bestDiff ? ' on ' + diffName(b.bestDiff) : ''} · best ${'★'.repeat(b.bestStars)}${'☆'.repeat(3 - b.bestStars)}`
@@ -211,7 +224,7 @@ function startGame(saveData, difficulty = diffKey()) {
   introducedBosses.clear();
   if (saveData && (saveData.level || 1) !== CFG.level) switchLevel(saveData.level || 1);
   if (settings.level !== CFG.level) { settings.level = CFG.level; Save.set('settings', settings); }   // the map last played opens next time
-  sim = new Sim({ seed: newSeed(), cannon: cannonUnlocked(), autoSkip: !!settings.autoSkip, difficulty });
+  sim = new Sim({ seed: newSeed(), cannon: cannonUnlocked(), autoSkip: !!settings.autoSkip, difficulty, ride: currentRide() });
   if (saveData && !sim.load(saveData)) saveData = null;
   syncAuto();
   sim.events.length = 0;
@@ -310,7 +323,8 @@ click('playBtn', () => {
 click('continueBtn', () => startGame(Save.get('checkpoint', null)));
 click('helpBtn', () => { backTo = 'titleScreen'; showScreen('helpScreen'); });
 click('settingsBtn', () => { backTo = 'titleScreen'; syncSettingsUi(); showScreen('settingsScreen'); });
-click('armoryBtn', () => { refreshArmory(); backTo = 'titleScreen'; showScreen('armoryScreen'); });
+click('shopBtn', () => openShop());
+click('gemPlus', () => openShop());
 click('buyCannon', () => {
   if (cannonUnlocked() || progress.diamonds < CFG.cannonUnlockCost) return;
   askConfirm('Unlock the Cannon Tower?', `This spends ${CFG.cannonUnlockCost} of your ${progress.diamonds} diamonds.`, 'Unlock', () => {
@@ -318,17 +332,96 @@ click('buyCannon', () => {
     progress.unlocks.cannon = true;
     Save.set('progress', progress);
     audio.build('fortress');
-    refreshArmory(); refreshTitle();
+    refreshShop(); refreshTitle();
     backTo = 'titleScreen';
-    showScreen('armoryScreen');
+    showScreen('shopScreen');
   });
 });
 click('pickCrossbow', () => pickBuild('crossbow'));
 click('pickCannon', () => pickBuild('cannon'));
 
+// ------------------------------------------------------------ shop
+// Towers (the cannon), rides (horse, cow) and weapon skins, bought with diamonds.
+const GEM_SVG = '<svg class="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+let shopTab = 'towers';
+function shopItems() {
+  const out = [{ kind: 'tower', id: 'cannon', cost: CFG.cannonUnlockCost, owned: cannonUnlocked() }];
+  for (const [id, R] of Object.entries(CFG.rides)) out.push({ kind: 'ride', id, cost: R.cost, owned: rideOwned(id) });
+  for (const [id, S] of Object.entries(CFG.skins)) out.push({ kind: 'skin', id, cost: S.cost, owned: skinOwned(id) });
+  return out;
+}
+function openShop(tab = shopTab) {
+  audio.unlock();
+  shopTab = tab;
+  refreshShop();
+  backTo = 'titleScreen';
+  showScreen('shopScreen');
+}
+for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('click', () => { audio.click(); shopTab = b.dataset.tab; refreshShop(); });
+function shopCard({ id, img, name, blurb, stat, swatch, cost, owned, using, useLabel, usingLabel }) {
+  const action = using ? `<button class="btn gold" type="button" disabled>${usingLabel}</button>`
+    : owned ? `<button class="btn" type="button" data-use="${id}">${useLabel}</button>`
+    : `<button class="btn gold" type="button" data-buy="${id}" ${progress.diamonds < cost ? 'disabled' : ''}>Buy ${cost} ${GEM_SVG}</button>`;
+  return `<section class="shop-item${using ? ' on' : ''}" data-item="${id}">
+    <img alt="" ${img ? `src="${img}"` : ''} width="112" height="112">
+    <h3>${name}</h3>${swatch || ''}<p>${blurb}</p>${stat ? `<p class="stat">${stat}</p>` : ''}${action}</section>`;
+}
+function refreshShop() {
+  refreshArmory();
+  for (const b of document.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === shopTab));
+  for (const pg of document.querySelectorAll('[data-page]')) pg.hidden = pg.dataset.page !== shopTab;
+  const P = view.portraits;
+  if (shopTab === 'rides') {
+    const ride = currentRide();
+    $('rideGrid').innerHTML = shopCard({ id: 'none', img: P.get('ride:none', false), name: 'On foot', blurb: 'The farmer runs along at a steady pace.', cost: 0, owned: true, using: !ride, useLabel: 'Walk', usingLabel: 'Walking ✓' })
+      + Object.entries(CFG.rides).map(([id, R]) => shopCard({ id, img: P.get('ride:' + id, false), name: R.name, blurb: R.blurb, stat: `Speed +${Math.round((R.speedMul - 1) * 100)}%${R.magnetMul > 1 ? ` · coin reach +${Math.round((R.magnetMul - 1) * 100)}%` : ''}`, cost: R.cost, owned: rideOwned(id), using: ride === id, useLabel: 'Ride', usingLabel: 'Riding ✓' })).join('');
+  } else if (shopTab === 'skins') {
+    const skin = currentSkin();
+    $('skinGrid').innerHTML = Object.entries(CFG.skins).map(([id, S]) => shopCard({
+      id, img: P.get('skin:' + id, false), name: S.name, blurb: S.blurb, cost: S.cost, owned: skinOwned(id), using: skin === id, useLabel: 'Equip', usingLabel: 'Equipped ✓',
+      swatch: S.colors ? `<span class="swatch">${[...S.colors, S.accent].map((c) => `<i style="background:#${c.toString(16).padStart(6, '0')}"></i>`).join('')}</span>` : '',
+    })).join('');
+  }
+  P.flush();
+}
+// buy and use: rides and skins
+document.getElementById('shopScreen').addEventListener('click', (e) => {
+  const buy = e.target.closest('[data-buy]'), use = e.target.closest('[data-use]');
+  if (!buy && !use) return;
+  const id = (buy || use).dataset[buy ? 'buy' : 'use'];
+  const kind = shopTab === 'rides' ? 'ride' : 'skin';
+  const equip = () => {
+    if (kind === 'ride') { settings.ride = id; if (mode === 'title') sim.ride = currentRide(); }
+    else { settings.skin = id; view.setSkin(currentSkin()); }
+    Save.set('settings', settings);
+  };
+  audio.unlock();
+  if (use) { audio.click(); equip(); refreshShop(); refreshTitle(); return; }
+  const item = kind === 'ride' ? CFG.rides[id] : CFG.skins[id];
+  if (!item || progress.diamonds < item.cost) return;
+  audio.click();
+  askConfirm(`Buy the ${item.name}${kind === 'skin' ? ' skin' : ''}?`, `This spends ${item.cost} of your ${progress.diamonds} diamonds.`, 'Buy', () => {
+    progress.diamonds -= item.cost;
+    if (kind === 'ride') progress.unlocks[id] = true; else progress.skins.push(id);
+    Save.set('progress', progress);
+    equip();
+    audio.build('fortress');
+    refreshShop(); refreshTitle();
+    backTo = 'titleScreen';
+    showScreen('shopScreen');
+  });
+});
+// the farmer (on your ride) and a giant rat beside the logo, drawn in 3D
+function titleArt() {
+  const P = view.portraits, f = $('titleFarmer'), r = $('titleRat');
+  const fu = P.get('ride:' + (currentRide() || 'none'), false, { clear: true }), ru = P.get('boss:king', false, { clear: true });
+  P.flush();
+  if (fu) { f.src = fu; f.hidden = false; }
+  if (ru) { r.src = ru; r.hidden = false; }
+}
 function refreshArmory() {
   const d = progress.diamonds, cost = CFG.cannonUnlockCost, owned = cannonUnlocked();
-  $('armoryGems').textContent = d;
+  $('shopGems').textContent = d;
   $('cannonOwned').hidden = !owned;
   $('buyCannon').hidden = owned;
   $('buyCannon').disabled = d < cost;
@@ -973,12 +1066,13 @@ const perf = {
 let last = performance.now();
 let acc = 0;
 let needsRender = true;
+let clopT = 0, clopHi = false;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
   last = now;
   if (mode === 'pause' && !needsRender) return;
-  if (mode === 'title' && screen === 'guideScreen' && !needsRender) return;   // the backdrop holds still while portraits render
+  if (mode === 'title' && (screen === 'guideScreen' || screen === 'shopScreen') && !needsRender) return;   // the backdrop holds still while portraits render
   const speed = mode === 'play' ? gameSpeed() : 1;   // fast forward only ever speeds up a game in progress
 
   if (mode === 'play' || mode === 'title') {
@@ -997,6 +1091,11 @@ function frame(now) {
     if (steps === maxSteps) acc = 0;
     processEvents();
     if (mode === 'play') {
+      // clip-clop while riding
+      if (sim.ride && sim.hero.moving) {
+        clopT -= dt * speed * Math.min(1.6, Math.hypot(sim.hero.vx, sim.hero.vz) / 7);
+        if (clopT <= 0) { clopT += 0.17; clopHi = !clopHi; audio.clop(clopHi); }
+      }
       tutorial.update(dt);
       stepOffReminder(dt);
       if (sim.state === 'build' && now - lastSaveAt > 5000) { Save.set('checkpoint', sim.serialize()); lastSaveAt = now; }
