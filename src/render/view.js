@@ -78,6 +78,8 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(34, 1, 1, 320);
     this.camTarget = new THREE.Vector3(...[CFG.hero.start[0], 0, CFG.hero.start[1]]);
     this.camDist = 50;
+    // zoom out: 0 follows the farmer, 1 shows the whole map (button, M, wheel or pinch)
+    this.overview = 0; this.overviewWant = 0;
     this.shake = 0;
     // players who ask their system for reduced motion get only a faint screen shake
     this.calmMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -1685,11 +1687,15 @@ export class View {
     el.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -50%) rotate(${ang}rad)`;
   }
 
+  setOverview(t) { this.overviewWant = THREE.MathUtils.clamp(t, 0, 1); }
   _updateCamera(sim, dt) {
     const cam = this.camera;
     const aspect = this.width / this.height;
-    // portrait screens look a little more top-down so the road stays readable
-    const pitchDeg = aspect < 0.8 ? 52 : aspect < 1.2 ? 51 : 50;
+    this.overview += (this.overviewWant - this.overview) * (dt === 0 ? 1 : Math.min(1, dt * 5));
+    if (Math.abs(this.overviewWant - this.overview) < 1e-3) this.overview = this.overviewWant;
+    const ov = this.focus ? 0 : this.overview;
+    // portrait screens look a little more top-down so the road stays readable; the whole-map view looks further down still
+    const pitchDeg = THREE.MathUtils.lerp(aspect < 0.8 ? 52 : aspect < 1.2 ? 51 : 50, 62, ov);
     this.pitch += (THREE.MathUtils.degToRad(pitchDeg) - this.pitch) * (dt === 0 ? 1 : Math.min(1, dt * 3));
     const halfF = THREE.MathUtils.degToRad(cam.fov / 2);
     const tanF = Math.tan(halfF);
@@ -1697,7 +1703,13 @@ export class View {
     // portrait: keep ~19 units of canyon across; landscape: ~30 units of depth
     const dW = 19 / (2 * tanF * aspect);
     const dH = (30 * sinP) / (2 * tanF);
-    const want = this.zoomOverride || (this.focus && this.focus.zoom) || THREE.MathUtils.clamp(Math.max(dW, dH), 26, 72);
+    let want = this.zoomOverride || (this.focus && this.focus.zoom) || THREE.MathUtils.clamp(Math.max(dW, dH), 26, 72);
+    // the whole map: far enough back that the canyon floor fits across and down the screen
+    // (extra room at the top, where the wave counter and buttons sit)
+    const W0 = CFG.walk, spanX = W0.maxX - W0.minX + 8, spanZ = W0.maxZ - W0.minZ + 18;
+    const kDepth = sinP / Math.tan(this.pitch - halfF) - sinP / Math.tan(this.pitch + halfF);
+    const dMap = Math.max(spanX / (2 * tanF * aspect), spanZ / kDepth);
+    if (ov > 0 && !this.zoomOverride) want = THREE.MathUtils.lerp(want, Math.max(want, dMap), ov);
     this.camDist += (want - this.camDist) * Math.min(1, dt * 4 + (dt === 0 ? 1 : 0));
     const d = this.camDist;
     // keep the view inside the canyon: how far the screen edges reach from the target
@@ -1708,8 +1720,16 @@ export class View {
     const W = CFG.walk;
     const clampRange = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : THREE.MathUtils.clamp(v, lo, hi));
     const h = this.focus ? { x: this.focus.x, z: this.focus.z + 1.5, y: 0 } : sim.hero;
-    const tx = clampRange(h.x, W.minX - 3 + halfW, W.maxX + 3 - halfW);
-    const tz = clampRange(h.z - 1.5, W.minZ - 4 + above * 0.55, W.maxZ + 3 - below);
+    let tx = clampRange(h.x, W.minX - 3 + halfW, W.maxX + 3 - halfW);
+    let tz = clampRange(h.z - 1.5, W.minZ - 4 + above * 0.55, W.maxZ + 3 - below);
+    if (ov > 0) {
+      // zoomed out: aim at the middle of the map instead of the farmer
+      const mx = (W.minX + W.maxX) / 2, mz = (W.minZ - 14 + W.maxZ + 4 + above - below) / 2;
+      tx = THREE.MathUtils.lerp(tx, mx, ov); tz = THREE.MathUtils.lerp(tz, mz, ov);
+    }
+    // the haze stays at the far edge of the map however far back the camera is
+    const extra = Math.max(0, d - 50);
+    this.scene.fog.near = 95 + extra; this.scene.fog.far = 175 + extra * 1.4;
     const k = dt === 0 ? 1 : 1 - Math.exp(-5 * dt);
     this.camTarget.x += (tx - this.camTarget.x) * k;
     this.camTarget.z += (tz - this.camTarget.z) * k;

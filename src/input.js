@@ -1,5 +1,7 @@
 // Keyboard (WASD / arrows) and a floating virtual joystick (touch or mouse
 // drag). Produces a movement vector in screen space: x = right, z = down.
+// Two fingers pinch to zoom (handlers.onPinch) and the mouse wheel zooms too
+// (handlers.onWheel).
 const KEYS = {
   KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1],
   KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
@@ -13,6 +15,8 @@ export class Input {
     this.handlers = handlers;
     this.keys = new Set();
     this.joy = null; // {id, x0, y0, dx, dy}
+    this.touches = new Map();   // fingers on the screen, for the pinch
+    this.pinch = 0;             // finger spread at the last pinch step (0: not pinching)
     this.radius = 56;
     this.enabled = true;
     this.lastKind = matchMedia('(pointer: coarse)').matches ? 'touch' : 'keys';
@@ -21,12 +25,21 @@ export class Input {
       if (KEYS[e.code]) { this.keys.add(e.code); this.lastKind = 'keys'; if (this.enabled) e.preventDefault(); }
       else if (e.code === 'Escape' || e.code === 'KeyP') { handlers.onPause?.(); e.preventDefault(); }
       else if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) { if (handlers.onAction?.()) e.preventDefault(); }
-      else if (!e.repeat && (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'KeyQ' || e.code === 'KeyT' || e.code === 'KeyF' || e.code === 'Numpad1' || e.code === 'Numpad2')) handlers.onKey?.(e.code);
+      else if (!e.repeat && (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'KeyQ' || e.code === 'KeyT' || e.code === 'KeyF' || e.code === 'KeyM' || e.code === 'Numpad1' || e.code === 'Numpad2')) handlers.onKey?.(e.code);
     });
     window.addEventListener('keyup', (e) => { this.keys.delete(e.code); });
     window.addEventListener('blur', () => { this.keys.clear(); this._endJoy(); });
 
+    const spread = () => { const [a, b] = this.touches.values(); return Math.hypot(a.x - b.x, a.y - b.y); };
     surface.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size >= 2) {
+        // a second finger: pinch to zoom instead of steering
+        this._endJoy();
+        this.pinch = spread();
+        e.preventDefault();
+        return;
+      }
       if (!this.enabled || this.joy) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
@@ -41,6 +54,15 @@ export class Input {
       handlers.onInteract?.();
     });
     surface.addEventListener('pointermove', (e) => {
+      const t = this.touches.get(e.pointerId);
+      if (t) { t.x = e.clientX; t.y = e.clientY; }
+      if (this.pinch && this.touches.size >= 2) {
+        e.preventDefault();
+        const d = spread();
+        if (d > 0) handlers.onPinch?.(this.pinch / d);   // > 1: fingers closing (zoom out)
+        this.pinch = d;
+        return;
+      }
       if (!this.joy || e.pointerId !== this.joy.id) return;
       e.preventDefault();
       let dx = e.clientX - this.joy.x0, dy = e.clientY - this.joy.y0;
@@ -57,11 +79,16 @@ export class Input {
       this.joy.dx = dx * c; this.joy.dy = dy * c;
       this.knob.style.transform = `translate(${this.joy.dx}px, ${this.joy.dy}px)`;
     });
-    const end = (e) => { if (this.joy && e.pointerId === this.joy.id) this._endJoy(); };
+    const end = (e) => {
+      this.touches.delete(e.pointerId);
+      if (this.touches.size < 2) this.pinch = 0;
+      if (this.joy && e.pointerId === this.joy.id) this._endJoy();
+    };
     surface.addEventListener('pointerup', end);
     surface.addEventListener('pointercancel', end);
     surface.addEventListener('lostpointercapture', end);
     surface.addEventListener('contextmenu', (e) => e.preventDefault());
+    surface.addEventListener('wheel', (e) => { if (handlers.onWheel?.(e.deltaY * (e.deltaMode === 1 ? 33 : 1))) e.preventDefault(); }, { passive: false });
   }
 
   _endJoy() {

@@ -76,10 +76,14 @@ let overTimer = 0;
 let autoBot = null; // test hook: lets the built-in bot drive the hero
 
 const input = new Input(canvas, $('joy'), {
+  // zoom: two fingers pinching, or the mouse wheel, move between the farmer and the whole map
+  onPinch: (ratio) => { if (mode === 'play' || mode === 'pause') setZoom(view.overviewWant + (ratio - 1) * 1.6); },
+  onWheel: (dy) => { if (mode !== 'play' && mode !== 'pause') return false; setZoom(view.overviewWant + dy * 0.0016); return true; },
   onPause: () => { if (mode === 'play') pause(); else if (mode === 'pause' && screen === 'pauseScreen') resume(); },
   onAction: () => { if (mode === 'play' && sim.canSkip) { audio.click(); skipWave(); return true; } return false; },
   onKey: (code) => {
     if (mode !== 'play') return;
+    if (code === 'KeyM') { audio.click(); toggleZoom(); return; }
     if (code === 'KeyT') { audio.click(); toggleAuto(); return; }
     if (code === 'KeyF') { audio.click(); toggleSpeed(); return; }
     if (!cannonUnlocked()) return;
@@ -198,6 +202,7 @@ function goTitle() {
   hideEnemyCard();
   mode = 'title';
   input.setEnabled(false);
+  setZoom(0);
   $('hud').hidden = true;
   if (!levelUnlocked(CFG.level)) switchLevel(topUnlocked());   // back from a saved game on a map that is still locked
   sim = makeDemo(); demoBot = makeBot();
@@ -230,6 +235,7 @@ function startGame(saveData, difficulty = diffKey()) {
   sim.events.length = 0;
   view.reset(sim);
   view.night = undefined;
+  setZoom(0);   // every game starts close in on the farmer
   mode = 'play';
   showScreen(null);
   $('hud').hidden = false;
@@ -295,6 +301,14 @@ function syncAuto() { $('autoBtn').setAttribute('aria-pressed', String(!!setting
 // Game speed: 1x or 2x. The simulation simply takes twice as many fixed steps
 // per frame, so a fast game plays out exactly like a normal one. Saved with the settings.
 const gameSpeed = () => (settings.speed === 2 ? 2 : 1);
+// Zoom out to see the whole map (and back in on the farmer)
+function setZoom(t) {
+  view.setOverview(t);
+  const on = view.overviewWant > 0.5;
+  $('zoomBtn').setAttribute('aria-pressed', String(on));
+  $('zoomBtn').setAttribute('aria-label', on ? 'Zoom back in on the farmer (key M)' : 'Zoom out to see the whole map (key M)');
+}
+function toggleZoom() { setZoom(view.overviewWant > 0.5 ? 0 : 1); }
 function toggleSpeed() {
   settings.speed = gameSpeed() === 2 ? 1 : 2;
   Save.set('settings', settings);
@@ -467,6 +481,7 @@ click('quitBtn', () => goTitle());
 click('callBtn', () => { skipWave(); canvas.focus({ preventScroll: true }); });
 click('autoBtn', () => { toggleAuto(); canvas.focus({ preventScroll: true }); });
 click('speedBtn', () => { toggleSpeed(); canvas.focus({ preventScroll: true }); });
+click('zoomBtn', () => { toggleZoom(); canvas.focus({ preventScroll: true }); });
 click('confirmYes', () => { const a = confirmAction; confirmAction = null; a && a(); });
 click('confirmNo', () => { confirmAction = null; showScreen(backTo); });
 click('againBtn', () => startGame(null, sim.difficulty));

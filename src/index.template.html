@@ -80,6 +80,13 @@ body { background: var(--sky); color: var(--sandstone); font-family: var(--font-
 .speed-btn span { min-width: 2ch; font-variant-numeric: tabular-nums; }
 .icon-btn { justify-self: end; pointer-events: auto; width: 48px; height: 48px; border-radius: 14px; border: 2px solid rgba(255, 236, 200, 0.4); background: var(--umber-a); color: var(--sandstone); font-family: var(--font-display); font-size: 20px; display: grid; place-items: center; cursor: pointer; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3); }
 .icon-btn svg { width: 22px; height: 22px; }
+.hud-right { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+/* zoom out to the whole map: a magnifier that shows minus (zoom out) or plus (back in) */
+.zoom-btn { display: flex; flex-direction: column; gap: 0; height: auto; padding: 5px 0 4px; }
+.zoom-btn span { font-size: 12px; line-height: 1; margin-top: 1px; }
+.zoom-btn .zm-plus { display: none; }
+.zoom-btn[aria-pressed="true"] { background: var(--teal); }
+.zoom-btn[aria-pressed="true"] .zm-plus { display: inline; }
 .icon-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3); }
 .hint { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 26px); transform: translateX(-50%); width: max-content; max-width: min(calc(100vw - 32px), 520px); box-sizing: border-box; background: var(--umber-a); border: 2px solid var(--gold); border-radius: 14px; padding: 9px 16px; font-weight: 800; font-size: 15px; text-align: center; text-wrap: balance; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3); }
 .hint kbd { font-family: var(--font-display); font-weight: 400; background: var(--sandstone); color: var(--umber); border-radius: 5px; padding: 0 5px; margin: 0 1px; font-size: 13px; }
@@ -597,7 +604,10 @@ select { border: 2.5px solid var(--ink); }
         </div>
         <div id="bossBars" class="boss-bars"></div>
       </div>
-      <button id="pauseBtn" class="icon-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.5" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1.5" fill="currentColor"/></svg></button>
+      <div class="hud-right">
+        <button id="pauseBtn" class="icon-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.5" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1.5" fill="currentColor"/></svg></button>
+        <button id="zoomBtn" class="icon-btn zoom-btn" type="button" aria-pressed="false" aria-label="Zoom out to see the whole map (key M)" title="Whole map (M)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M15 15 L21 21" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><path class="zm-minus" d="M7 10 H13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path class="zm-plus" d="M10 7 V13" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Map</span></button>
+      </div>
     </div>
     <div id="towerCard" class="tcard" hidden aria-live="polite">
       <div class="tcard-head"><span class="tcard-icon" id="tcIcon"></span><div class="tcard-name"><b id="tcTitle">Crossbow</b><span id="tcLevel"></span></div></div>
@@ -697,6 +707,7 @@ select { border: 2.5px solid var(--ink); }
       <h2>How to play</h2>
       <ul class="howto">
         <li><span class="ic">⇆</span><span id="helpMove">Move the farmer with WASD or the arrow keys. On a phone, drag anywhere to steer.</span></li>
+        <li><span class="ic">🔍</span><span>Tap <b>Map</b> (or press <kbd>M</kbd>, scroll the mouse wheel or pinch with two fingers) to zoom out and see the whole map. Tap it again to zoom back in on the farmer.</span></li>
         <li><span class="ic">●</span><span>Rats drop gold when your crossbows hit them. Walk close to coins to scoop them up.</span></li>
         <li><span class="ic">◆</span><span>Rats come in many kinds, and each needs a different plan: <b>fast rats</b> race ahead, <b>armored rats</b> shrug off arrows, <b>shield rats</b> block arrows until their shield breaks (cannons fly over it), <b>healer rats</b> mend the crowd (take them out first), <b>brood rats</b> burst into ratlings when they fall, <b>bomb rats</b> blow up (pop them inside the crowd), <b>ninja rats</b> flip out of the way of arrows, and <b>jetpack rats</b> rocket forward. A card explains each new kind when it first appears, and the <b>Rat guide</b> on the title screen and pause menu has them all.</span></li>
         <li><span class="ic">▣</span><span>Stand on a pad to pour coins into it. When it fills, a crossbow is built. Step off and back on to buy again.</span></li>

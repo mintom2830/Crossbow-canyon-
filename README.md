@@ -67,8 +67,11 @@ To test it on a phone, run `npm run serve` and open `http://<your-computer-ip>:8
 | Auto skip on/off | `T`, or the **Auto** switch | **Auto** switch |
 | Game speed 1× / 2× | `F`, or the **▶ 1×** button | **▶ 1×** button |
 | Pause | Esc / P, or the pause button | Pause button |
+| Zoom out to the whole map | `M`, the **Map** button, or the mouse wheel | **Map** button, or pinch with two fingers |
 
 The game pauses by itself when the tab is hidden or the phone locks.
+
+**Zoom out:** the **Map** button under the pause button (or `M`) pulls the camera back and tilts it further down so the whole canyon fits on the screen: the burrow, every stretch of road, all the tower spots and the town, with room left at the top for the wave counter. The game carries on and the farmer can still be steered. Tap it again (it turns teal while zoomed out, and its magnifier shows a plus) to swoop back in on the farmer. The mouse wheel and a two-finger pinch zoom smoothly anywhere in between; a pinch never steers the farmer. The haze in the distance moves back as the camera does. Every game starts close in on the farmer.
 
 If your device is set to reduce motion, the screen shake is cut to a faint tremor and the pulsing alerts (boss warning, red screen edges, villagers' alarm bubbles) hold still.
 
@@ -564,6 +567,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - Tower attacks drawn in the browser: tower heads match the aim, crossbows tilt down at their rat, cannon barrels rise for the shot, and every cannonball in the air has a landing ring.
 - Rat animations: all three rat types are drawn with their own models, each rat gets its own walk phase, no rat appears before the burrow, rats at the gate carry an attack phase, defeated rats keep animating and are then removed, and a defeated giant rat falls over before it disappears.
 - All seven tower levels rendering.
+- Zoom out: the Map button pulls the camera back until all four corners of the canyon are on screen (and the farmer can still walk), `M` zooms back in, the mouse wheel zooms out and in, and on a phone two fingers pinching together zoom out without steering the farmer.
 - The Shop: the cannon's unlock is disabled without diamonds, asks before spending 100 and is saved; the + by the diamonds opens the Shop; the horse costs 50 and the farmer then rides it (on the title screen too); the Candy skin costs 30 and the view wears it, while Lava (100) is out of reach; in a game the farmer rides the horse 50% faster and the towers are repainted in the skin.
 - Picking the cannon, building it by walking onto a pad, and upgrading it to level 3. Two choice pads then appear, and the tower card offers both paths. It goes on to a level 7 Rapid Launcher, a second cannon becomes a level 7 Thunder Mortar, and together they fight a wave with rocket salvos and Novas.
 - Diamonds: paid wave by wave (2 after two waves), shown on the defeat screen when the town hall falls on wave 3, not paid twice after Retry wave, and 50 in total after clearing the level.

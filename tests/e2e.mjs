@@ -303,6 +303,62 @@ await test('repair pad: a damaged town hall gets a repair pad; walking onto it w
   await ctx.close();
 });
 
+await test('zoom out: the Map button, the M key and the mouse wheel show the whole map, and a two-finger pinch does on a phone', async () => {
+  // the canyon floor every map shares (CFG.walk): all four corners on screen means the whole map is in view
+  const corners = (page) => g(page, () => {
+    const v = window.__cc.view, V = v.camera.position.constructor;
+    v.camera.updateMatrixWorld();
+    return [[-30, -48], [31, -48], [-30, 37], [31, 37]].every(([x, z]) => { const p = new V(x, 0, z).project(v.camera); return Math.abs(p.x) <= 1.02 && Math.abs(p.y) <= 1.02; });
+  });
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'low', tutorialDone: true });
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await page.waitForTimeout(800);
+  assert(!(await corners(page)), 'the close-up view should not show the whole map');
+  const d0 = await g(page, () => window.__cc.view.camDist);
+  await page.click('#zoomBtn');
+  await page.waitForFunction(() => window.__cc.view.overview === 1, null, { timeout: 5000 });
+  await page.waitForTimeout(900);
+  assert((await page.getAttribute('#zoomBtn', 'aria-pressed')) === 'true', 'the Map button should show it is pressed');
+  assert(await corners(page), 'zoomed out, the whole map should be in view');
+  assert((await g(page, () => window.__cc.view.camDist)) > d0 * 1.4, 'the camera did not pull back');
+  // the game carries on: the farmer still walks while zoomed out
+  const x0 = await g(page, () => window.__cc.sim.hero.x);
+  await page.keyboard.down('KeyD'); await page.waitForTimeout(500); await page.keyboard.up('KeyD');
+  assert((await g(page, () => window.__cc.sim.hero.x)) > x0 + 1, 'the farmer stopped moving while zoomed out');
+  await page.screenshot({ path: `${SHOTS}/zoom-whole-map.png` });
+  // M zooms back in on the farmer, the mouse wheel zooms out again
+  await page.keyboard.press('KeyM');
+  await page.waitForFunction(() => window.__cc.view.overview === 0, null, { timeout: 5000 });
+  await page.waitForTimeout(900);
+  assert(!(await corners(page)) && (await page.getAttribute('#zoomBtn', 'aria-pressed')) === 'false', 'M did not zoom back in');
+  await page.mouse.move(640, 400);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 150);
+  await page.waitForFunction(() => window.__cc.view.overviewWant >= 0.99, null, { timeout: 5000 });
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -150);
+  await page.waitForFunction(() => window.__cc.view.overviewWant <= 0.01, null, { timeout: 5000 });
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+  // a phone: two fingers pinching together zoom out (and do not steer the farmer)
+  const ph = await open('phone', { sfx: false, music: false, quality: 'low', tutorialDone: true });
+  await ph.page.tap('#playBtn');
+  await ph.page.waitForFunction(() => window.__cc.mode === 'play');
+  const r = await g(ph.page, () => {
+    const c = document.getElementById('game'), h = window.__cc.sim.hero, hx = h.x, hz = h.z;
+    const ev = (type, id, x, y) => c.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: y, isPrimary: id === 1, bubbles: true, cancelable: true }));
+    ev('pointerdown', 1, 80, 420); ev('pointerdown', 2, 310, 420);
+    for (let k = 1; k <= 8; k++) { ev('pointermove', 1, 80 + k * 12, 420); ev('pointermove', 2, 310 - k * 12, 420); }
+    ev('pointerup', 1, 176, 420); ev('pointerup', 2, 214, 420);
+    return { want: window.__cc.view.overviewWant, pressed: document.getElementById('zoomBtn').getAttribute('aria-pressed'), joy: !document.getElementById('joy').hidden };
+  });
+  assert(r.want > 0.6 && r.pressed === 'true' && !r.joy, 'pinch did not zoom out: ' + JSON.stringify(r));
+  await ph.page.waitForTimeout(1500);
+  await ph.page.screenshot({ path: `${SHOTS}/phone-zoom-whole-map.png` });
+  assert(await corners(ph.page), 'pinched out, the whole map should be in view on a phone');
+  assert(ph.errors.length === 0, ph.errors.join(' | '));
+  await ph.ctx.close();
+});
+
 await test('Level 2: pick Lonetree Hill on the title screen; rats climb the hill; a saved game reopens on its own map', async () => {
   const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
   assert((await page.getAttribute('[data-level="1"]', 'aria-checked')) === 'true', 'Level 1 should be picked at first');
