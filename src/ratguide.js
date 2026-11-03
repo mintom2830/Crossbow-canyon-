@@ -1,0 +1,73 @@
+// The Rat guide: every enemy, what makes it dangerous and how to beat it.
+// Used by the Rat guide screen and the "New enemy" card when a type first
+// marches in. Pure data (plus the wave each one first appears in).
+import { CFG } from './config.js';
+
+// key: 'rat:N' (CFG.ratTypes index), 'giant', or 'boss:NAME'
+export const RAT_GUIDE = [
+  { key: 'rat:0', name: 'Rat', tag: 'Common',
+    trait: 'Marches in big crowds and bites the town hall three times before it is spent.',
+    counter: 'Any tower. Piercing arrows and cannon blasts hit several at once.' },
+  { key: 'rat:1', name: 'Fast rat', tag: 'Runner',
+    trait: 'Races ahead of the crowd at almost twice the speed, but falls to a single hit early on.',
+    counter: 'Build towers near the burrow so they meet runners first. The Rapid Launcher and Frost Arrows catch them.' },
+  { key: 'rat:2', name: 'Armored rat', tag: 'Armored',
+    trait: 'Slow and tough. Its iron armour shrugs off a third of every arrow and stops piercing arrows halfway.',
+    counter: 'Armor Piercer crossbows (level 4) get through the armour; Thunder Mortar shells hit armour more than twice as hard.' },
+  { key: 'rat:3', name: 'Shield rat', tag: 'Shield carrier',
+    trait: 'Holds a big wooden shield that soaks up arrows and stops piercing arrows dead. Once the shield splinters it is an ordinary rat.',
+    counter: 'Cannon shells fly over the shield, and Crystal Storm arrows fall on it from above. Armor Piercer arrows split shields three times faster.' },
+  { key: 'rat:4', name: 'Healer rat', tag: 'Healer',
+    trait: 'Every 3 seconds its staff glows and mends the five most hurt rats around it.',
+    counter: 'Twin Shot and better crossbows aim their extra arrows at healers. Freezing or stunning a healer stops the heal, and big blasts kill faster than it can mend.' },
+  { key: 'rat:5', name: 'Brood rat', tag: 'Splitter',
+    trait: 'A fat rat with a sack on its back. When it falls, four quick ratlings burst out and run on.',
+    counter: 'Area damage mops up the ratlings: cannon blasts, cluster bomblets and burning ground. Kill brood rats early, far from the town hall.' },
+  { key: 'rat:6', name: 'Ratling', tag: 'From a brood rat',
+    trait: 'Tiny, quick and weak. It bites the town hall once, but they come in litters.',
+    counter: 'Blasts and bouncing arrows hit several at once. Don\'t let a brood rat fall right at the gate.' },
+  { key: 'giant', name: 'Giant rat', tag: 'Giant',
+    trait: 'A hulking rat with a nail-studded club and a lot of health. It shoves the small rats aside and hits the gate hard.',
+    counter: 'Twin and triple crossbows focus every arrow on it; the Thunder Mortar crushes it.' },
+  // bosses, in the order they first come
+  { key: 'boss:warlord', name: 'Rat Warlord', tag: 'Boss · armoured',
+    trait: 'The first boss: horned helmet, war paint and a red cape. Armour blocks 30% of arrows.',
+    counter: 'Get a few crossbows to level 3 before wave 5. A siren warns you 5 seconds before it climbs out.' },
+  { key: 'boss:slime', name: 'Sewer Slime', tag: 'Boss · splits',
+    trait: 'A giant blob of sewer goo. When it bursts it splits into two slimes, and each of those splits into two slimelets that ooze on faster.',
+    counter: 'Burst it early, far from the town hall, so the pieces have a long way to go. Cannon blasts and bouncing arrows hit the little slimes together, and Frost Arrows freeze the small ones solid.' },
+  { key: 'boss:baron', name: 'Iron Rat Baron', tag: 'Boss · heavy armour',
+    trait: 'Slow, in full steel armour that blocks 55% of arrows.',
+    counter: 'Armor Piercer arrows, the Thunder Mortar, and cracked armour from Crystal Quake or a Nova.' },
+  { key: 'boss:mole', name: 'Tunnel Mole', tag: 'Boss · tunnels',
+    trait: 'Soon after it climbs out it digs under the canyon, where nothing can hit it, and bursts up near the town with a band of rats.',
+    counter: 'Hit it hard before it digs in. Red cracks in the ground show where it will come up, so keep strong towers by the town hall and stand ready there.' },
+  { key: 'boss:buzzard', name: 'Canyon Buzzard', tag: 'Boss · flies',
+    trait: 'Flies high over the road and drops rats from its net every few seconds. Cannon shells can\'t reach it until it lands at the town hall.',
+    counter: 'Crossbows shoot it down, and every arrow of a twin or triple crossbow goes for it. Leave the rats it drops to your cannons.' },
+  { key: 'boss:king', name: 'Rat King', tag: 'Boss · biggest',
+    trait: 'The biggest of them all, with a gold crown and 14,000 health. Frost only slows it.',
+    counter: 'Everything you have. Cracked armour makes every tower hit 50% harder.' },
+];
+
+// The first wave (1-based) a guide entry marches in, or 0 for bosses (fixed waves).
+export function firstWave(key) {
+  if (!key.startsWith('rat:')) {
+    if (key === 'giant') return 1;
+    const boss = key.slice(5);
+    const i = CFG.waves.findIndex((w) => w.giants.some((g) => g[2] === boss));
+    return i + 1;
+  }
+  const v = +key.slice(4);
+  if (v === 0) return 1;
+  if (v === 6) return firstWave('rat:5');   // ratlings come with the brood rats
+  const row = { 1: 0, 2: 1, 3: 2, 5: 3 }[v];
+  for (let i = 0; i < CFG.waves.length; i++) {
+    const w = CFG.waves[i];
+    if (w.intro === v) return i + 1;
+    if (v === 4 ? w.healers > 0 : w.mix && w.mix[row] > 0) return i + 1;
+  }
+  return 0;
+}
+
+export const guideEntry = (key) => RAT_GUIDE.find((g) => g.key === key);
