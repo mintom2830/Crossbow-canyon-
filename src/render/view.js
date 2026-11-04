@@ -11,6 +11,8 @@ import { ratMaterial, attackPhase } from './ratanim.js';
 import { TownView } from './town.js';
 import { Portraits } from './portraits.js';
 import { applySkin, skinColor } from './skins.js';
+import { ArsenalView } from './arsenal-view.js';
+import { isArsenal } from '../arsenal.js';
 import { turn } from '../town.js';
 import {
   PAL, gruntGeometry, gruntInkGeometry, SHIELDLESS, giantParts, heroParts, mountParts, towerParts, cannonParts, CANNON_REST_PITCH, fortressGeometry, houseParts, hallGlow,
@@ -320,6 +322,7 @@ export class View {
     this.glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     this.crystalTex = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
     this.towerViews = new Map();
+    this.ars = new ArsenalView(this);   // the thirteen Arsenal towers
     this.fortressGeo = [null, fortressGeometry(1), fortressGeometry(2), fortressGeometry(3)];
     const F = CFG.fortress;
     this.fortress = new THREE.Mesh(this.fortressGeo[1], this.structMat);
@@ -501,6 +504,7 @@ export class View {
     if (this.skin === id) return;
     this.skin = id;
     for (const set of [this.towerGeo, this.cannonGeo, this.rapidGeo]) for (const g of set) if (g) { applySkin(g.base, id); applySkin(g.head, id); if (g.gun) applySkin(g.gun, id); }
+    this.ars.setSkin(id);
     applySkin(this.hero.fork.geometry, id);
     if (!this.boltBase) this.boltBase = this.boltColors.map((c) => c.clone());
     this.boltColors.forEach((c, i) => { const b = this.boltBase[i]; if (id === 'classic' || i >= 6) c.copy(b); else skinColor(id, 0.95, 0.95, 0.95, c); });
@@ -569,6 +573,13 @@ export class View {
 
   // Little tower glyphs painted on pads so you can see what a pad builds.
   _glyph(x, cx, cy, tower, size = 1) {
+    if (isArsenal(tower)) {
+      // Arsenal towers: their Shop picture (painted with Meshy)
+      const img = this._towerImg(tower), S = 112 * size;
+      if (img && img.complete && img.naturalWidth) x.drawImage(img, cx - S / 2, cy - S / 2 - 6, S, S);
+      else { x.font = `${Math.round(34 * size)}px "Lilita One", system-ui, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 8; x.strokeStyle = 'rgba(40,20,10,0.9)'; const n = CFG.arsenal[tower].name.split(' ')[0].toUpperCase(); x.strokeText(n, cx, cy); x.fillStyle = '#ffd36a'; x.fillText(n, cx, cy); }
+      return;
+    }
     x.save();
     x.translate(cx, cy); x.scale(size, size);
     x.lineCap = 'round'; x.lineJoin = 'round';
@@ -603,6 +614,18 @@ export class View {
   }
 
   // path: set on the cannon's upgrade-choice pads ('rapid' or 'blast')
+  // A tower's Shop picture as an image (main.js hands the view the pictures: towerArt).
+  _towerImg(kind) {
+    const imgs = this._timgs || (this._timgs = {});
+    if (imgs[kind]) return imgs[kind];
+    const src = this.towerArt && this.towerArt[kind];
+    if (!src || typeof Image === 'undefined') return null;
+    const img = new Image();
+    img.onload = () => { this._padsStale = true; };
+    img.src = src;
+    return (imgs[kind] = img);
+  }
+
   _drawPadLabel(v, remaining, kind, level, broke, wait, tower, path = null) {
     const c = v.canvas, x = v.ctx;
     x.clearRect(0, 0, c.width, c.height);
@@ -695,8 +718,9 @@ export class View {
 
   _setTowerLevel(v, level, path = null) {
     const rapid = v.kind === 'cannon' && path === 'rapid' && level >= CFG.cannon.branchLevel;
-    const geo = (rapid ? this.rapidGeo : v.kind === 'cannon' ? this.cannonGeo : this.towerGeo)[level];
-    const ink = (rapid ? this.rapidInk : v.kind === 'cannon' ? this.cannonInk : this.towerInk)[level];
+    const ars = isArsenal(v.kind) ? this.ars.geo(v.kind, level) : null;
+    const geo = ars ? ars.geo : (rapid ? this.rapidGeo : v.kind === 'cannon' ? this.cannonGeo : this.towerGeo)[level];
+    const ink = ars ? ars.ink : (rapid ? this.rapidInk : v.kind === 'cannon' ? this.cannonInk : this.towerInk)[level];
     v.path = path;
     v.charge.visible = !!geo.muzzle;
     if (geo.muzzle) v.charge.position.set(...geo.muzzle);
@@ -940,6 +964,7 @@ export class View {
     this.ratDying.length = 0;
     this.stuck.length = 0;
     this.fx.clear();
+    this.ars.reset();
     this.town.reset();
     this.focus = null;
     this._setFortressLevel(sim.fortress.level, true);
@@ -963,6 +988,7 @@ export class View {
   handleEvent(e, sim) {
     const fx = this.fx;
     fx.lift = LIFTED.has(e.type) ? this._gy(e.x, e.z) : 0;
+    if (this.ars.event(e, sim)) { fx.lift = 0; return; }
     switch (e.type) {
       case 'death': {
         // the body plays a defeat animation; the white puff comes when it vanishes
@@ -1534,11 +1560,11 @@ export class View {
       if (b.fall) _dir.set(b.dx * 0.28, -1, b.dz * 0.28).normalize();   // Crystal Storm arrows drop from the sky
       else { const slope = b.d < b.aim ? (b.y1 - b.y0) / b.aim : 0; _dir.set(b.dx, slope, b.dz).normalize(); }
       _q.setFromUnitVectors(FWD, _dir);
-      const k = b.fall ? 1.5 : b.level === 4 ? 1.3 : 1;                 // heavy Armor Piercer arrows are chunkier
+      const k = b.fall ? 1.5 : b.level === 4 && !b.kind ? 1.3 : 1;      // heavy Armor Piercer arrows are chunkier
       _p.set(b.x, b.y, b.z); _s.set(k, k, k);
       _m.compose(_p, _q, _s); bo.setMatrixAt(bc, _m);
       _s.set(k, k, Math.min(b.d, b.fall ? 5 : b.level >= 6 ? 4.2 : 3.2)); _m.compose(_p, _q, _s); tr.setMatrixAt(bc, _m);
-      const bcol = this.boltColors[b.level] || this.boltColors[1];
+      const bcol = b.kind === 'ice' ? (this._iceBolt || (this._iceBolt = new THREE.Color(0x8ff4ff))) : b.kind === 'crystal' ? (this._crystalBolt || (this._crystalBolt = new THREE.Color(0xd29bff))) : this.boltColors[b.level] || this.boltColors[1];
       bo.setColorAt(bc, bcol); tr.setColorAt(bc, bcol);
       bc++;
     }
@@ -1566,7 +1592,7 @@ export class View {
           _p.set(sh.tx, groundHeight(sh.tx, sh.tz) + 0.1, sh.tz); _s.set(r, 1, r); _m.compose(_p, _q.identity(), _s);
           imp.setMatrixAt(ic, _m);
           const rp = sh.path === 'rapid' && sh.level >= 4;
-          const c = rp ? (sh.kind === 'rocket' ? [1, 0.45, 0.1] : [0.95, 0.6, 0.15]) : sh.kind === 'nova' || sh.level === 7 ? [0.62, 0.25, 0.95] : sh.level === 6 ? [0.1, 0.7, 0.9] : [0.92, 0.28, 0.12];
+          const c = sh.kind === 'gas' ? [0.45, 0.95, 0.25] : rp ? (sh.kind === 'rocket' ? [1, 0.45, 0.1] : [0.95, 0.6, 0.15]) : sh.kind === 'nova' || sh.level === 7 ? [0.62, 0.25, 0.95] : sh.level === 6 ? [0.1, 0.7, 0.9] : [0.92, 0.28, 0.12];
           imp.instanceColor.setXYZ(ic, c[0], c[1], c[2]);
           ic++;
         }
@@ -1574,17 +1600,17 @@ export class View {
         const rapidShell = sh.path === 'rapid' && sh.level >= 4;
         if (Math.random() < dt * (sh.kind === 'rocket' ? 40 : rapidShell ? 14 : 22)) {
           this.fx.trail(sh.x, sh.y, sh.z, sh.kind === 'nova' ? 0.7 : sh.kind === 'bomblet' ? 0.18 : rapidShell ? 0.24 : sh.level >= 4 ? 0.45 : 0.32,
-            rapidShell ? (sh.level >= 6 || sh.kind === 'rocket' ? 0xffc890 : 0xd8d0c6) : sh.level >= 6 ? (sh.level === 6 ? 0xc8f6ff : 0xe4ccff) : 0xd8d0c6);
+            sh.kind === 'gas' ? 0xb8f08a : rapidShell ? (sh.level >= 6 || sh.kind === 'rocket' ? 0xffc890 : 0xd8d0c6) : sh.level >= 6 && sh.kind !== 'mortar' ? (sh.level === 6 ? 0xc8f6ff : 0xe4ccff) : 0xd8d0c6);
         }
         // fire shells and rockets glow orange; crystal and Nova shells glow blue and purple
-        const glow = rapidShell ? sh.level >= 6 || sh.kind === 'rocket' : sh.level >= 6;
-        const scale = sh.kind === 'nova' ? 2.3 : sh.kind === 'bomblet' ? 0.5 : sh.kind === 'rocket' ? 0.62 : rapidShell ? 0.72 : sh.kind === 'side' ? 0.85 : sh.level >= 4 ? 1.6 : 1;
+        const glow = sh.kind === 'gas' || (rapidShell ? sh.level >= 6 || sh.kind === 'rocket' : sh.level >= 6 && sh.kind !== 'mortar');
+        const scale = sh.kind === 'nova' ? 2.3 : sh.kind === 'mortar' ? 1.5 : sh.kind === 'gas' ? 0.85 : sh.kind === 'bomblet' ? 0.5 : sh.kind === 'rocket' ? 0.62 : rapidShell ? 0.72 : sh.kind === 'side' ? 0.85 : sh.level >= 4 ? 1.6 : 1;
         _p.set(sh.x, sh.y, sh.z); _s.set(scale, scale, scale); _m.compose(_p, _q.identity(), _s);
         if (glow) {
           gsm.setMatrixAt(g, _m); gsm.setColorAt(g, this._shellColor || (this._shellColor = new THREE.Color()));
-          gsm.instanceColor.setXYZ(g, ...(rapidShell ? (sh.kind === 'rocket' ? [1, 0.42, 0.12] : [1, 0.62, 0.2]) : sh.level === 6 ? [0.55, 1.0, 1.0] : [0.85, 0.55, 1.0]));
+          gsm.instanceColor.setXYZ(g, ...(sh.kind === 'gas' ? [0.55, 1, 0.3] : rapidShell ? (sh.kind === 'rocket' ? [1, 0.42, 0.12] : [1, 0.62, 0.2]) : sh.level === 6 ? [0.55, 1.0, 1.0] : [0.85, 0.55, 1.0]));
           g++;
-          if (Math.random() < (rapidShell ? 0.35 : 0.7)) this.fx.glow(sh.x, sh.y, sh.z, sh.kind === 'nova' ? 2.2 : rapidShell ? 0.6 : 0.9, rapidShell ? 0xff8a3a : sh.level === 6 ? 0x7ff3ff : 0xc07bff, 0.22);
+          if (Math.random() < (rapidShell ? 0.35 : 0.7)) this.fx.glow(sh.x, sh.y, sh.z, sh.kind === 'nova' ? 2.2 : rapidShell ? 0.6 : 0.9, sh.kind === 'gas' ? 0x9dff4a : rapidShell ? 0xff8a3a : sh.level === 6 ? 0x7ff3ff : 0xc07bff, 0.22);
         } else { sm.setMatrixAt(n++, _m); }
       }
       sm.count = n; sm.instanceMatrix.needsUpdate = true;
@@ -1599,11 +1625,20 @@ export class View {
         const k = zn.t / zn.max;
         const fl = 0.85 + Math.sin(t * 17 + zn.x) * 0.1 + Math.sin(t * 29 + zn.z) * 0.05;
         _p.set(zn.x, 0.09 + groundHeight(zn.x, zn.z), zn.z); _s.set(zn.r * 1.25 * fl, 1, zn.r * 1.25 * fl); _m.compose(_p, _q.identity(), _s);
-        zm.setMatrixAt(n, _m); zm.instanceColor.setXYZ(n, Math.min(1, k * 2), Math.min(1, k * 2) * 0.9, Math.min(1, k * 2) * 0.8); n++;
+        const kk = Math.min(1, k * 2);
+        if (zn.gas) {
+          // a poison cloud: a green glow on the ground and slow, rolling green puffs
+          zm.setMatrixAt(n, _m); zm.instanceColor.setXYZ(n, kk * 0.4, kk * 1.0, kk * 0.25); n++;
+          if (Math.random() < dt * 7) { const a = Math.random() * 6.28, d = Math.random() * zn.r * 0.8; this._lift(zn.x, zn.z).puff(zn.x + Math.cos(a) * d, 0.1, zn.z + Math.sin(a) * d, Math.random() < 0.5 ? 0xa8e070 : 0x8fcf5a, 1.4); this.fx.lift = 0; }
+          continue;
+        }
+        zm.setMatrixAt(n, _m); zm.instanceColor.setXYZ(n, kk, kk * 0.9, kk * 0.8); n++;
         if (Math.random() < dt * 9) { const a = Math.random() * 6.28, d = Math.random() * zn.r; this._lift(zn.x, zn.z).glow(zn.x + Math.cos(a) * d, 0.5, zn.z + Math.sin(a) * d, 0.9, 0xff8a24, 0.4); this.fx.lift = 0; }
       }
       zm.count = n; zm.instanceMatrix.needsUpdate = true; if (zm.instanceColor) zm.instanceColor.needsUpdate = true;
     }
+
+    this.ars.update(sim, dt, t);
 
     // ---- towers
     if (this.towerViews.size > sim.towers.length) {
@@ -1640,6 +1675,8 @@ export class View {
         v.gunMesh.position.z = v.gunGlow.position.z = -kick * 0.42;   // the barrel slides back on its carriage
         v.headMesh.position.z = v.headGlow.position.z = -kick * 0.08;
         v.gun.scale.set(1 + 0.09 * kick, 1 + 0.09 * kick, 1 - 0.16 * kick);   // squashes as it fires, stretches as it springs back
+      } else if (isArsenal(v.kind)) {
+        this.ars.animateTower(v, tw, dt, t, kick, ease);
       } else {
         // tilt the crossbow down at the rat it is tracking
         let want = 0;
@@ -1655,6 +1692,7 @@ export class View {
         const sq = 1 - 0.13 * kick, bulge = 1 + 0.07 * kick;
         v.headMesh.scale.set(bulge, bulge, sq); v.headGlow.scale.set(bulge, bulge, sq);
       }
+      if (tw.buff && !isArsenal(v.kind)) this.ars.animateBoost(tw, v, dt);
       if (v.pop >= 1) { const th = Math.max(0, kick); v.group.scale.set(1 + 0.015 * th, 1 - 0.03 * th, 1 + 0.015 * th); }   // the whole tower thumps
       if (v.charge.visible) {
         // Doomsday Nova charging: a purple glow swells in the main barrel
@@ -1664,7 +1702,7 @@ export class View {
         v.charge.scale.set(s, s, 1);
         v.charge.material.opacity = 0.3 + k * 0.7;
       }
-      if (v.aura.visible) { const k = 0.85 + Math.sin(t * 3 + tw.slotIndex) * 0.15; v.aura.scale.set(1.9 * k, 2.6 * k, 1); v.aura.material.opacity = 0.55 + 0.25 * k; }
+      if (v.aura.visible && !isArsenal(v.kind)) { const k = 0.85 + Math.sin(t * 3 + tw.slotIndex) * 0.15; v.aura.scale.set(1.9 * k, 2.6 * k, 1); v.aura.material.opacity = 0.55 + 0.25 * k; }
       if (v.pop < 1) {
         v.pop = Math.min(1, v.pop + dt * 2.4);
         const k = v.pop;
@@ -1723,6 +1761,7 @@ export class View {
     // ---- pads
     const seenPads = this._seenPads || (this._seenPads = new Set());
     seenPads.clear();
+    if (this._padsStale) { this._padsStale = false; for (const v of this.padViews.values()) v.shown = -1; }   // a tower picture has loaded
     for (const p of sim.pads) {
       seenPads.add(p.id);
       let v = this.padViews.get(p.id);

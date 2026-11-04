@@ -68,6 +68,7 @@ To test it on a phone, run `npm run serve` and open `http://<your-computer-ip>:8
 | Game speed 1× / 2× | `F`, or the **▶ 1×** button | **▶ 1×** button |
 | Pause | Esc / P, or the pause button | Pause button |
 | Zoom out to the whole map | `M`, the **Map** button, or the mouse wheel | **Map** button, or pinch with two fingers |
+| Pick the tower to build | `1`–`9`, `0` (towers you own, in the Shop's order), `Q` to cycle, or the **Build** button | **Build** button |
 
 The game pauses by itself when the tab is hidden or the phone locks.
 
@@ -94,7 +95,7 @@ The title screen recreates the menu mockup in `docs/design/menu-mockup.png`:
 
 Spend the diamonds you earn on three tabs. Every purchase asks before spending, and everything is saved in the browser.
 
-**Towers:** the Cannon Tower (100 diamonds), with its full ability list (see below).
+**Towers:** all fifteen towers, each with its painted picture (made with Meshy from the user's "Weapon & Tower Arsenal" sheet), its damage type, how much more gold it costs to build, and a **Levels & abilities** list that opens on a tap. The Crossbow is always yours; the Cannon costs 100 diamonds and the thirteen Arsenal towers 60 to 500 (see **The Arsenal** below). On a phone the cards sit two to a row.
 
 **Rides:** pick how the farmer gets around. The ride you pick carries the farmer into every game, and the title-screen farmer rides it too.
 
@@ -450,6 +451,30 @@ When a cannon reaches level 3, **two upgrade pads** appear beside it instead of 
 Each path has its own sound: a quick thunk from the launcher's tubes and a whoosh from its rockets, or a deep boom from the mortar that shakes the screen a little.
 
 At the same level a cannon kills far more rats than a crossbow, on either path. Crossbows stay cheaper and react faster.
+
+### The Arsenal: thirteen more towers (unlock with diamonds)
+
+Built from the user's "Rat Town Tower Defense – Weapon & Tower Arsenal" sheet. Each has five levels. **The stronger the tower, the harder it is to get:** it costs more diamonds to unlock in the Shop, more gold to build (a multiple of the crossbow's price for that pad) and more gold to upgrade (40, 70, 110 and 160 gold for levels 2–5, times the same kind of multiple). Pick the tower to build with the **Build** button next to the gold (it shows the towers you own: a row of buttons when you own three or fewer, otherwise the current one with a menu of all of them) or keys `1`–`9`, then step on a build pad as usual.
+
+| Tower | Unlock | Gold ×| What it does | Level 5 ability |
+|---|---|---|---|---|
+| **Spike Trap** | 60 💎 | 0.9 | lays a bed of spikes across the whole road where it passes closest; every rat on it is hurt and slowed (30% → 60%); a second bed from level 3 | **Spike Field**: every 3 s the spikes shoot up, stunning every rat on them |
+| **Mine Tower** | 80 💎 | 1.0 | plants mines on the road around it (up to 3 → 8); a rat steps on one and it explodes; stun from level 3 | **Chain Mine**: each blast sets off the mines near it |
+| **Ice Tower** | 100 💎 | 1.05 | freezing bolts that slow; three or four hits in a row freeze a rat; twin bolts from level 3 | **Freeze**: 2.5 s freezes, and every 6 s a blizzard freezes the whole crowd around its target (bosses only slow) |
+| **Poison Gas Tower** | 120 💎 | 1.1 | lobs gas canisters; the toxic cloud eats away at every rat inside; from level 3 rats in the gas take 30% more damage from every tower | **Toxic Cloud**: huge clouds that also slow rats by 30% |
+| **Flamethrower Tower** | 150 💎 | 1.15 | a cone of fire hits every rat in front of it and leaves them burning; from level 3 burnt rats take 30% more damage | **Inferno Zone**: every 4 s it sets the road on fire where the crowd is thickest |
+| **Sniper Tower** | 180 💎 | 1.2 | very long range (18 → 23); one massive armour-piercing shot at the rat with the most health; headshots do double damage; from level 4 the bullet goes on through the rat behind | **Deadeye**: more headshots (×2.5), and a hit rat takes 30% more damage from every tower for 3 s |
+| **Tesla Tower** | 220 💎 | 1.3 | lightning that jumps from rat to rat (2 → 6 rats, fliers too), going round most armour; stuns from level 3 | **Overload**: every 5 s lightning hits every rat in range |
+| **Mortar Tower** | 260 💎 | 1.35 | heavy shells lobbed high from very far away (15 → 19) at the densest group; extra damage to armour; knock-back and stun | **Shell Rain**: three shells at once, raining down along the crowd |
+| **Rocket Tower** | 300 💎 | 1.4 | homing rockets that chase their rat (fliers too) and explode; two rockets from level 3 | **Missile Barrage**: three rockets per volley at the toughest rats |
+| **Summoner Tower** | 350 💎 | 1.5 | friendly rat soldiers march out and stand across the road; each holds back up to 2–3 rats and fights them; a fallen soldier comes back after a few seconds | **Rat Knights**: four golden armoured knights whose blows stun |
+| **Crystal Storm Tower** | 400 💎 | 1.6 | crystal arrows that pierce 3–5 rats and slow them; from level 3 a crystal storm rains down every few seconds | **Crystal Tempest**: three arrows and a storm every 4 s |
+| **Berserker Totem** | 450 💎 | 1.7 | no attack: every tower near it deals more damage, attacks faster and reaches further (+12% → +40%, +10% → +30%, +3% → +10%) | **Battle Roar**: every 15 s of battle the boosts double for 5 s |
+| **Time Warp Tower** | 500 💎 | 1.8 | rats in its area crawl (−25% → −60%) and towers there attack faster (+15% → +50%); from level 3 it sends the rats in its area back along the road every few seconds | **Time Loop**: every 8 s it stops time for the rats in its area |
+
+A totem's and a warp's boosts stack with each other (the strongest of each counts) and work on every tower, crossbows and cannons too; boosted towers glitter red (totem) or blue (warp), and both draw a ring on the ground showing their reach.
+
+**Models:** each Arsenal tower is built in 3D in the game's toon style and grows over its five levels like the sheet: a wooden frame or stone plinth, then iron plating, stone pillars, steel and finally gold with glowing gems in the tower's colour. Their heads turn to their targets and kick back as they fire: the mortar's fat barrel (three barrels at level 5), the crystal cluster, the tesla coil with its crackling orb, the red flame drum, the glass gas canister, the scoped rifle, the rocket rack, the spiked bomb, the crate of spikes, the purple summoning shrine, the horned war totem and the golden pocket watch wrapped in spinning time rings. The flamethrower sprays real fire, lightning crackles between rats, sniper shots leave a tracer (gold for a headshot), gas clouds roll green over the road, mines arc out of their tower and blink on the road, spike beds stab up as rats cross, and the Summoner's soldiers are little rats in purple tabards with swords and shields (golden helmets at level 5). The tower pictures in the Shop, on the build pads and on the tower card were painted with Meshy (15 pictures, 135 credits).
 
 ### Safeguards against accidental purchases
 - Coins start flowing only after you stand still on a pad for 0.35 s, so walking across a pad buys nothing.

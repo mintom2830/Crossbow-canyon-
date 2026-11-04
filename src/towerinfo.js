@@ -1,7 +1,8 @@
 // What the tower card in the HUD shows: the tower (or pad) next to the
 // farmer, its level and ability, and what the next upgrade costs and adds.
 // Pure data in, data out, so it can be tested without a browser.
-import { CFG, cannonSpec } from './config.js';
+import { CFG, cannonSpec, towerMaxLevel, towerUpgradeCost, towerName } from './config.js';
+import { isArsenal, arsenalSpec } from './arsenal.js';
 
 export const CROSSBOW_ABILITIES = [null,
   ['Single Shot', 'One arrow at one rat.'],
@@ -40,8 +41,31 @@ const KEEP_LEVELS = [null, ['Wooden town hall', ''], ['Stone town hall', 'Stone 
 
 const r1 = (v) => Math.round(v * 10) / 10;
 
+const pct = (v) => `${Math.round(v * 100)}%`;
+const secs = (v) => (v < 1 ? `${Math.round(v * 100) / 100}s` : `${r1(v)}s`);
+// Stat rows of an Arsenal tower level.
+function arsenalStats(kind, level) {
+  const L = arsenalSpec(kind, level);
+  switch (kind) {
+    case 'spike': return [['Damage/s', L.dps], ['Slow', '−' + pct(L.slow)], ['Spike beds', L.fields], ['Bed length', r1(L.r * 2)]];
+    case 'mine': return [['Damage', L.dmg], ['Blast', r1(L.r)], ['Mines', L.max], ['Every', secs(L.interval)]];
+    case 'ice': case 'crystal': return [['Damage', L.dmg], ['Bolts/s', r1(L.bolts / L.interval)], ['Slow', '−' + pct(L.frost.slow)], ['Range', r1(L.range)]];
+    case 'poison': return [['Gas dmg/s', L.cloud.dps], ['Cloud', r1(L.cloud.r)], ['Every', secs(L.interval)], ['Range', r1(L.range)]];
+    case 'flame': return [['Damage/s', L.dps], ['Burn/s', L.burn.dps], ['Range', r1(L.range)]];
+    case 'sniper': return [['Damage', L.dmg], ['Headshot', pct(L.head.chance)], ['Every', secs(L.interval)], ['Range', r1(L.range)]];
+    case 'tesla': return [['Damage', L.dmg], ['Chain', L.chain + ' rats'], ['Every', secs(L.interval)], ['Range', r1(L.range)]];
+    case 'mortar': return [['Damage', L.dmg], ['Blast', r1(L.radius)], ['Shells', L.shells], ['Range', r1(L.range)]];
+    case 'rocket': return [['Damage', L.dmg], ['Rockets', L.rockets], ['Every', secs(L.interval)], ['Range', r1(L.range)]];
+    case 'summoner': return [['Soldiers', L.allies], ['Health', L.hp], ['Damage/s', L.dps], ['Holds', L.block + ' rats']];
+    case 'totem': return [['Damage', '+' + pct(L.dmg)], ['Speed', '+' + pct(L.rate)], ['Range', '+' + pct(L.reach)], ['Reach', r1(L.r)]];
+    case 'warp': return [['Rat slow', '−' + pct(L.slow)], ['Tower haste', '+' + pct(L.haste)], ['Area', r1(L.r)]];
+    default: return [];
+  }
+}
+
 // Stat rows [label, value] for one tower level (cannons: on a path from level 4).
 export function towerStats(kind, level, path) {
+  if (isArsenal(kind)) return arsenalStats(kind, level);
   if (kind === 'cannon') {
     const L = cannonSpec(level, path);
     const dmg = L.nova ? L.nova.dmg : L.dmg, blast = L.nova ? L.nova.radius : L.radius;
@@ -55,7 +79,7 @@ export function towerStats(kind, level, path) {
   return [['Damage', L.dmg], ['Arrows/s', r1((L.bolts / L.interval) * burst)], ['Pierce', L.pierce], ['Range', r1(L.range)]];
 }
 
-const ability = (kind, level, path) => (kind === 'cannon' ? cannonAbility(level, path) : CROSSBOW_ABILITIES[level]);
+const ability = (kind, level, path) => (kind === 'cannon' ? cannonAbility(level, path) : isArsenal(kind) ? arsenalSpec(kind, level).ab : CROSSBOW_ABILITIES[level]);
 const pathName = (path) => CFG.cannon.paths[path].name;
 
 // What the next level brings. path: the cannon's path (or the path a choice pad leads to).
@@ -66,7 +90,7 @@ function nextLevel(kind, level, path, pad, stats) {
   return {
     level: nl, ability: name, desc, path: kind === 'cannon' && nl >= CFG.cannon.branchLevel ? path : null,
     pathName: kind === 'cannon' && nl === CFG.cannon.branchLevel ? pathName(path) : null,
-    cost: pad ? pad.cost : (kind === 'cannon' ? CFG.cannon.upgradeCosts[nl] : CFG.upgradeCosts[nl]),
+    cost: pad ? pad.cost : towerUpgradeCost(kind, nl),
     paid: pad ? pad.paid : 0,
     // stats that change, as [label, from, to]
     changes: nextStats.map(([k, v], i) => [k, stats ? stats[i][1] : null, v]).filter(([, a, b]) => a !== b),
@@ -76,10 +100,10 @@ function nextLevel(kind, level, path, pad, stats) {
 // pads: the upgrade pad(s) of this tower. A cannon at level 3 has two (one per path):
 // then the card offers the choice, or just one path while the farmer stands on its pad.
 function towerInfo(kind, level, pads = [], path = null, onPath = null) {
-  const max = level >= CFG.maxTowerLevel;
+  const max = level >= towerMaxLevel(kind);
   const [name, desc] = level ? ability(kind, level, path) : ['', ''];
   const out = {
-    kind, level, title: kind === 'cannon' ? 'Cannon' : 'Crossbow', path,
+    kind, level, title: kind === 'cannon' ? 'Cannon' : isArsenal(kind) ? towerName(kind) : 'Crossbow', path, maxLevel: towerMaxLevel(kind),
     pathName: kind === 'cannon' && path ? pathName(path) : null,
     ability: name, desc, stats: level ? towerStats(kind, level, path) : null, next: null, choice: null, max,
   };

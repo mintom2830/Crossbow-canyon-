@@ -1196,11 +1196,15 @@ await test('Shop: the cannon costs 100 diamonds; a horse (50) carries the farmer
   const { ctx, page, errors } = await open();
   await page.click('#shopBtn');
   assert(await visible(page, '#shopScreen'), 'shop hidden');
-  const xb = await page.locator('.tower-card').first().locator('.levels li').allTextContents();
+  const xb = await page.locator('[data-item="crossbow"] details li').allTextContents();
   assert(xb.length === 7 && xb[0].includes('Single Shot') && xb[5].includes('Frost Arrows') && xb[6].includes('Crystal Storm'), 'crossbow ability list missing');
-  assert(await page.isDisabled('#buyCannon'), 'unlock button should be disabled with 0 diamonds');
-  assert((await page.textContent('#cannonNote')).includes('100 more'), 'missing diamonds note');
-  assert((await page.textContent('#buyCannon')).includes('100'), 'unlock button shows the wrong price');
+  // all fifteen towers, each with its Meshy picture, the dearer ones further down
+  const cards = await page.$$eval('#towerGrid .shop-item', (els) => els.map((e) => e.dataset.item));
+  assert(cards.length === 15 && cards[0] === 'crossbow' && cards[1] === 'cannon' && cards[2] === 'spike' && cards[14] === 'warp', 'tower cards: ' + cards);
+  await page.waitForFunction(() => [...document.querySelectorAll('#towerGrid img')].every((i) => i.naturalWidth > 0), null, { timeout: 20000 });
+  assert((await page.textContent('[data-buy="warp"]')).includes('500'), 'the Time Warp should cost 500');
+  assert(await page.isDisabled('[data-buy="cannon"]'), 'unlock button should be disabled with 0 diamonds');
+  assert((await page.textContent('[data-buy="cannon"]')).includes('100'), 'unlock button shows the wrong price');
   await page.click('#shopScreen [data-back]');
   const prog = await g(page, () => { const p = JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1') || '{}'); p.diamonds = 230; return JSON.stringify(p); });
   await setStorageAndReload(page, 'crossbow-canyon:progress:v1', prog);
@@ -1210,15 +1214,15 @@ await test('Shop: the cannon costs 100 diamonds; a horse (50) carries the farmer
   // the + by the diamonds opens the Shop too
   await page.click('#gemPlus');
   assert(await visible(page, '#shopScreen'), 'the + did not open the shop');
-  await page.click('#buyCannon');
+  await page.click('[data-buy="cannon"]');
   assert(await visible(page, '#confirmScreen'), 'no confirmation before spending diamonds');
   await page.click('#confirmNo');
   assert(await visible(page, '#shopScreen'), 'cancel did not return to the shop');
-  await page.click('#buyCannon');
+  await page.click('[data-buy="cannon"]');
   await page.click('#confirmYes');
   let p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
   assert(p.diamonds === 130 && p.unlocks.cannon === true, 'purchase not saved ' + JSON.stringify(p));
-  assert(await visible(page, '#cannonOwned'), 'unlocked badge hidden');
+  assert((await page.textContent('[data-item="cannon"] .btn')).includes('Unlocked'), 'unlocked badge hidden');
   await page.screenshot({ path: `${SHOTS}/shop-towers.png` });
   // rides: buy the horse for 50 and the farmer rides it
   await page.click('[data-tab="rides"]');
@@ -1262,6 +1266,55 @@ await test('Shop: the cannon costs 100 diamonds; a horse (50) carries the farmer
   await page.keyboard.down('ArrowRight'); await page.waitForTimeout(600);
   await page.screenshot({ path: `${SHOTS}/riding-horse.png` });
   await page.keyboard.up('ArrowRight');
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('Arsenal: unlock towers in the Shop, pick one from the Build menu on a phone, build it, upgrade it to level 5 and it fights', async () => {
+  const { ctx, page, errors } = await open('phone', { sfx: false, music: false, quality: 'low', tutorialDone: true });
+  await setStorageAndReload(page, 'crossbow-canyon:progress:v1', JSON.stringify({ diamonds: 400, unlocks: { cannon: true, spike: true, mine: true } }));
+  await page.click('#shopBtn');
+  await page.click('[data-buy="tesla"]');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => window.__cc.screen === 'shopScreen');
+  const p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
+  assert(p.diamonds === 180 && p.unlocks.tesla === true, 'tesla not bought: ' + JSON.stringify(p));
+  await page.screenshot({ path: `${SHOTS}/shop-arsenal-phone.png` });
+  await page.click('#shopScreen [data-back]');
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  // five towers owned: the picker shows the current one and a menu of all of them
+  await page.waitForSelector('#pickCur:not([hidden])', { timeout: 10000 });
+  await page.tap('#pickCur');
+  await page.waitForSelector('#pickMenu:not([hidden])');
+  const menu = await page.$$eval('#pickMenu [data-pick]', (els) => els.map((e) => e.dataset.pick));
+  assert(menu.join() === 'crossbow,cannon,spike,mine,tesla', 'build menu: ' + menu);
+  await page.screenshot({ path: `${SHOTS}/build-menu-phone.png` });
+  await page.tap('#pickMenu [data-pick="tesla"]');
+  assert(await g(page, () => window.__cc.sim.buildKind) === 'tesla', 'menu did not pick the tesla');
+  assert(await page.isHidden('#pickMenu'), 'menu should close after picking');
+  const pad = await g(page, () => { const s = window.__cc.sim; s.gold = 9000; s.buildTimer = 999; const p = s.pads.find((q) => q.kind === 'build'); return { tower: p.tower, cost: p.cost, slot: p.slot, x: p.x, z: p.z }; });
+  assert(pad.tower === 'tesla' && pad.cost === 25, 'pad does not build a tesla for 25: ' + JSON.stringify(pad));
+  const built = await g(page, (pd) => { const s = window.__cc.sim; s.hero.x = pd.x + 4; s.hero.z = pd.z; window.__cc.advance(0.3); s.hero.x = pd.x; s.hero.z = pd.z; s.setInput(0, 0); window.__cc.advance(4); const t = s.slots[pd.slot].tower; return t && t.kind; }, pad);
+  assert(built === 'tesla', 'tesla not built: ' + built);
+  for (let lv = 2; lv <= 5; lv++) {
+    const got = await g(page, (slot) => {
+      const s = window.__cc.sim, p = s.pads.find((q) => q.kind === 'upgrade' && q.slot === slot);
+      if (!p) return -1;
+      s.hero.x = p.x + 4; s.hero.z = p.z; window.__cc.advance(0.3); s.hero.x = p.x; s.hero.z = p.z; s.setInput(0, 0); window.__cc.advance(4);
+      return s.slots[slot].tower.level;
+    }, pad.slot);
+    assert(got === lv, `tesla stuck below level ${lv}: ${got}`);
+  }
+  assert(await g(page, (slot) => !window.__cc.sim.pads.some((q) => q.kind === 'upgrade' && q.slot === slot), pad.slot), 'a level 5 Arsenal tower should have no upgrade pad');
+  // the card beside it names the tower and its top ability
+  await g(page, (slot) => { const t = window.__cc.sim.slots[slot].tower; window.__cc.teleport(t.x + 1.8, t.z + 0.3); }, pad.slot);
+  await page.waitForFunction(() => /Tesla Tower/.test(document.getElementById('tcTitle').textContent) && /Overload/.test(document.getElementById('tcLevel').textContent), null, { timeout: 10000 });
+  // it fights: lightning jumps between rats
+  const zaps = await g(page, () => { const s = window.__cc.sim; s.callWave(); let z = 0; for (let i = 0; i < 60 * 40; i++) { s.step(1 / 60); z += s.events.filter((e) => e.type === 'zap').length; s.events.length = 0; } return { z, kills: s.stats.kills }; });
+  assert(zaps.z >= 3 && zaps.kills > 5, 'the tesla did not fight: ' + JSON.stringify(zaps));
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${SHOTS}/tesla-phone.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

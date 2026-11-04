@@ -17,7 +17,7 @@ const tmp = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 const tmp2 = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 const aimOut = { x: 0, z: 0 };
 // height of an Arsenal tower's muzzle above its foot
-const arsMuzzle = (t) => 1.45 + t.level * 0.07;
+const arsMuzzle = (t) => 1.75 + t.level * 0.08;
 const extraBuf = [];
 const AIR = CFG.airborne;   // flying higher than this: out of reach of blasts and ground effects
 // where an arrow strikes an enemy (gy: the ground under it, on a hill)

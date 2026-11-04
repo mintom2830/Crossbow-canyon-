@@ -292,6 +292,29 @@ export class Audio {
     this._osc('sine', nova ? 70 : 95, 28, t, nova ? 0.7 : 0.32, nova ? 0.45 : 0.28);
     if (level === 6 || nova) [1320, 1760, 2640].forEach((f, i) => this._osc('triangle', f, f * 1.2, t + 0.03 * i, 0.3, 0.035));
   }
+  // ---- the Arsenal towers
+  arsenal(kind) {
+    if (!this._ok('ars-' + kind, kind === 'flame' ? 6 : 10)) return;
+    const t = this.ctx.currentTime;
+    switch (kind) {
+      case 'zap': this._noise(t, 0.12, 0.12, 'highpass', 3000, 0.7); this._osc('sawtooth', 1400, 300, t, 0.12, 0.05); this._osc('square', 900, 1800, t + 0.02, 0.06, 0.03); break;
+      case 'snipe': this._noise(t, 0.08, 0.3, 'bandpass', 1800, 0.8); this._osc('sine', 380, 60, t, 0.22, 0.3); this._noise(t + 0.03, 0.3, 0.05, 'highpass', 4000, 0.6); break;
+      case 'headshot': this._osc('triangle', 1500, 2400, t, 0.14, 0.06); this._osc('triangle', 2000, 3000, t + 0.06, 0.14, 0.05); break;
+      case 'flame': this._noise(t, 0.3, 0.1, 'bandpass', 700, 0.6); break;
+      case 'gas': this._noise(t, 0.4, 0.09, 'bandpass', 900, 0.5); this._osc('sine', 300, 200, t, 0.25, 0.04); break;
+      case 'mortar': this._osc('sine', 120, 40, t, 0.4, 0.42); this._noise(t, 0.25, 0.26, 'lowpass', 900); break;
+      case 'ice': this._osc('triangle', 1700, 2600, t, 0.08, 0.05); this._noise(t, 0.05, 0.06, 'highpass', 5000, 1); break;
+      case 'crystal': this._osc('sine', 1300, 1900, t, 0.1, 0.05); this._osc('triangle', 2400, 2800, t + 0.02, 0.08, 0.03); break;
+      case 'rocket': this._noise(t, 0.3, 0.12, 'bandpass', 1500, 1.1); this._osc('sawtooth', 280, 820, t, 0.25, 0.04); break;
+      case 'plant': this._osc('square', 500, 300, t, 0.05, 0.04); this._noise(t, 0.06, 0.06, 'bandpass', 2000, 1); break;
+      case 'impale': this._noise(t, 0.12, 0.2, 'bandpass', 2600, 1.6); this._osc('square', 900, 400, t, 0.08, 0.05); break;
+      case 'roar': this._osc('sawtooth', 110, 70, t, 0.7, 0.14); this._osc('square', 165, 100, t + 0.05, 0.6, 0.06); this._noise(t, 0.6, 0.12, 'lowpass', 600); [90, 120].forEach((f, i) => this._osc('sine', f, f, t + 0.15 * i, 0.12, 0.2)); break;
+      case 'warp': this._osc('sine', 900, 200, t, 0.6, 0.07); this._osc('sine', 600, 1200, t + 0.1, 0.5, 0.05); break;
+      case 'blizzard': this._noise(t, 0.6, 0.14, 'highpass', 2500, 0.6); this._osc('triangle', 2200, 3200, t, 0.3, 0.05); break;
+      case 'summon': [660, 880, 1100].forEach((f, i) => this._osc('triangle', f, f * 1.1, t + i * 0.06, 0.12, 0.04)); break;
+      default: break;
+    }
+  }
   denied() {
     if (!this._ok('deny', 2)) return;
     const t = this.ctx.currentTime;

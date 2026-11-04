@@ -1,7 +1,8 @@
 // Crossbow Canyon — game shell: loop, screens, HUD, saving, tutorial.
 import { describeFocus, CROSSBOW_ABILITIES, cannonAbility } from './towerinfo.js';
 import { RAT_GUIDE, guideEntry, firstWave, QUICK_COUNTERS } from './ratguide.js';
-import { CFG, clearDiamonds, MAPS } from './config.js';
+import { CFG, clearDiamonds, MAPS, towerName, towerUnlockCost, towerBuildMul, towerMaxLevel } from './config.js';
+import { TOWER_KINDS, isArsenal, arsenalSpec, ARSENAL } from './arsenal.js';
 import { setLevel, levelMap } from './world.js';
 import { Sim, T_GRUNT, T_BOSS } from './sim.js';
 import { makeBot } from './bot.js';
@@ -13,11 +14,16 @@ import { Save, DEFAULT_SETTINGS, DEFAULT_PROGRESS } from './save.js';
 const $ = (id) => document.getElementById(id);
 // painted portraits of every enemy (built into the page; see docs/design/meshy)
 const RAT_ART = (() => { try { return JSON.parse(document.getElementById('ratArt').textContent); } catch { return {}; } })();
+// painted pictures of every tower (docs/design/meshy/towers)
+const TOWER_ART = (() => { try { return JSON.parse(document.getElementById('towerArt').textContent); } catch { return {}; } })();
 const TOWER_NAMES = CROSSBOW_ABILITIES.map((a) => (a ? a[0] : ''));
 const FIXED = CFG.fixedDt;
 const settings = Save.get('settings', DEFAULT_SETTINGS);
 let progress = Save.get('progress', DEFAULT_PROGRESS);
 progress.unlocks = { cannon: false, horse: false, cow: false, ...(progress.unlocks || {}) };
+// towers: the crossbow is always yours; the rest are bought in the Shop
+const towerOwned = (k) => k === 'crossbow' || !!progress.unlocks[k];
+const ownedTowers = () => TOWER_KINDS.filter(towerOwned);
 progress.skins = Array.isArray(progress.skins) ? progress.skins.filter((k) => CFG.skins[k]) : [];
 if (!progress.skins.includes('classic')) progress.skins.unshift('classic');
 // Shop: the ride and the weapon skin in use (only ever one the player owns)
@@ -41,6 +47,7 @@ const mapName = (id) => (MAPS.find((m) => m.id === id) || MAPS[0]).name;
   setLevel(levelUnlocked(want) ? want : topUnlocked());
 }
 const cannonUnlocked = () => !!progress.unlocks.cannon;
+const moreTowers = () => ownedTowers().length > 1;
 const coarse = matchMedia('(pointer: coarse)').matches;
 
 function detectQuality() {
@@ -55,6 +62,7 @@ const canvas = $('game');
 let view;
 try {
   view = new View(canvas, $('labels'), quality);
+  view.towerArt = TOWER_ART;
   view.setSkin(currentSkin());
 } catch (err) {
   $('loading').textContent = 'This browser could not start 3D graphics (WebGL). Try another browser or turn on hardware acceleration.';
@@ -88,9 +96,11 @@ const input = new Input(canvas, $('joy'), {
     if (code === 'KeyM') { audio.click(); toggleZoom(); return; }
     if (code === 'KeyT') { audio.click(); toggleAuto(); return; }
     if (code === 'KeyF') { audio.click(); toggleSpeed(); return; }
-    if (!cannonUnlocked()) return;
-    const kind = code === 'KeyQ' ? (sim.buildKind === 'cannon' ? 'crossbow' : 'cannon') : code.endsWith('2') ? 'cannon' : 'crossbow';
-    pickBuild(kind);
+    if (!moreTowers()) return;
+    // 1-9 and 0 pick a tower you own (in the Shop's order); Q cycles through them
+    const own = ownedTowers();
+    const kind = code === 'KeyQ' ? own[(own.indexOf(sim.buildKind) + 1) % own.length] : own[code === 'Digit0' ? 9 : +code.slice(-1) - 1];
+    if (kind) pickBuild(kind);
   },
   onInteract: () => audio.unlock(),
 });
@@ -146,6 +156,7 @@ function switchLevel(id) {
   const old = view;
   old.dispose();
   view = new View(canvas, $('labels'), quality, old.renderer);
+  view.towerArt = TOWER_ART;
   view.setSkin(currentSkin());
   hudCache = {}; tcKey = '';
   needsRender = true;
@@ -253,7 +264,7 @@ function startGame(saveData, difficulty = diffKey()) {
   introducedBosses.clear();
   if (saveData && (saveData.level || 1) !== CFG.level) switchLevel(saveData.level || 1);
   if (settings.level !== CFG.level) { settings.level = CFG.level; Save.set('settings', settings); }   // the map last played opens next time
-  sim = new Sim({ seed: newSeed(), cannon: cannonUnlocked(), autoSkip: !!settings.autoSkip, difficulty, ride: currentRide() });
+  sim = new Sim({ seed: newSeed(), cannon: cannonUnlocked(), unlocks: progress.unlocks, autoSkip: !!settings.autoSkip, difficulty, ride: currentRide() });
   if (saveData && !sim.load(saveData)) saveData = null;
   syncAuto();
   sim.events.length = 0;
@@ -363,27 +374,22 @@ click('helpBtn', () => { backTo = 'titleScreen'; showScreen('helpScreen'); });
 click('settingsBtn', () => { backTo = 'titleScreen'; syncSettingsUi(); showScreen('settingsScreen'); });
 click('shopBtn', () => openShop());
 click('gemPlus', () => openShop());
-click('buyCannon', () => {
-  if (cannonUnlocked() || progress.diamonds < CFG.cannonUnlockCost) return;
-  askConfirm('Unlock the Cannon Tower?', `This spends ${CFG.cannonUnlockCost} of your ${progress.diamonds} diamonds.`, 'Unlock', () => {
-    progress.diamonds -= CFG.cannonUnlockCost;
-    progress.unlocks.cannon = true;
-    Save.set('progress', progress);
-    audio.build('fortress');
-    refreshShop(); refreshTitle();
-    backTo = 'titleScreen';
-    showScreen('shopScreen');
-  });
+click('pickCur', (e) => { e && e.stopPropagation && e.stopPropagation(); toggleBuildMenu(); });
+// a tower button in the picker (row or menu)
+$('buildPick').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pick]');
+  if (!b) return;
+  pickBuild(b.dataset.pick);
+  toggleBuildMenu(false);
 });
-click('pickCrossbow', () => pickBuild('crossbow'));
-click('pickCannon', () => pickBuild('cannon'));
+document.addEventListener('pointerdown', (e) => { if (!$('pickMenu').hidden && !e.target.closest('#buildPick')) toggleBuildMenu(false); });
 
 // ------------------------------------------------------------ shop
 // Towers (the cannon), rides (horse, cow) and weapon skins, bought with diamonds.
 const GEM_SVG = '<svg class="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg>';
 let shopTab = 'towers';
 function shopItems() {
-  const out = [{ kind: 'tower', id: 'cannon', cost: CFG.cannonUnlockCost, owned: cannonUnlocked() }];
+  const out = TOWER_KINDS.filter((k) => k !== 'crossbow').map((id) => ({ kind: 'tower', id, cost: towerUnlockCost(id), owned: towerOwned(id) }));
   for (const [id, R] of Object.entries(CFG.rides)) out.push({ kind: 'ride', id, cost: R.cost, owned: rideOwned(id) });
   for (const [id, S] of Object.entries(CFG.skins)) out.push({ kind: 'skin', id, cost: S.cost, owned: skinOwned(id) });
   return out;
@@ -396,19 +402,20 @@ function openShop(tab = shopTab) {
   showScreen('shopScreen');
 }
 for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('click', () => { audio.click(); shopTab = b.dataset.tab; refreshShop(); });
-function shopCard({ id, img, name, blurb, stat, swatch, cost, owned, using, useLabel, usingLabel }) {
+function shopCard({ id, img, name, blurb, stat, swatch, cost, owned, using, useLabel, usingLabel, extra = '' }) {
   const action = using ? `<button class="btn gold" type="button" disabled>${usingLabel}</button>`
     : owned ? `<button class="btn" type="button" data-use="${id}">${useLabel}</button>`
     : `<button class="btn gold" type="button" data-buy="${id}" ${progress.diamonds < cost ? 'disabled' : ''}>Buy ${cost} ${GEM_SVG}</button>`;
   return `<section class="shop-item${using ? ' on' : ''}" data-item="${id}">
     <img alt="" ${img ? `src="${img}"` : ''} width="112" height="112">
-    <h3>${name}</h3>${swatch || ''}<p>${blurb}</p>${stat ? `<p class="stat">${stat}</p>` : ''}${action}</section>`;
+    <h3>${name}</h3>${swatch || ''}<p>${blurb}</p>${stat ? `<p class="stat">${stat}</p>` : ''}${extra}${action}</section>`;
 }
 function refreshShop() {
   refreshArmory();
   for (const b of document.querySelectorAll('[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === shopTab));
   for (const pg of document.querySelectorAll('[data-page]')) pg.hidden = pg.dataset.page !== shopTab;
   const P = view.portraits;
+  if (shopTab === 'towers') $('towerGrid').innerHTML = TOWER_KINDS.map(towerCard).join('');
   if (shopTab === 'rides') {
     const ride = currentRide();
     $('rideGrid').innerHTML = shopCard({ id: 'none', img: P.get('ride:none', false), name: 'On foot', blurb: 'The farmer runs along at a steady pace.', cost: 0, owned: true, using: !ride, useLabel: 'Walk', usingLabel: 'Walking ✓' })
@@ -427,20 +434,21 @@ document.getElementById('shopScreen').addEventListener('click', (e) => {
   const buy = e.target.closest('[data-buy]'), use = e.target.closest('[data-use]');
   if (!buy && !use) return;
   const id = (buy || use).dataset[buy ? 'buy' : 'use'];
-  const kind = shopTab === 'rides' ? 'ride' : 'skin';
+  const kind = shopTab === 'rides' ? 'ride' : shopTab === 'towers' ? 'tower' : 'skin';
   const equip = () => {
+    if (kind === 'tower') return;
     if (kind === 'ride') { settings.ride = id; if (mode === 'title') sim.ride = currentRide(); }
     else { settings.skin = id; view.setSkin(currentSkin()); }
     Save.set('settings', settings);
   };
   audio.unlock();
   if (use) { audio.click(); equip(); refreshShop(); refreshTitle(); return; }
-  const item = kind === 'ride' ? CFG.rides[id] : CFG.skins[id];
+  const item = kind === 'ride' ? CFG.rides[id] : kind === 'tower' ? (TOWER_KINDS.includes(id) && !towerOwned(id) ? { name: towerName(id), cost: towerUnlockCost(id) } : null) : CFG.skins[id];
   if (!item || progress.diamonds < item.cost) return;
   audio.click();
-  askConfirm(`Buy the ${item.name}${kind === 'skin' ? ' skin' : ''}?`, `This spends ${item.cost} of your ${progress.diamonds} diamonds.`, 'Buy', () => {
+  askConfirm(kind === 'tower' ? `Unlock the ${item.name}?` : `Buy the ${item.name}${kind === 'skin' ? ' skin' : ''}?`, `This spends ${item.cost} of your ${progress.diamonds} diamonds.`, kind === 'tower' ? 'Unlock' : 'Buy', () => {
     progress.diamonds -= item.cost;
-    if (kind === 'ride') progress.unlocks[id] = true; else progress.skins.push(id);
+    if (kind === 'ride' || kind === 'tower') progress.unlocks[id] = true; else progress.skins.push(id);
     Save.set('progress', progress);
     equip();
     audio.build('fortress');
@@ -458,14 +466,30 @@ click('fullBtn', () => {
 document.addEventListener('fullscreenchange', () => setTimeout(fitTitle, 120));
 click('moreBtn', () => { backTo = 'titleScreen'; syncSettingsUi(); showScreen('settingsScreen'); });
 function refreshArmory() {
-  const d = progress.diamonds, cost = CFG.cannonUnlockCost, owned = cannonUnlocked();
-  $('shopGems').textContent = d;
-  $('cannonOwned').hidden = !owned;
-  $('buyCannon').hidden = owned;
-  $('buyCannon').disabled = d < cost;
-  $('cannonNote').textContent = owned
-    ? 'Unlocked. In a game, tap the cannon button (or press 2) so build pads make cannons.'
-    : d >= cost ? 'You have enough diamonds.' : `You need ${cost - d} more diamonds. Every wave you clear earns some, and clearing all ${CFG.waves.length} earns ${clearDiamonds('normal')} on Normal or ${clearDiamonds('hard')} on Hard.`;
+  $('shopGems').textContent = progress.diamonds;
+}
+
+// One tower's card in the Shop: its Meshy picture, what it does, its levels and price.
+const TYPE_COLORS = { Physical: '#8a8f99', Explosive: '#e0702a', Fire: '#e0502a', Ice: '#3aa9d8', Poison: '#5aa02a', Electric: '#3a7ad8', Pierce: '#c2762a', Magic: '#8a4ad8' };
+function towerLevels(kind) {
+  if (kind === 'crossbow') return CROSSBOW_ABILITIES.slice(1).map((a, i) => [i + 1, a[0], a[1]]);
+  if (kind === 'cannon') {
+    const out = [1, 2, 3].map((lv) => [lv, ...cannonAbility(lv)]);
+    out.push(['4–7', 'Choose a path', `${CFG.cannon.paths.rapid.name} (fast light shells, rockets) or ${CFG.cannon.paths.blast.name} (huge blasts, Doomsday Nova).`]);
+    return out;
+  }
+  return ARSENAL[kind].levels.slice(1).map((L, i) => [i + 1, L.ab[0], L.ab[1]]);
+}
+function towerCard(kind) {
+  const A = ARSENAL[kind];
+  const type = kind === 'crossbow' ? 'Pierce' : kind === 'cannon' ? 'Explosive' : A.type;
+  const blurb = kind === 'crossbow' ? 'Fast, precise arrows. The only tower you start with.' : kind === 'cannon' ? 'Explosive cannonballs that hurt every rat near the blast.' : A.blurb;
+  const levels = towerLevels(kind);
+  const mul = towerBuildMul(kind);
+  const extra = `<span class="type" style="--chip:${TYPE_COLORS[type] || '#7a5a3a'}">${type}</span>
+    <p class="gold-note">${mul === 1 ? 'Normal build price' : `Builds for ${mul > 1 ? '+' : ''}${Math.round((mul - 1) * 100)}% gold`} · ${towerMaxLevel(kind)} levels</p>
+    <details><summary>Levels &amp; abilities</summary><ol>${levels.map(([lv, n, d]) => `<li><b>${lv}</b> <em>${esc(n)}:</em> ${esc(d)}</li>`).join('')}</ol></details>`;
+  return shopCard({ id: kind, img: TOWER_ART[kind], name: towerName(kind), blurb, cost: towerUnlockCost(kind), owned: towerOwned(kind), using: towerOwned(kind), usingLabel: kind === 'crossbow' ? 'Owned ✓' : 'Unlocked ✓', extra });
 }
 
 function pickBuild(kind) {
@@ -473,12 +497,28 @@ function pickBuild(kind) {
   audio.click();
   syncBuildPick();
 }
+function toggleBuildMenu(open = $('pickMenu').hidden) {
+  $('pickMenu').hidden = !open;
+  $('pickCur').setAttribute('aria-expanded', String(open));
+}
+// The towers you own: a row of buttons when there are three or fewer, otherwise
+// the current one with a menu of all of them.
+let pickKey = '';
 function syncBuildPick() {
-  const show = cannonUnlocked() && (mode === 'play' || mode === 'pause');
+  const show = moreTowers() && (mode === 'play' || mode === 'pause');
   $('buildPick').hidden = !show;
-  const c = sim.buildKind === 'cannon';
-  $('pickCannon').classList.toggle('on', c); $('pickCannon').setAttribute('aria-pressed', String(c));
-  $('pickCrossbow').classList.toggle('on', !c); $('pickCrossbow').setAttribute('aria-pressed', String(!c));
+  if (!show) { toggleBuildMenu(false); return; }
+  const own = ownedTowers(), many = own.length > 3, cur = sim.buildKind;
+  const btn = (k, i) => `<button ${k === 'crossbow' ? 'id="pickCrossbow"' : k === 'cannon' ? 'id="pickCannon"' : ''} class="pick${k === cur ? ' on' : ''}" type="button" data-pick="${k}" aria-pressed="${k === cur}" aria-label="Build ${esc(towerName(k))}${i < 10 ? ` (key ${(i + 1) % 10})` : ''}" title="${esc(towerName(k))}"><img src="${TOWER_ART[k]}" alt="">${many && i < 10 ? `<b>${(i + 1) % 10}</b>` : ''}</button>`;
+  const key = own.join(',') + '|' + cur;
+  if (key !== pickKey) {
+    pickKey = key;
+    $('pickRow').innerHTML = many ? '' : own.map(btn).join('');
+    $('pickMenu').innerHTML = many ? own.map(btn).join('') : '';
+    $('pickCurImg').src = TOWER_ART[cur] || '';
+  }
+  $('pickCur').hidden = !many;
+  if (!many) toggleBuildMenu(false);
 }
 click('pauseSettingsBtn', () => { backTo = 'pauseScreen'; syncSettingsUi(); showScreen('settingsScreen'); });
 click('guideBtn', () => { backTo = 'titleScreen'; openGuide(); });
@@ -723,7 +763,7 @@ function updateTowerCard() {
   card.hidden = false;
   // walking past a tower: a small name tag; standing on a pad: the upgrade details
   card.classList.toggle('mini', !f.onPad);
-  $('tcIcon').innerHTML = ICONS[f.path] || ICONS[f.kind] || ICONS.crossbow;
+  $('tcIcon').innerHTML = isArsenal(f.kind) ? `<img src="${TOWER_ART[f.kind]}" alt="">` : ICONS[f.path] || ICONS[f.kind] || ICONS.crossbow;
   $('tcTitle').textContent = f.build ? `Build a ${f.title.toLowerCase()}` : f.pathName ? `${f.title} · ${f.pathName}` : f.title;
   $('tcLevel').textContent = f.build ? 'Empty pad' : `Level ${f.level} · ${f.ability}`;
   $('tcDesc').textContent = f.build ? 'Stand on the pad to pour in gold.' : f.desc;
@@ -882,7 +922,7 @@ const tutorial = {
       if (s.builtOrder > 0) this.step = 3;
     } else if (this.step === 2) {
       const pad = cheapestPad('build');
-      if (pad) { arrow = pad.id; text = 'Stand on the pad to pour in gold and build a crossbow'; }
+      if (pad) { arrow = pad.id; text = `Stand on the pad to pour in gold and build a ${towerName(pad.tower || 'crossbow').replace(' Tower', '').toLowerCase()}`; }
       if (s.builtOrder > 0) { this.step = 3; settings.tutorialDone = true; Save.set('settings', settings); }
     }
     if (this.step >= 3) {
@@ -905,10 +945,10 @@ const tutorial = {
       }
       if (s.stats.repaired) this.repairShown = true;   // already found it
       if (s.fortress.level > 1) this.keepShown = true;
-      if (!text && cannonUnlocked() && !this.cannonShown && s.state === 'build') {
-        text = input.lastKind === 'touch' ? 'Cannon Tower unlocked: tap the cannon button, then step on a build pad' : 'Cannon Tower unlocked: press <kbd>2</kbd> or click the cannon button, then step on a build pad';
+      if (!text && moreTowers() && !this.cannonShown && s.state === 'build') {
+        text = input.lastKind === 'touch' ? 'More towers unlocked: tap <b>Build</b> to pick one, then step on a build pad' : 'More towers unlocked: press <kbd>1</kbd>–<kbd>9</kbd> or click a tower by <b>Build</b>, then step on a build pad';
         this.cannonT += dt;
-        if (this.cannonT > 8 || s.buildKind === 'cannon' || s.towers.some((t) => t.kind === 'cannon')) this.cannonShown = true;
+        if (this.cannonT > 8 || s.buildKind !== 'crossbow' || s.towers.some((t) => t.kind !== 'crossbow')) this.cannonShown = true;
       }
       if (s.towers.some((t) => t.level > 1)) this.upShown = true;
     }
@@ -942,7 +982,8 @@ function processEvents() {
     if (!playing) continue;
     switch (e.type) {
       case 'fire':
-        if (e.tower !== 'cannon') audio.fire(e.level);
+        if (isArsenal(e.tower)) audio.arsenal(e.tower === 'poison' ? 'gas' : e.tower);
+        else if (e.tower !== 'cannon') audio.fire(e.level);
         else audio.cannon(e.kind, e.level >= CFG.cannon.branchLevel ? (e.path === 'rapid' ? 'rapid' : 'heavy') : '');
         break;
       case 'explode': audio.explosion(e.kind, e.level); break;
@@ -978,6 +1019,15 @@ function processEvents() {
       case 'split': audio.broodSplit(); break;
       case 'storm': audio.storm(); break;
       case 'stormHit': audio.stormHit(); break;
+      case 'zap': case 'overload': audio.arsenal('zap'); break;
+      case 'snipe': audio.arsenal('snipe'); if (e.head) audio.arsenal('headshot'); break;
+      case 'plant': audio.arsenal('plant'); break;
+      case 'impale': audio.arsenal('impale'); break;
+      case 'roar': audio.arsenal('roar'); toast('Battle Roar! Nearby towers hit twice as hard'); break;
+      case 'warp': audio.arsenal('warp'); break;
+      case 'blizzard': audio.arsenal('blizzard'); break;
+      case 'inferno': audio.arsenal('flame'); break;
+      case 'allyUp': audio.arsenal('summon'); break;
       case 'hit': audio.hitGiant(); break;
       case 'death': if (e.kind === T_GRUNT) audio.pop(); else audio.bigDeath(e.kind === T_BOSS); break;
       case 'coin': audio.coin(); bumpGold(); break;
@@ -985,9 +1035,10 @@ function processEvents() {
       case 'needGold': toast(`Need ${e.need} more gold`, true); audio.denied(); break;
       case 'built':
         audio.build(e.kind);
-        if (e.kind === 'build') toast(e.tower === 'cannon' ? 'Cannon built' : 'Crossbow built');
+        if (e.kind === 'build') toast(`${towerName(e.tower)} built`);
         else if (e.kind === 'upgrade') {
-          if (e.tower !== 'cannon') toast(`Crossbow level ${e.level}: ${TOWER_NAMES[e.level]}`);
+          if (isArsenal(e.tower)) toast(`${towerName(e.tower)} level ${e.level}: ${arsenalSpec(e.tower, e.level).ab[0]}`);
+          else if (e.tower !== 'cannon') toast(`Crossbow level ${e.level}: ${TOWER_NAMES[e.level]}`);
           else if (e.level === CFG.cannon.branchLevel) banner(CFG.cannon.paths[e.path].name, e.path === 'rapid' ? 'Rapid fire for swarms and fast rats' : 'Huge blasts for crowds, giants and bosses', true);
           else if (e.level === CFG.cannon.branchLevel - 1) toast(`Cannon level ${e.level}: ${cannonAbility(e.level)[0]}. Next, choose its path!`);
           else toast(`Cannon level ${e.level}: ${cannonAbility(e.level, e.path)[0]}`);

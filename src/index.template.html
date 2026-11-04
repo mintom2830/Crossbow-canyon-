@@ -634,6 +634,29 @@ select { border: 2.5px solid var(--ink); }
 .qc-row small { display: block; font-weight: 700; color: #7a5030; font-size: 11px; }
 .best-back { align-self: center; min-width: 200px; }
 @media (prefers-reduced-motion: reduce) { .ge-art::before, .ge-art::after, .ge-art img { animation: none; } }
+
+/* build picker: the towers you own (a row when there are few, a menu when there are many) */
+.pick-row { display: flex; gap: 4px; }
+.pick img, .pick-menu img { width: 34px; height: 34px; object-fit: contain; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.35)); }
+.pick.cur { width: auto; padding: 0 6px 0 4px; display: inline-flex; gap: 2px; align-items: center; }
+.pick.cur i { font-style: normal; font-size: 13px; color: var(--umber); }
+.build-pick { position: relative; }
+.pick-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 52px); gap: 6px; padding: 8px; background: var(--umber); border: 2.5px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 rgba(0,0,0,0.35); }
+.pick-menu .pick { width: 52px; height: 52px; position: relative; }
+.pick-menu .pick img { width: 42px; height: 42px; }
+.pick-menu .pick b { position: absolute; left: 3px; top: 1px; font-size: 11px; color: var(--dune); }
+@media (max-width: 520px) { .pick-menu { grid-template-columns: repeat(4, 46px); } .pick-menu .pick { width: 46px; height: 46px; } .pick-menu .pick img { width: 36px; height: 36px; } }
+.tcard-icon img { width: 100%; height: 100%; object-fit: contain; }
+/* shop: tower cards */
+.shop-grid.towers { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+@media (max-width: 560px) { .shop-grid.towers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; } .shop-grid.towers .shop-item h3 { font-size: 17px; } .shop-grid.towers .shop-item > p:not(.gold-note) { display: none; } .shop-grid.towers .shop-item .btn { font-size: 14px; } }
+.shop-item .type { font-size: 11px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--chip, #7a5a3a); border: 2px solid var(--ink); border-radius: 999px; padding: 1px 8px; }
+.shop-item details { width: 100%; text-align: left; font-size: 12px; }
+.shop-item summary { cursor: pointer; font-weight: 900; color: #6b3a1c; font-size: 12.5px; }
+.shop-item details ol { margin: 4px 0 0; padding-left: 0; list-style: none; display: grid; gap: 3px; }
+.shop-item details li { line-height: 1.25; }
+.shop-item details li b { display: inline-block; min-width: 16px; color: #11695f; }
+.shop-item .gold-note { font-size: 11.5px !important; color: #7a4628 !important; }
 </style>
 
 <div id="app">
@@ -650,8 +673,9 @@ select { border: 2.5px solid var(--ink); }
         </div>
         <div class="build-pick" id="buildPick" hidden role="group" aria-label="Tower to build">
           <span>Build</span>
-          <button id="pickCrossbow" class="pick on" type="button" aria-label="Build crossbows (key 1)" aria-pressed="true"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 20a14 14 0 0 1 22 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><path d="M16 27V5m-4 4 4-5 4 5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <button id="pickCannon" class="pick" type="button" aria-label="Build cannons (key 2)" aria-pressed="false"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="9" width="19" height="11" rx="5" fill="currentColor"/><circle cx="23" cy="14.5" r="6" fill="currentColor"/><circle cx="12" cy="23" r="5" fill="currentColor"/><circle cx="12" cy="23" r="2" fill="#3a1d12"/></svg></button>
+          <div class="pick-row" id="pickRow"></div>
+          <button id="pickCur" class="pick on cur" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Choose the tower to build (keys 1-9, Q)" hidden><img id="pickCurImg" alt=""><i aria-hidden="true">▾</i></button>
+          <div class="pick-menu" id="pickMenu" hidden role="menu" aria-label="Towers you own"></div>
         </div>
       </div>
       <div class="hud-center">
@@ -763,7 +787,7 @@ select { border: 2.5px solid var(--ink); }
         <li><span class="ic">!</span><span>Giant rats carry a lot of health and hit the gate hard. Every wave is harder than the last, and six bosses climb out of the burrow along the way. A siren and a red warning give you 5 seconds to get ready, and all of them return in the final wave. Survive all <span class="nWaves">16</span> waves to hold the canyon.</span></li>
         <li><span class="ic">☠</span><span>Three bosses have tricks. The Sewer Slime splits into smaller slimes when it bursts. The Tunnel Mole digs under the canyon and comes up near the town (red cracks show where). The Canyon Buzzard flies over the road dropping rats, out of reach of cannon shells, so crossbows must shoot it down.</span></li>
       </ul>
-      <p class="note">Every wave you clear earns diamonds, even if the town hall falls later: on Normal 1 for each of waves 1–5, 2 for waves 6–10, 3 for waves 11–15 and 20 for the final wave, so 50 for a full clear. Easy pays 30 for a full clear and Hard pays double, 100. Spend <span class="cannonCost">100</span> in the Armory to unlock the Cannon Tower, then pick it with the cannon button (or press 2) before stepping on a build pad. At level 4 each cannon takes one of two paths: the fast Rapid Launcher or the mighty Thunder Mortar.</p>
+      <p class="note">Every wave you clear earns diamonds, even if the town hall falls later: on Normal 1 for each of waves 1–5, 2 for waves 6–10, 3 for waves 11–15 and 20 for the final wave, so 50 for a full clear. Easy pays 30 for a full clear and Hard pays double, 100. Spend them in the Shop on new towers (the Cannon for <span class="cannonCost">100</span>, then twelve more, from the Spike Trap for 60 to the Time Warp for 500), rides and weapon skins. Pick the tower to build with the <b>Build</b> button (or keys 1–9, Q to cycle) before stepping on a build pad. At level 4 each cannon takes one of two paths: the fast Rapid Launcher or the mighty Thunder Mortar.</p>
       <button class="btn" type="button" data-back>Got it</button>
     </div></div>
   </div>
@@ -788,49 +812,8 @@ select { border: 2.5px solid var(--ink); }
         <div class="shop-grid" id="skinGrid"></div>
       </div>
       <div class="shop-page" data-page="towers">
-      <div class="tower-cards">
-        <section class="tower-card">
-          <header><span class="ticon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 20a14 14 0 0 1 22 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><path d="M16 27V5m-4 4 4-5 4 5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><h3>Crossbow Tower</h3><p class="sub">Fast, precise attacks. Abilities stack as it levels up.</p></div><span class="owned">Owned</span></header>
-          <ol class="levels">
-            <li><b>1</b><span><em>Single Shot:</em> fires one arrow at one enemy.</span></li>
-            <li><b>2</b><span><em>Power Shot:</em> fires faster and deals more damage.</span></li>
-            <li><b>3</b><span><em>Twin Shot:</em> two arrows together, hitting one enemy twice or two separate enemies.</span></li>
-            <li><b>4</b><span><em>Armor Piercer:</em> heavy arrows ignore most of a giant rat's armour and pass through up to two enemies.</span></li>
-            <li><b>5</b><span><em>Triple Barrage:</em> three crossbows fire together. Every fifth attack launches a rapid burst.</span></li>
-            <li><b>6</b><span><em>Frost Arrows:</em> crystal arrows slow enemies. Three hits on the same enemy briefly freeze it. Bosses only slow down.</span></li>
-            <li><b>7</b><span><em>Crystal Storm:</em> purple arrows bounce between nearby enemies, and every few seconds an arrow storm rains down.</span></li>
-          </ol>
-        </section>
-        <section class="tower-card" id="cannonCard">
-          <header><span class="ticon"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="9" width="19" height="11" rx="5" fill="currentColor"/><circle cx="23" cy="14.5" r="6" fill="currentColor"/><circle cx="12" cy="23" r="5" fill="currentColor"/><circle cx="12" cy="23" r="2" fill="#3a1d12"/></svg></span><div><h3>Cannon Tower</h3><p class="sub">Slower shots with explosive area damage.</p></div><span class="owned" id="cannonOwned" hidden>Unlocked</span></header>
-          <ol class="levels">
-            <li><b>1</b><span><em>Cannonball:</em> fires an explosive ball that damages enemies close to the impact.</span></li>
-            <li><b>2</b><span><em>Heavy Blast:</em> bigger explosions deal more damage and push small rats back.</span></li>
-            <li><b>3</b><span><em>Double Cannon:</em> two cannonballs in quick succession, at the same group or two groups.</span></li>
-          </ol>
-          <p class="sub branch-note">At level 4, choose one of two paths. Each cannon takes its own path, so you can build both.</p>
-          <div class="paths">
-            <div class="path rapid"><h4>Rapid Launcher</h4><p class="sub">Fast, light shells that shred swarms and fast rats. Weak against armour.</p>
-              <ol class="levels">
-                <li><b>4</b><span><em>Rapid Launcher:</em> four tubes fire a light shell every third of a second, each at a fresh group.</span></li>
-                <li><b>5</b><span><em>Cluster Shells:</em> every shell bursts into three bomblets that scatter over the crowd.</span></li>
-                <li><b>6</b><span><em>Firestorm:</em> fires even faster, and every shell sets the ground on fire.</span></li>
-                <li><b>7</b><span><em>Rocket Barrage:</em> a rocket pod. Every 4 seconds a salvo of 14 rockets hits the front of the crowd.</span></li>
-              </ol>
-            </div>
-            <div class="path blast"><h4>Thunder Mortar</h4><p class="sub">Slow, enormous blasts that crush crowds, giants and bosses. Fast rats can slip past.</p>
-              <ol class="levels">
-                <li><b>4</b><span><em>Thunder Mortar:</em> one enormous shell every few seconds. Double damage to armour; it stuns and throws rats back.</span></li>
-                <li><b>5</b><span><em>Triple Thunder:</em> all three barrels fire together, flattening a long stretch of the road.</span></li>
-                <li><b>6</b><span><em>Crystal Quake:</em> twin crystal shells send out a slowing shockwave and crack armour for 4 seconds.</span></li>
-                <li><b>7</b><span><em>Doomsday Nova:</em> a huge armour-breaking Nova every 2 seconds, with side cannons firing in between.</span></li>
-              </ol>
-            </div>
-          </div>
-          <button id="buyCannon" class="btn gold" type="button">Unlock for <span class="cannonCost">100</span> <svg class="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
-          <p class="note" id="cannonNote"></p>
-        </section>
-      </div>
+        <p class="shop-blurb">Fifteen towers, five levels or more each. The stronger the tower, the more diamonds it takes to unlock and the more gold it costs to build and upgrade. In a game, pick the tower to build with the <b>Build</b> button (or keys 1–9) before stepping on a pad.</p>
+        <div class="shop-grid towers" id="towerGrid"></div>
       </div>
       <button class="btn" type="button" data-back>Back</button>
     </div></div>
@@ -853,6 +836,7 @@ select { border: 2.5px solid var(--ink); }
   <!-- Pause -->
   <!-- Rat guide -->
   <!-- painted portraits of every enemy (Meshy, from the bestiary design): used by the Rat guide and the New enemy card -->
+  <script type="application/json" id="towerArt">{"crossbow":"__ASSET(tower-crossbow.webp)__","cannon":"__ASSET(tower-cannon.webp)__","mortar":"__ASSET(tower-mortar.webp)__","crystal":"__ASSET(tower-crystal.webp)__","tesla":"__ASSET(tower-tesla.webp)__","flame":"__ASSET(tower-flame.webp)__","ice":"__ASSET(tower-ice.webp)__","poison":"__ASSET(tower-poison.webp)__","sniper":"__ASSET(tower-sniper.webp)__","rocket":"__ASSET(tower-rocket.webp)__","mine":"__ASSET(tower-mine.webp)__","spike":"__ASSET(tower-spike.webp)__","summoner":"__ASSET(tower-summoner.webp)__","totem":"__ASSET(tower-totem.webp)__","warp":"__ASSET(tower-warp.webp)__"}</script>
   <script type="application/json" id="ratArt">{"rat:0":"__ASSET(rat-art-rat-0.webp)__","rat:1":"__ASSET(rat-art-rat-1.webp)__","rat:2":"__ASSET(rat-art-rat-2.webp)__","rat:3":"__ASSET(rat-art-rat-3.webp)__","rat:4":"__ASSET(rat-art-rat-4.webp)__","rat:5":"__ASSET(rat-art-rat-5.webp)__","rat:6":"__ASSET(rat-art-rat-6.webp)__","rat:7":"__ASSET(rat-art-rat-7.webp)__","rat:8":"__ASSET(rat-art-rat-8.webp)__","rat:9":"__ASSET(rat-art-rat-9.webp)__","giant":"__ASSET(rat-art-giant.webp)__","boss:warlord":"__ASSET(rat-art-boss-warlord.webp)__","boss:slime":"__ASSET(rat-art-boss-slime.webp)__","boss:baron":"__ASSET(rat-art-boss-baron.webp)__","boss:mole":"__ASSET(rat-art-boss-mole.webp)__","boss:buzzard":"__ASSET(rat-art-boss-buzzard.webp)__","boss:king":"__ASSET(rat-art-boss-king.webp)__"}</script>
   <div id="guideScreen" class="screen guide-screen" hidden>
     <div class="bestiary">

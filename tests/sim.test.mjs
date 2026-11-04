@@ -2,7 +2,8 @@
 import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING, BOMB, NINJA, JET } from '../src/sim.js';
 import { RAT_GUIDE, firstWave, guideEntry, QUICK_COUNTERS } from '../src/ratguide.js';
 import { existsSync, readFileSync } from 'node:fs';
-import { CFG, cannonSpec, MAPS } from '../src/config.js';
+import { CFG, cannonSpec, MAPS, towerUpgradeCost, towerBuildMul, towerUnlockCost } from '../src/config.js';
+import { ARSENAL, TOWER_KINDS, arsenalSpec } from '../src/arsenal.js';
 import { road, plateauSdf, setLevel, groundHeight, hillHeight, pondDepth, streamDistance, STREAM_HALF, inWater, oasisLayout } from '../src/world.js';
 import { runLevel } from '../tools/balance.mjs';
 import { makeBot } from '../src/bot.js';
@@ -1540,6 +1541,198 @@ test('performance: one simulation step stays well under 1 ms', () => {
   const r = balance.bot1 || runLevel('bot', 1);
   assert(r.avgStepMs < 1, 'avg step ' + r.avgStepMs);
   assert(r.peakEnemies > 350, 'crowd smaller than expected: ' + r.peakEnemies);
+});
+
+
+// ------------------------------------------------------------ the Arsenal
+const ALL_UNLOCKED = Object.fromEntries(TOWER_KINDS.map((k) => [k, true]));
+const arsSim = (kind, level = 5, slot = 1) => {
+  const sim = quietSim();
+  sim.unlocked = { ...ALL_UNLOCKED };
+  const t = sim._placeTower(sim.slots[slot], level, true, kind);
+  return { sim, t };
+};
+// a rat on the road at the point closest to tower t (offset ds along the road)
+const ratNear = (sim, t, ds = 0, hp = 100, v = 0, lat = 0) => onRoad(sim, v, sim._nearestRoadS(t) + ds, lat, hp);
+
+test('Arsenal: 13 towers, 5 levels each; the stronger the tower the more diamonds and gold it costs', () => {
+  const kinds = Object.keys(ARSENAL);
+  assert(kinds.length === 13 && TOWER_KINDS.length === 15, 'tower count');
+  for (const k of kinds) {
+    const A = ARSENAL[k];
+    assert(A.levels.length === 6 && A.levels.slice(1).every((L) => L.ab && L.ab[0] && L.ab[1]), `${k}: five levels with abilities`);
+    for (let lv = 3; lv <= 5; lv++) assert(towerUpgradeCost(k, lv) > towerUpgradeCost(k, lv - 1), `${k}: upgrades get dearer`);
+  }
+  const byCost = kinds.slice().sort((a, b) => ARSENAL[a].cost - ARSENAL[b].cost);
+  for (let i = 1; i < byCost.length; i++) {
+    const a = byCost[i - 1], b = byCost[i];
+    assert(ARSENAL[b].cost > ARSENAL[a].cost && towerBuildMul(b) >= towerBuildMul(a) && towerUpgradeCost(b, 5) >= towerUpgradeCost(a, 5), `${b} should cost at least as much as ${a}`);
+  }
+  assert(towerUnlockCost('spike') === 60 && towerUnlockCost('warp') === 500 && towerUnlockCost('crossbow') === 0, 'unlock prices');
+});
+
+test('Arsenal: a tower must be unlocked to build it; build pads charge its price; saves keep it', () => {
+  const sim = new Sim({ seed: 3 });
+  assert(!sim.setBuildKind('tesla') && sim.buildKind === 'crossbow', 'locked tesla picked');
+  const s2 = new Sim({ seed: 3, unlocks: { tesla: true, warp: true } });
+  assert(s2.setBuildKind('tesla'), 'unlocked tesla refused');
+  const pad = s2.pads.find((p) => p.kind === 'build');
+  assert(pad.tower === 'tesla' && pad.cost === Math.round(CFG.buildCosts[0] * ARSENAL.tesla.buildMul / 5) * 5, 'tesla pad price ' + pad.cost);
+  s2.gold = 500;
+  s2.hero.x = pad.x + 5; s2.step(dt); standOn(s2, pad);
+  run(s2, 4);
+  const t = s2.slots[pad.slot].tower;
+  assert(t && t.kind === 'tesla' && t.level === 1, 'tesla not built');
+  const up = s2.pads.find((p) => p.kind === 'upgrade' && p.slot === pad.slot);
+  assert(up.cost === towerUpgradeCost('tesla', 2), 'upgrade price');
+  t.level = 5; s2.refreshPads();
+  assert(!s2.pads.some((p) => p.kind === 'upgrade' && p.slot === pad.slot), 'a level 5 Arsenal tower has no upgrade pad');
+  s2.setBuildKind('warp');
+  const save = JSON.parse(JSON.stringify(s2.serialize()));
+  const s3 = new Sim({ seed: 9, unlocks: { tesla: true, warp: true } });
+  assert(s3.load(save), 'load');
+  const t3 = s3.slots[pad.slot].tower;
+  assert(t3 && t3.kind === 'tesla' && t3.level === 5 && s3.buildKind === 'warp', 'save lost the tesla: ' + JSON.stringify(save.towers));
+});
+
+test('Arsenal: every tower kills rats at level 1 and level 5 (support towers excepted)', () => {
+  for (const k of Object.keys(ARSENAL)) {
+    if (k === 'totem' || k === 'warp') continue;
+    for (const lv of [1, 5]) {
+      const sim = new Sim({ seed: 11, unlocks: ALL_UNLOCKED });
+      for (const sl of sim.slots) sl.tower = null; sim.towers = [];
+      for (const sl of sim.slots.slice(0, 4)) sim._placeTower(sl, lv, true, k);
+      sim.waveIndex = 2; sim.fortress.hp = sim.fortress.maxHp = 1e6; sim.callWave();
+      run(sim, 60);
+      assert(sim.stats.kills > 30, `${k} L${lv}: only ${sim.stats.kills} kills`);
+    }
+  }
+});
+
+test('Tesla: lightning jumps from rat to rat (more at higher levels) and reaches fliers', () => {
+  const { sim, t } = arsSim('tesla', 4);
+  const rats = [0, 1.5, 3, 4.5, 6].map((ds) => ratNear(sim, t, ds, 10000));
+  sim._buildGrid(); t.cooldown = 0;
+  run(sim, 0.05);
+  const hurt = rats.filter((e) => e.hp < 10000).length;
+  assert(hurt === arsenalSpec('tesla', 4).chain, 'chain hit ' + hurt);
+});
+
+test('Flamethrower: a cone of fire hurts every rat in front, sets them burning, and burnt rats take 30% more damage', () => {
+  const { sim, t } = arsSim('flame', 3);
+  const a = ratNear(sim, t, 0, 10000), b = ratNear(sim, t, 1, 10000, 0, 1);
+  run(sim, 2);
+  assert(a.hp < 10000 && b.hp < 10000, 'both rats burn');
+  assert(a.burn > 0 && a.weak > 0, 'burning and scorched');
+  const hp = a.hp; sim._damage(a, 100);
+  assert(Math.abs(hp - a.hp - 130) < 0.01, 'scorched rats take +30%: ' + (hp - a.hp));
+});
+
+test('Poison Gas: clouds hurt rats over time and corrode them; Toxic Cloud slows', () => {
+  const { sim, t } = arsSim('poison', 5);
+  const e = ratNear(sim, t, 0, 10000);
+  e.speed = 0;
+  run(sim, 5);
+  assert(sim.zones.some((z) => z.gas) || e.hp < 10000, 'no gas');
+  assert(e.hp < 10000 && e.weak > 0 && e.slow > 0 && e.slowMul <= 0.71, `gas did not hurt/corrode/slow: ${JSON.stringify({ hp: e.hp, weak: e.weak, slowMul: e.slowMul })}`);
+});
+
+test('Sniper: shoots the rat with the most health, headshots do extra damage', () => {
+  const { sim, t } = arsSim('sniper', 5);
+  const small = ratNear(sim, t, 2, 300), big = ratNear(sim, t, -2, 50000);
+  let shots = 0, heads = 0;
+  run(sim, 20, (s) => { for (const ev of s.events) if (ev.type === 'snipe') { shots++; if (ev.head) heads++; assert(ev.id === big.id || !big.alive, 'sniped the weaker rat'); } s.events.length = 0; });
+  assert(shots >= 5 && heads >= 1 && big.hp < 50000, `shots ${shots}, headshots ${heads}`);
+  void small;
+});
+
+test('Rocket: homing rockets chase their rat, even a flier, and explode', () => {
+  const { sim, t } = arsSim('rocket', 3);
+  const e = ratNear(sim, t, 0, 5000);
+  e.fly = 4;   // up in the air, out of reach of blasts on the ground
+  run(sim, 5);
+  assert(e.hp < 5000, 'the rocket missed the flier');
+});
+
+test('Mine Tower: plants mines on the road that blow up under rats; Chain Mine sets off its neighbours', () => {
+  const { sim, t } = arsSim('mine', 5);
+  sim.state = 'build';
+  run(sim, 14);
+  const n = sim.mines.length;
+  assert(n >= 5 && n <= arsenalSpec('mine', 5).max, 'mines planted: ' + n);
+  sim.state = 'wave';
+  const m = sim.mines[0];
+  const ms = sim._nearestRoadS(m), q = road.sample(ms, {});
+  const e = onRoad(sim, 0, ms, (m.x - q.x) * q.nx + (m.z - q.z) * q.nz, 100000); e.speed = 0;
+  let booms = 0;
+  run(sim, 1, (s) => { booms += s.events.filter((ev) => ev.type === 'explode' && ev.kind === 'mine').length; s.events.length = 0; });
+  assert(booms >= 1 && e.hp < 100000, 'mine did not blow');
+  void t;
+});
+
+test('Spike Trap: the bed covers the whole road, hurts and slows; Impale stuns', () => {
+  const { sim, t } = arsSim('spike', 5);
+  const L = arsenalSpec('spike', 5);
+  const a = ratNear(sim, t, 0, 10000, 0, CFG.roadHalfWidth - 0.6), b = ratNear(sim, t, 0, 10000, 0, -(CFG.roadHalfWidth - 0.6));
+  a.speed = b.speed = 0;
+  let impales = 0;
+  run(sim, 3.5, (s) => { impales += s.events.filter((ev) => ev.type === 'impale').length; s.events.length = 0; });
+  assert(a.hp < 10000 && b.hp < 10000, 'rats at the road edges escaped the spikes');
+  assert(Math.abs(a.slowMul - (1 - L.slow)) < 1e-6, 'slow ' + a.slowMul);
+  assert(impales >= 1, 'no impale');
+});
+
+test('Summoner: rat soldiers march to the road, hold rats back and fight; fallen soldiers come back', () => {
+  const { sim, t } = arsSim('summoner', 3);
+  run(sim, 4);
+  const allies = sim.allies.filter((a) => a.slot === t.slotIndex);
+  assert(allies.length === 3 && allies.every((a) => a.state === 'post'), 'soldiers not on guard: ' + allies.map((a) => a.state));
+  const a0 = allies[0];
+  const e = onRoad(sim, 0, sim._nearestRoadS(t) - 3, 0, 400);
+  const s0 = e.s;
+  e.lat = 0; let held = false;
+  for (let i = 0; i < 60 * 6; i++) { sim.step(dt); if (e.held > 0) held = true; }
+  assert(held, 'the rat was never held');
+  assert(!e.alive || e.s < s0 + 6, 'the rat walked straight through');
+  a0.hp = 0.01;
+  const big = onRoad(sim, 0, sim._nearestRoadS(t) - 0.5, a0.lat ?? 0, 1e6); big.x = a0.x; big.z = a0.z; big.speed = 0;
+  run(sim, 1);
+  const down = sim.allies.filter((a) => a.state === 'dead').length;
+  run(sim, arsenalSpec('summoner', 3).respawn + 1);
+  assert(down >= 1 && sim.allies.filter((a) => a.state === 'dead').length < down + 1, 'soldiers do not fall and return');
+});
+
+test('Berserker Totem and Time Warp: nearby towers hit harder and faster; the warp slows rats and Time Loop stops them', () => {
+  const sim = quietSim(); sim.unlocked = { ...ALL_UNLOCKED };
+  const [s0, s1] = sim.slots.slice(0).sort((a, b) => Math.hypot(a.x - sim.slots[0].x, a.z - sim.slots[0].z) - Math.hypot(b.x - sim.slots[0].x, b.z - sim.slots[0].z));
+  const xb = sim._placeTower(s0, 3, true, 'crossbow');
+  const tot = sim._placeTower(s1, 5, true, 'totem');
+  sim.step(dt);
+  const near = Math.hypot(xb.x - tot.x, xb.z - tot.z) <= arsenalSpec('totem', 5).r;
+  if (near) assert(xb.dmgMul > 1.39 && xb.rateMul > 1.29 && xb.rangeMul > 1.09, 'totem boost ' + JSON.stringify([xb.dmgMul, xb.rateMul, xb.rangeMul]));
+  // the warp
+  const { sim: w, t } = arsSim('warp', 5);
+  const e = ratNear(w, t, 0, 1e6);
+  w.step(dt);
+  assert(Math.abs(e.slowMul - 0.4) < 1e-6, 'warp slow ' + e.slowMul);
+  let stops = 0;
+  run(w, 9, (s) => { stops += s.events.filter((ev) => ev.type === 'warp' && ev.kind === 'stop').length; s.events.length = 0; });
+  assert(stops >= 1, 'no Time Loop');
+  // a warp next to a crossbow hastes it
+  const h = quietSim(); h.unlocked = { ...ALL_UNLOCKED };
+  const c = h._placeTower(s0 === sim.slots[0] ? h.slots[0] : h.slots[s0.index], 1, true, 'crossbow');
+  h._placeTower(h.slots[s1.index], 5, true, 'warp');
+  h.step(dt);
+  if (Math.hypot(c.x - h.slots[s1.index].x, c.z - h.slots[s1.index].z) <= arsenalSpec('warp', 5).r) assert(c.rateMul >= 1.5 - 1e-9, 'warp haste ' + c.rateMul);
+});
+
+test('Ice Tower: frost bolts slow, freeze after three hits; Blizzard freezes a crowd but bosses only slow', () => {
+  const { sim, t } = arsSim('ice', 5);
+  const rats = [0, 0.8, 1.6].map((ds) => ratNear(sim, t, ds, 1e5));
+  for (const e of rats) e.speed = 0;
+  let bl = 0;
+  run(sim, 8, (s) => { bl += s.events.filter((ev) => ev.type === 'blizzard').length; s.events.length = 0; });
+  assert(rats[0].slow > 0 && bl >= 1 && (sim.stats.frozen || 0) >= 2, 'ice: ' + JSON.stringify({ bl, frozen: sim.stats.frozen }));
 });
 
 console.log(results.join('\n'));

@@ -159,6 +159,35 @@ export class FX {
     this.plusses = new Pool(new THREE.InstancedMesh(plusGeo, new THREE.MeshBasicMaterial({ color: 0x5cf27a }), 90), 90, this);
     scene.add(this.plusses.mesh);
     inkInstanced(this.plusses.mesh, INK_PX.thin);
+    // ---- glowing beams between two points (lightning, sniper tracers)
+    const beamGeo = new THREE.BoxGeometry(1, 1, 1); beamGeo.translate(0, 0, 0.5);
+    this.beams = new Pool(new THREE.InstancedMesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 420), 420, null);
+    this.beams.mesh.setColorAt(0, _c.set(0xffffff));
+    scene.add(this.beams.mesh);
+  }
+
+  // a straight glowing beam from (x0,y0,z0) to (x1,y1,z1), w wide, fading over life
+  beam(x0, y0, z0, x1, y1, z1, w, color, life = 0.15) {
+    this.beams.spawn({ x0, y0, z0, x1, y1, z1, w, color, t: 0, life });
+  }
+  // a crackling lightning bolt along pts ([x,y,z,...] flat list), jagged between each pair
+  lightning(pts, color = 0x8fd8ff, w = 0.14, life = 0.16) {
+    for (let i = 0; i + 5 < pts.length; i += 3) {
+      let ax = pts[i], ay = pts[i + 1], az = pts[i + 2];
+      const bx = pts[i + 3], by = pts[i + 4], bz = pts[i + 5];
+      const n = 4, len = Math.hypot(bx - ax, by - ay, bz - az), j = Math.min(0.6, len * 0.12);
+      for (let k = 1; k <= n; k++) {
+        const f = k / n;
+        const x = k === n ? bx : ax + (bx - ax) / (n - k + 1) + (Math.random() - 0.5) * j;
+        const y = k === n ? by : ay + (by - ay) / (n - k + 1) + (Math.random() - 0.5) * j;
+        const z = k === n ? bz : az + (bz - az) / (n - k + 1) + (Math.random() - 0.5) * j;
+        this.beam(ax, ay, az, x, y, z, w, color, life);
+        this.beam(ax, ay, az, x, y, z, w * 0.4, 0xffffff, life * 0.8);
+        ax = x; ay = y; az = z;
+        void f;
+      }
+      this.glow(bx, by, bz, 1.3, color, life * 1.4);
+    }
   }
 
   puff(x, y, z, color = 0xffffff, big = 1) {
@@ -352,6 +381,21 @@ export class FX {
       }
       P.items.length = j; mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    // beams
+    {
+      const P = this.beams, mesh = P.mesh; let n = 0, j = 0;
+      for (const o of P.items) {
+        o.t += dt; if (o.t >= o.life) continue; P.items[j++] = o;
+        const k = o.t / o.life;
+        _v.set(o.x1 - o.x0, o.y1 - o.y0, o.z1 - o.z0);
+        const len = _v.length() || 0.001;
+        _q.setFromUnitVectors(ZAX, _v.multiplyScalar(1 / len));
+        const w = o.w * (1 - k * 0.6);
+        _p.set(o.x0, o.y0, o.z0); _s.set(w, w, len);
+        _m.compose(_p, _q, _s); mesh.setMatrixAt(n, _m); mesh.setColorAt(n, _c.set(o.color).multiplyScalar(1 - k * k)); n++;
+      }
+      P.items.length = j; mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
     // glows (camera-facing)
     {
       const P = this.glows, mesh = P.mesh; let n = 0, j = 0;
@@ -416,5 +460,5 @@ export class FX {
     }
   }
 
-  clear() { for (const p of [this.puffs, this.dust, this.drops, this.bursts, this.twinkles, this.glows, this.rings, this.fly, this.chips, this.scorch, this.plusses]) { p.items.length = 0; p.mesh.count = 0; } }
+  clear() { for (const p of [this.puffs, this.dust, this.drops, this.bursts, this.twinkles, this.glows, this.rings, this.fly, this.chips, this.scorch, this.plusses, this.beams]) { p.items.length = 0; p.mesh.count = 0; } }
 }
