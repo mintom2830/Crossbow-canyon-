@@ -549,7 +549,8 @@ select { border: 2.5px solid var(--ink); }
 #shopBtn.ready { animation: throb 0.7s ease-in-out infinite alternate; }
 .title-menu .row > * { flex: 1 1 150px; }
 .title-menu #continueBtn { flex-direction: column; gap: 0; }
-@media (max-width: 400px) { .btn.wood { font-size: 18px; } .btn.shop { font-size: 24px; } .plank.tagline { font-size: 14px !important; } .title-menu .diff-pick button { font-size: 18px; } }
+/* upright phones: the menu is drawn smaller, so the small print is a little bigger to stay readable */
+@media (max-aspect-ratio: 4/5) { .btn.shop small { font-size: 14px; } .plank.diff-note { font-size: 15px !important; } .level-card .lc-name small { font-size: 15px; } }
 @media (prefers-reduced-motion: reduce) { .btn.go .go-gem { animation: none; } }
 /* wide but short screens (a laptop): tighten up so the whole menu fits without scrolling */
 @media (min-width: 600px) and (max-height: 920px) {

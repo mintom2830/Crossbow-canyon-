@@ -185,11 +185,15 @@ function showScreen(id) {
 function fitTitle() {
   const menu = $('titleMenu');
   if (!menu || $('titleScreen').hidden) return;
+  // On a phone held upright the menu is laid out at a fixed width and kept a
+  // size smaller than the screen, so the painted canyon shows round it.
+  const W = window.innerWidth, H = window.innerHeight, upright = W / H < 0.8;
+  menu.style.width = upright ? '400px' : '';
   menu.style.zoom = '1';
   const w = menu.offsetWidth, h = menu.offsetHeight;
   if (!w || !h) return;
   // (room for the screen's own padding round the edge)
-  const k = Math.max(0.45, Math.min(1.35, (window.innerHeight - 44) / h, (window.innerWidth - 28) / w));
+  const k = Math.max(0.45, Math.min(1.35, (H * (upright ? 0.9 : 1) - 44) / h, (W * (upright ? 0.84 : 1) - 28) / w));
   menu.style.zoom = k.toFixed(3);
 }
 window.addEventListener('resize', () => fitTitle());
