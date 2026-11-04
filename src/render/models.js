@@ -32,35 +32,48 @@ export const RAT_PART = { body: 0, legFL: 1, legFR: 2, legBL: 3, legBR: 4, tail:
 // 8: ninja rat (black, masked, red headband, a sword on its back) · 9: jetpack rat (aviator cap, goggles, jetpack)
 // 10: a shield rat whose shield has broken (drawn without it)
 const RAT_LOOKS = [
-  { fur: RAT.fur, dark: RAT.furDark, light: RAT.furLight, belly: RAT.belly, body: [0.95, 0.85, 1.45] },
-  { fur: 0xb4895a, dark: 0x8d6740, light: 0xd8b98c, belly: 0xe6d2b0, body: [0.8, 0.76, 1.55] },
-  { fur: 0x554b4e, dark: 0x3e3639, light: 0x7a7072, belly: 0x9c918e, body: [1.05, 0.95, 1.45] },
+  { fur: 0x8a7c94, dark: 0x6c5e76, light: 0xb4a6bc, belly: 0xd8cad4, body: [0.98, 0.88, 1.45] },   // lavender-grey, like the portrait
+  { fur: 0xa8784c, dark: 0x86603a, light: 0xd2ac80, belly: 0xeedcbc, body: [0.8, 0.76, 1.55] },
+  { fur: 0x3e3a44, dark: 0x2c2832, light: 0x625c6a, belly: 0x8a8290, body: [1.05, 0.95, 1.45] },     // armored rat: dark fur under iron
   { fur: 0x86705c, dark: 0x6a5646, light: 0xaa917a, belly: 0xd2bfa8, body: [1.0, 0.88, 1.45] },
   { fur: 0xb8b0b4, dark: 0x948b90, light: 0xd8d2d4, belly: 0xece6e4, body: [0.92, 0.85, 1.4] },
   { fur: 0x7c6478, dark: 0x5e4a5c, light: 0x9f879b, belly: 0xd9b0bc, body: [1.3, 1.12, 1.55] },
-  { fur: 0xa08c94, dark: 0x85727a, light: 0xc4b0b8, belly: 0xeed6dc, body: [0.92, 0.85, 1.3] },
+  { fur: 0xdcb4c4, dark: 0xc298aa, light: 0xf2d8e2, belly: 0xfcecf2, body: [0.92, 0.85, 1.3] },     // ratling: pink
   { fur: 0x7d6e62, dark: 0x5e5148, light: 0xa09080, belly: 0xcbb9a6, body: [1.02, 0.9, 1.45] },
   { fur: 0x34303c, dark: 0x24202c, light: 0x4c4658, belly: 0x5e5868, body: [0.86, 0.8, 1.5] },
-  { fur: 0xc47a46, dark: 0x9c5a30, light: 0xe2a46e, belly: 0xf2d6b4, body: [0.95, 0.86, 1.45] },
+  { fur: 0xf09a44, dark: 0xc87632, light: 0xffc07a, belly: 0xffe4c0, body: [0.95, 0.86, 1.45] },     // jetpack rat: bright ginger
 ];
 export const SHIELDLESS = 10;
+const HC = [0, 0.41, 0.41];   // the rats' head centre; headK: how much bigger the head is than it once was (a ratling's biggest, like a baby's)
+const headK = (v) => (v === 6 ? 1.55 : 1.36);
 RAT_LOOKS[SHIELDLESS] = RAT_LOOKS[3];
 export function gruntGeometry(variant = 0) {
   const L = RAT_LOOKS[variant];
   const b = new GB({ parts: true });
   const head = { part: RAT_PART.head, pivot: [0, 0.38, 0.2] };
+  // the head is a size bigger than it used to be (like the bestiary portraits):
+  // parts designed round the old head are scaled about its centre onto the new one
+  const HK = headK(variant);
+  const hadd = (geo, col, o) => b.add(geo, col, { ...o, x: (o.x || 0) * HK, y: HC[1] + ((o.y || 0) - 0.38) * HK, z: HC[2] + ((o.z || 0) - 0.38) * HK, s: (o.s ?? 1) * HK, ...head });
   const body = L.body;
   b.add(P.sph(0.3, 8, 6), L.fur, { y: 0.32, z: -0.05, sx: body[0], sy: body[1], sz: body[2] });   // body
   b.add(P.sph(0.26, 7, 5), L.dark, { y: 0.38, z: -0.12, sx: body[0] * 0.9, sy: 0.6, sz: 1.2 });    // back
   b.add(P.sph(0.19, 7, 5), L.belly, { y: 0.24, z: 0.05, sx: 0.8, sy: 0.55, sz: 1.2 });            // belly
-  b.add(P.sph(0.2, 7, 5), L.fur, { y: 0.38, z: 0.38, sz: 1.25, ...head });                        // head
-  b.add(P.cone(0.13, 0.26, 6), L.light, { y: 0.35, z: 0.6, rx: Math.PI / 2, ...head });           // snout
-  b.add(P.sph(0.05, 5, 4), RAT.pink, { y: 0.35, z: 0.74, ...head });                              // nose
-  b.add(P.box(0.08, 0.05, 0.03), RAT.tooth, { y: 0.28, z: 0.66, ...head });                       // teeth
+  hadd(P.sph(0.2, 8, 6), L.fur, { y: 0.38, z: 0.38, sz: 1.2 });                         // head
+  hadd(P.sph(0.12, 5, 3), L.light, { y: 0.31, z: 0.5, sx: 1.2, sy: 0.7, sz: 0.9 });     // cheeks
+  hadd(P.cone(0.13, 0.26, 6), L.light, { y: 0.35, z: 0.6, rx: Math.PI / 2 });           // snout
+  hadd(P.sph(0.05, 5, 4), RAT.pink, { y: 0.35, z: 0.74 });                              // nose
+  hadd(P.box(0.08, 0.05, 0.03), RAT.tooth, { y: 0.28, z: 0.66 });                       // teeth
   for (const sx of [-1, 1]) {
     const earUp = variant === 1 ? 0.06 : 0;
-    b.add(P.sph(0.12, 6, 4), variant === 8 ? L.dark : RAT.pink, { x: sx * 0.14, y: 0.57 + earUp, z: 0.3, sz: 0.35, sy: variant === 1 ? 1.25 : 1, ...head });  // ears
-    b.add(P.box(0.05, 0.05, 0.03), RAT.eye, { x: sx * 0.09, y: 0.46, z: 0.52, ...head });         // eyes
+    // big round ears: a fur rim with pink inside, like the bestiary portraits
+    const ear = { x: sx * 0.15, y: 0.6 + earUp, z: 0.3, rz: -sx * 0.25, sy: variant === 1 ? 1.25 : 1 };
+    hadd(P.sph(0.15, 6, 4), L.dark, { ...ear, sz: 0.3 });
+    hadd(P.sph(0.115, 6, 4), variant === 8 ? L.dark : RAT.pink, { ...ear, z: ear.z + 0.025, sz: 0.25 });
+    // shiny eyes with a white glint (armored rats' glow yellow, brood rats' red)
+    const eyeCol = variant === 2 ? 0xffd23a : variant === 5 ? 0xd8262d : RAT.eye;
+    hadd(P.sph(0.056, 5, 4), eyeCol, { x: sx * 0.098, y: 0.455, z: 0.51, sz: 0.7 });
+    hadd(P.box(0.03, 0.03, 0.02), 0xffffff, { x: sx * 0.082, y: 0.478, z: 0.545 });
     // legs hang from hip joints so they can swing; the foot is part of the leg
     const fl = { part: sx < 0 ? RAT_PART.legFL : RAT_PART.legFR, pivot: [sx * 0.15, 0.26, 0.2] };
     const bl = { part: sx < 0 ? RAT_PART.legBL : RAT_PART.legBR, pivot: [sx * 0.17, 0.26, -0.3] };
@@ -71,31 +84,35 @@ export function gruntGeometry(variant = 0) {
   }
   if (variant === 3 || variant === SHIELDLESS) {
     // shield rat: a leather cap with a red feather, and (until it breaks) a round shield held out front
-    b.add(P.sph(0.215, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x6e4527, { y: 0.45, z: 0.37, sz: 1.1, ...head });
-    b.add(P.box(0.03, 0.2, 0.06), 0xd8262d, { x: 0.1, y: 0.62, z: 0.28, rx: -0.5, ...head });
+    hadd(P.sph(0.215, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x6e4527, { y: 0.45, z: 0.37, sz: 1.1 });
+    hadd(P.box(0.03, 0.2, 0.06), 0xd8262d, { x: 0.1, y: 0.62, z: 0.28, rx: -0.5 });
     b.add(P.cyl(0.2, 0.24, 0.08, 10), 0x5a3a24, { y: 0.33, z: 0.08 });                         // belt
     if (variant === 3) {
-      const sh = { y: 0.42, z: 0.86 };
-      b.add(P.cyl(0.36, 0.36, 0.07, 14), 0xa8733f, { ...sh, rx: Math.PI / 2 - 0.12 });              // planks
-      b.add(P.box(0.05, 0.66, 0.075), 0x8a5a30, { x: -0.13, ...sh, rx: -0.12 });
-      b.add(P.box(0.05, 0.66, 0.075), 0x8a5a30, { x: 0.13, ...sh, rx: -0.12 });
-      b.add(P.tor(0.35, 0.035, 5, 18), 0x5b6068, { ...sh, z: sh.z + 0.01, rx: -0.12 });             // iron rim
-      b.add(P.box(0.62, 0.09, 0.08), 0xd8262d, { ...sh, z: sh.z + 0.02, rx: -0.12 });               // red band
-      b.add(P.sph(0.08, 8, 6), PAL.gold, { ...sh, z: sh.z + 0.05, sz: 0.6 });                       // boss
+      // a big round wooden shield (planks, an iron rim with rivets, a gold boss), held up in front
+      const sh = { y: 0.5, z: 0.9 };
+      b.add(P.cyl(0.46, 0.46, 0.08, 14), 0xb07a42, { ...sh, rx: Math.PI / 2 - 0.12 });              // planks
+      for (const px of [-0.17, 0, 0.17]) b.add(P.box(0.035, 0.86, 0.085), 0x7e5028, { x: px, ...sh, rx: -0.12 });
+      b.add(P.tor(0.45, 0.05, 4, 18), 0x5b6068, { ...sh, z: sh.z + 0.01, rx: -0.12 });              // iron rim
+      for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + 0.5; b.add(P.box(0.05, 0.05, 0.04), 0xc3ccd6, { x: Math.cos(a) * 0.45, y: sh.y + Math.sin(a) * 0.44, z: sh.z + 0.05 }); }
+      b.add(P.sph(0.13, 8, 6), PAL.gold, { ...sh, z: sh.z + 0.06, sz: 0.55 });                    // gold boss
+      b.add(P.sph(0.05, 6, 4), 0xfff1a0, { x: -0.04, y: sh.y + 0.05, z: sh.z + 0.12 });           // its shine
     }
   } else if (variant === 4) {
     // healer rat: a green hooded cape, a white cross on the back and a staff with a glowing orb
     b.add(P.sph(0.33, 9, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), 0x3f9a5a, { y: 0.32, z: -0.08, sx: 0.98, sy: 0.92, sz: 1.42 });
     b.add(P.box(0.06, 0.03, 0.2), 0xf7f2e6, { y: 0.62, z: -0.12 });
     b.add(P.box(0.2, 0.03, 0.06), 0xf7f2e6, { y: 0.62, z: -0.1 });
-    b.add(P.sph(0.225, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x3f9a5a, { y: 0.4, z: 0.33, sz: 1.15, ...head });   // hood
-    b.add(P.cyl(0.025, 0.03, 0.95, 5), 0x8a5a30, { x: 0.27, y: 0.5, z: 0.3, rz: -0.08 });                       // staff
-    b.add(P.tor(0.07, 0.022, 4, 10), PAL.gold, { x: 0.3, y: 0.98, z: 0.3 });
-    b.add(P.ico(0.09, 1), 0x9dff7a, { x: 0.3, y: 1.0, z: 0.3 });                                             // glowing orb
+    hadd(P.sph(0.225, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x3f9a5a, { y: 0.4, z: 0.33, sz: 1.15 });   // hood
+    b.add(P.cyl(0.028, 0.034, 1.12, 5), 0x8a5a30, { x: 0.27, y: 0.58, z: 0.3, rz: -0.08 });                     // staff
+    b.add(P.tor(0.1, 0.026, 4, 12), PAL.gold, { x: 0.315, y: 1.16, z: 0.3 });
+    for (const a of [0.6, 2.2]) b.add(P.cone(0.025, 0.12, 4), PAL.gold, { x: 0.315 + Math.cos(a) * 0.1, y: 1.24, z: 0.3 + Math.sin(a) * 0.05 });
+    b.add(P.ico(0.13, 1), 0x9dff7a, { x: 0.315, y: 1.2, z: 0.3 });                                         // glowing orb
+    b.add(P.ico(0.06, 0), 0xeaffd8, { x: 0.29, y: 1.24, z: 0.36 });
   } else if (variant === 5) {
     // brood rat: mottled spots and a bulging sack on its back with ratlings peeking out
     for (const [sx, sz] of [[-0.18, 0.1], [0.2, -0.15], [-0.1, -0.35], [0.12, 0.3]]) b.add(P.sph(0.08, 6, 4), L.dark, { x: sx * 1.2, y: 0.55, z: sz, sy: 0.4 });
-    b.add(P.sph(0.3, 9, 7), 0xc9a46a, { y: 0.68, z: -0.22, sx: 1.05, sy: 0.85, sz: 1.0 });                 // sack
+    b.add(P.sph(0.34, 9, 7), 0xc9a46a, { y: 0.7, z: -0.22, sx: 1.05, sy: 0.85, sz: 1.0 });                 // sack
+    b.add(P.box(0.5, 0.05, 0.04), 0x8a6a3a, { y: 0.7, z: 0.08, rx: 0.3 });                                    // a patch stitched on
     b.add(P.cyl(0.14, 0.18, 0.08, 8), 0x8a6a3a, { y: 0.93, z: -0.2 });                                        // drawstring
     for (const [x, z, ry] of [[-0.12, -0.08, -0.4], [0.13, -0.14, 0.5], [0, -0.38, 3.1]]) {
       b.add(P.sph(0.075, 6, 5), 0xa08c94, { x, y: 0.96, z });
@@ -104,51 +121,55 @@ export function gruntGeometry(variant = 0) {
     }
   } else if (variant === 6) {
     // ratling: oversized ears and a stubby tail
-    for (const sx of [-1, 1]) b.add(P.sph(0.15, 6, 4), RAT.pink, { x: sx * 0.15, y: 0.6, z: 0.28, sz: 0.3, ...head });
+    for (const sx of [-1, 1]) hadd(P.sph(0.15, 6, 4), RAT.pink, { x: sx * 0.15, y: 0.6, z: 0.28, sz: 0.3 });
   }
   if (variant === 1) {
     // fast rat: a red bandana knotted at the neck, its ends streaming behind
-    b.add(P.tor(0.17, 0.045, 5, 12), 0xd8262d, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1, ...head });
-    b.add(P.box(0.06, 0.03, 0.22), 0xd8262d, { x: 0.05, y: 0.5, z: 0.02, rx: -0.5, ry: 0.2 });
-    b.add(P.box(0.06, 0.03, 0.18), 0xb31a22, { x: -0.04, y: 0.48, z: 0.0, rx: -0.4, ry: -0.25 });
+    hadd(P.tor(0.17, 0.045, 5, 12), 0xd8262d, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1 });
+    b.add(P.box(0.08, 0.03, 0.34), 0xd8262d, { x: 0.06, y: 0.52, z: -0.04, rx: -0.45, ry: 0.22 });
+    b.add(P.box(0.07, 0.03, 0.28), 0xb31a22, { x: -0.05, y: 0.5, z: -0.04, rx: -0.35, ry: -0.28 });
   } else if (variant === 2) {
     // armored rat: iron helmet with a crest, plated back and shoulder guards
     const iron = 0x8c949f, ironDark = 0x5f6670, rivet = 0xd9a441;
-    b.add(P.sph(0.22, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), iron, { y: 0.44, z: 0.36, sz: 1.15, ...head });
-    b.add(P.box(0.05, 0.08, 0.32), ironDark, { y: 0.66, z: 0.34, ...head });                     // crest
-    b.add(P.box(0.34, 0.05, 0.06), ironDark, { y: 0.47, z: 0.56, ...head });                     // brim
+    hadd(P.sph(0.22, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), iron, { y: 0.44, z: 0.36, sz: 1.15 });
+    hadd(P.box(0.05, 0.08, 0.32), ironDark, { y: 0.66, z: 0.34 });                     // crest
+    hadd(P.box(0.34, 0.05, 0.06), ironDark, { y: 0.47, z: 0.56 });                     // brim
     for (let i = 0; i < 3; i++) {
       b.add(P.sph(0.3, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), i % 2 ? ironDark : iron, { y: 0.4 - i * 0.015, z: 0.12 - i * 0.24, sx: 1.05, sy: 0.7, sz: 0.55 });
     }
+    // iron spikes along the back plates and on the helmet's crest
+    for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) b.add(P.cone(0.05, 0.2, 4), 0xc3ccd6, { x: sx * 0.17, y: 0.6 - i * 0.02, z: 0.12 - i * 0.24, rz: -sx * 0.35 });
+    for (const zz of [0.24, 0.38]) hadd(P.cone(0.04, 0.14, 4), 0xc3ccd6, { y: 0.72, z: zz });
     for (const sx of [-1, 1]) {
+      b.add(P.cone(0.045, 0.16, 4), 0xc3ccd6, { x: sx * 0.33, y: 0.46, z: 0.2, rz: -sx * 1.1 });
       b.add(P.sph(0.12, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2), iron, { x: sx * 0.24, y: 0.38, z: 0.2, sx: 0.8, rz: -sx * 0.6 });
       b.add(P.sph(0.03, 4, 3), rivet, { x: sx * 0.2, y: 0.55, z: 0.0 });
       b.add(P.sph(0.03, 4, 3), rivet, { x: sx * 0.2, y: 0.53, z: -0.3 });
     }
   } else if (variant === 7) {
     // bomb rat: a big round black bomb strapped on its back, the fuse fizzing with sparks
-    b.add(P.sph(0.3, 10, 8), 0x2a2830, { y: 0.84, z: -0.14 });
-    b.add(P.sph(0.08, 6, 4), 0x8a8894, { x: -0.13, y: 0.99, z: -0.02 });   // shine
-    b.add(P.cyl(0.1, 0.11, 0.09, 8), 0x9a9aa4, { y: 1.14, z: -0.14 });
-    b.add(P.cyl(0.024, 0.024, 0.24, 5), 0xd8c08a, { x: 0.05, y: 1.27, z: -0.14, rz: -0.45 });
-    b.add(P.ico(0.08, 0), 0xffd23a, { x: 0.11, y: 1.39, z: -0.14 });
-    for (let k = 0; k < 4; k++) b.add(P.cone(0.03, 0.13, 4), k % 2 ? 0xff7a2a : 0xfff1a0, { x: 0.11 + Math.cos(k * 1.6) * 0.08, y: 1.41 + Math.sin(k * 1.6) * 0.06, z: -0.14 + Math.sin(k * 2.1) * 0.05, rz: k * 1.6 - Math.PI / 2 });
+    b.add(P.sph(0.37, 10, 7), 0x2a2830, { y: 0.9, z: -0.16 });
+    b.add(P.sph(0.1, 6, 4), 0x9a98a4, { x: -0.16, y: 1.08, z: 0.0, sy: 0.7 });   // shine
+    b.add(P.cyl(0.11, 0.12, 0.1, 8), 0x9a9aa4, { y: 1.29, z: -0.16 });
+    b.add(P.cyl(0.026, 0.026, 0.26, 5), 0xd8c08a, { x: 0.05, y: 1.43, z: -0.16, rz: -0.45 });
+    b.add(P.ico(0.1, 0), 0xffd23a, { x: 0.11, y: 1.56, z: -0.16 });
+    for (let k = 0; k < 5; k++) b.add(P.cone(0.035, 0.16, 4), k % 2 ? 0xff7a2a : 0xfff1a0, { x: 0.11 + Math.cos(k * 1.3) * 0.1, y: 1.58 + Math.sin(k * 1.3) * 0.08, z: -0.16 + Math.sin(k * 2.1) * 0.06, rz: k * 1.3 - Math.PI / 2 });
     for (const sx of [-1, 1]) b.add(P.box(0.06, 0.34, 0.07), 0x7a4a26, { x: sx * 0.21, y: 0.6, z: -0.12, rz: -sx * 0.4 });   // straps
     // welding goggles pushed up on its forehead
-    b.add(P.box(0.3, 0.045, 0.05), 0x5a3a20, { y: 0.55, z: 0.44, ...head });
+    hadd(P.box(0.3, 0.045, 0.05), 0x5a3a20, { y: 0.55, z: 0.44 });
     for (const sx of [-1, 1]) {
-      b.add(P.tor(0.062, 0.024, 4, 10), 0x3a3a40, { x: sx * 0.075, y: 0.56, z: 0.47, rx: -0.3, ...head });
-      b.add(P.ico(0.052, 0), 0x6fd0e0, { x: sx * 0.075, y: 0.56, z: 0.47, sz: 0.5, ...head });
+      hadd(P.tor(0.062, 0.024, 4, 10), 0x3a3a40, { x: sx * 0.075, y: 0.56, z: 0.47, rx: -0.3 });
+      hadd(P.ico(0.052, 0), 0x6fd0e0, { x: sx * 0.075, y: 0.56, z: 0.47, sz: 0.5 });
     }
   } else if (variant === 8) {
     // ninja rat: a black hood and face mask, a red headband with trailing ties, a sword on its back
-    b.add(P.sph(0.215, 8, 6), 0x24202c, { y: 0.39, z: 0.37, sz: 1.22, ...head });
-    b.add(P.cone(0.145, 0.24, 6), 0x24202c, { y: 0.34, z: 0.58, rx: Math.PI / 2, ...head });
-    b.add(P.box(0.3, 0.075, 0.05), 0xf2f0f4, { y: 0.46, z: 0.555, ...head });   // eye slit
-    for (const sx of [-1, 1]) b.add(P.box(0.05, 0.05, 0.03), RAT.eye, { x: sx * 0.08, y: 0.46, z: 0.585, ...head });
-    b.add(P.tor(0.205, 0.035, 4, 14), 0xd8262d, { y: 0.52, z: 0.36, rx: Math.PI / 2 - 0.25, sz: 1.15, ...head });
-    b.add(P.box(0.05, 0.03, 0.3), 0xd8262d, { x: 0.06, y: 0.56, z: 0.08, rx: -0.4, ry: 0.35, ...head });
-    b.add(P.box(0.05, 0.03, 0.26), 0xb31a22, { x: -0.05, y: 0.54, z: 0.1, rx: -0.25, ry: -0.3, ...head });
+    hadd(P.sph(0.215, 8, 6), 0x24202c, { y: 0.39, z: 0.37, sz: 1.22 });
+    hadd(P.cone(0.145, 0.24, 6), 0x24202c, { y: 0.34, z: 0.58, rx: Math.PI / 2 });
+    hadd(P.box(0.3, 0.075, 0.05), 0xf2f0f4, { y: 0.46, z: 0.555 });   // eye slit
+    for (const sx of [-1, 1]) hadd(P.box(0.05, 0.05, 0.03), RAT.eye, { x: sx * 0.08, y: 0.46, z: 0.585 });
+    hadd(P.tor(0.205, 0.035, 4, 14), 0xd8262d, { y: 0.52, z: 0.36, rx: Math.PI / 2 - 0.25, sz: 1.15 });
+    hadd(P.box(0.05, 0.03, 0.3), 0xd8262d, { x: 0.06, y: 0.56, z: 0.08, rx: -0.4, ry: 0.35 });
+    hadd(P.box(0.05, 0.03, 0.26), 0xb31a22, { x: -0.05, y: 0.54, z: 0.1, rx: -0.25, ry: -0.3 });
     // the sword slung across its back: blade, gold guard and red-wrapped hilt
     b.add(P.box(0.045, 0.03, 0.82), 0xdce4ec, { x: 0.04, y: 0.62, z: -0.26, rx: 0.55, ry: 0.35 });
     b.add(P.box(0.15, 0.04, 0.05), 0xffc63a, { x: 0.13, y: 0.83, z: 0.07, rx: 0.55, ry: 0.35 });
@@ -156,23 +177,26 @@ export function gruntGeometry(variant = 0) {
     b.add(P.tor(0.27, 0.04, 4, 14), 0xd8262d, { y: 0.33, z: 0.06, sy: 0.85 });   // sash
   } else if (variant === 9) {
     // jetpack rat: aviator cap and goggles, a red scarf, a twin-tank jetpack with little flames
-    b.add(P.sph(0.222, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x7a4a26, { y: 0.44, z: 0.36, sz: 1.15, ...head });
+    hadd(P.sph(0.222, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x7a4a26, { y: 0.44, z: 0.36, sz: 1.15 });
     for (const sx of [-1, 1]) {
-      b.add(P.box(0.05, 0.16, 0.12), 0x7a4a26, { x: sx * 0.19, y: 0.37, z: 0.34, ...head });   // ear flaps
-      b.add(P.tor(0.064, 0.026, 4, 10), 0x3a3a40, { x: sx * 0.078, y: 0.53, z: 0.5, rx: -0.35, ...head });
-      b.add(P.ico(0.054, 0), 0xffb84a, { x: sx * 0.078, y: 0.53, z: 0.5, sz: 0.5, ...head });
+      hadd(P.box(0.05, 0.16, 0.12), 0x7a4a26, { x: sx * 0.19, y: 0.37, z: 0.34 });   // ear flaps
+      hadd(P.tor(0.064, 0.026, 4, 10), 0x3a3a40, { x: sx * 0.078, y: 0.53, z: 0.5, rx: -0.35 });
+      hadd(P.ico(0.054, 0), 0xffb84a, { x: sx * 0.078, y: 0.53, z: 0.5, sz: 0.5 });
     }
-    b.add(P.tor(0.17, 0.045, 5, 12), 0xffe9b8, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1, ...head });   // a white flying scarf
+    hadd(P.tor(0.17, 0.045, 5, 12), 0xffe9b8, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1 });   // a white flying scarf
     b.add(P.box(0.07, 0.03, 0.3), 0xffe9b8, { x: -0.08, y: 0.5, z: -0.02, rx: -0.3, ry: -0.3 });
     b.add(P.box(0.34, 0.3, 0.1), 0x5a5f6a, { y: 0.64, z: -0.2 });   // back plate
     for (const sx of [-1, 1]) {
-      b.add(P.cyl(0.095, 0.095, 0.42, 8), 0xe0302a, { x: sx * 0.13, y: 0.66, z: -0.31 });
-      b.add(P.cyl(0.1, 0.1, 0.06, 8), 0xe8eaf0, { x: sx * 0.13, y: 0.74, z: -0.31 });
-      b.add(P.cyl(0.1, 0.1, 0.05, 8), 0xe8eaf0, { x: sx * 0.13, y: 0.56, z: -0.31 });
-      b.add(P.cone(0.095, 0.13, 8), 0xffc63a, { x: sx * 0.13, y: 0.935, z: -0.31 });
-      b.add(P.cyl(0.06, 0.085, 0.08, 8), 0x3a3a40, { x: sx * 0.13, y: 0.415, z: -0.31 });
-      b.add(P.cone(0.07, 0.24, 6), 0xff8a24, { x: sx * 0.13, y: 0.26, z: -0.31, rx: Math.PI });   // flames
-      b.add(P.cone(0.04, 0.15, 6), 0xffe27a, { x: sx * 0.13, y: 0.3, z: -0.31, rx: Math.PI });
+      const rx = sx * 0.15, rz = -0.33;
+      b.add(P.cyl(0.12, 0.12, 0.54, 8), 0xe0302a, { x: rx, y: 0.72, z: rz });
+      b.add(P.cyl(0.125, 0.125, 0.06, 8), 0xe8eaf0, { x: rx, y: 0.84, z: rz });
+      b.add(P.cyl(0.125, 0.125, 0.05, 8), 0xe8eaf0, { x: rx, y: 0.6, z: rz });
+      b.add(P.cone(0.12, 0.2, 8), 0xe0302a, { x: rx, y: 1.09, z: rz });
+      b.add(P.cone(0.06, 0.1, 6), 0xffc63a, { x: rx, y: 1.17, z: rz });
+      for (const a of [0, 2.1, 4.2]) b.add(P.box(0.02, 0.16, 0.1), 0xb31a22, { x: rx + Math.cos(a) * 0.12, y: 0.5, z: rz + Math.sin(a) * 0.12, ry: -a });   // fins
+      b.add(P.cyl(0.07, 0.1, 0.09, 8), 0x3a3a40, { x: rx, y: 0.42, z: rz });
+      b.add(P.cone(0.1, 0.34, 6), 0xff8a24, { x: rx, y: 0.22, z: rz, rx: Math.PI });   // flames
+      b.add(P.cone(0.055, 0.2, 6), 0xffe27a, { x: rx, y: 0.28, z: rz, rx: Math.PI });
     }
   }
   // pink tail curling behind
@@ -190,14 +214,18 @@ export function gruntInkGeometry(variant = 0) {
   const L = RAT_LOOKS[variant];
   const b = new GB({ parts: true });
   const head = { part: RAT_PART.head, pivot: [0, 0.38, 0.2] };
+  // the head is a size bigger than it used to be (like the bestiary portraits):
+  // parts designed round the old head are scaled about its centre onto the new one
+  const HK = headK(variant);
+  const hadd = (geo, col, o) => b.add(geo, col, { ...o, x: (o.x || 0) * HK, y: HC[1] + ((o.y || 0) - 0.38) * HK, z: HC[2] + ((o.z || 0) - 0.38) * HK, s: (o.s ?? 1) * HK, ...head });
   const body = L.body;
   b.add(P.sph(0.3, 8, 6), 0, { y: 0.32, z: -0.05, sx: body[0], sy: body[1], sz: body[2] });
-  b.add(P.sph(0.206, 6, 4), 0, { y: 0.38, z: 0.38, sz: 1.25, ...head });
-  b.add(P.cone(0.13, 0.26, 6), 0, { y: 0.35, z: 0.6, rx: Math.PI / 2, ...head });
-  b.add(P.sph(0.05, 4, 3), 0, { y: 0.35, z: 0.74, ...head });
+  hadd(P.sph(0.206, 6, 4), 0, { y: 0.38, z: 0.38, sz: 1.25 });
+  hadd(P.cone(0.13, 0.26, 6), 0, { y: 0.35, z: 0.6, rx: Math.PI / 2 });
+  hadd(P.sph(0.05, 4, 3), 0, { y: 0.35, z: 0.74 });
   for (const sx of [-1, 1]) {
     const earUp = variant === 1 ? 0.06 : 0;
-    b.add(P.sph(0.12, 5, 3), 0, { x: sx * 0.14, y: 0.57 + earUp, z: 0.3, sz: 0.35, sy: variant === 1 ? 1.25 : 1, ...head });
+    hadd(P.sph(0.15, 6, 4), 0, { x: sx * 0.15, y: 0.6 + earUp, z: 0.3, rz: -sx * 0.25, sz: 0.3, sy: variant === 1 ? 1.25 : 1 });
     const fl = { part: sx < 0 ? RAT_PART.legFL : RAT_PART.legFR, pivot: [sx * 0.15, 0.26, 0.2] };
     const bl = { part: sx < 0 ? RAT_PART.legBL : RAT_PART.legBR, pivot: [sx * 0.17, 0.26, -0.3] };
     b.add(P.cyl(0.04, 0.035, 0.2, 4, 1, true), 0, { x: sx * 0.15, y: 0.16, z: 0.2, ...fl });
@@ -206,42 +234,42 @@ export function gruntInkGeometry(variant = 0) {
     b.add(P.box(0.1, 0.07, 0.19), 0, { x: sx * 0.17, y: 0.04, z: -0.27, ...bl });
   }
   if (variant === 3 || variant === SHIELDLESS) {
-    b.add(P.sph(0.215, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.45, z: 0.37, sz: 1.1, ...head });
-    if (variant === 3) b.add(P.cyl(0.37, 0.37, 0.09, 12), 0, { y: 0.42, z: 0.86, rx: Math.PI / 2 - 0.12 });
+    hadd(P.sph(0.215, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.45, z: 0.37, sz: 1.1 });
+    if (variant === 3) b.add(P.cyl(0.49, 0.49, 0.1, 14), 0, { y: 0.5, z: 0.9, rx: Math.PI / 2 - 0.12 });
   } else if (variant === 4) {
     b.add(P.sph(0.33, 8, 4, 0, Math.PI * 2, 0, Math.PI * 0.6), 0, { y: 0.32, z: -0.08, sx: 0.98, sy: 0.92, sz: 1.42 });
-    b.add(P.sph(0.225, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.4, z: 0.33, sz: 1.15, ...head });
-    b.add(P.cyl(0.025, 0.03, 0.95, 4), 0, { x: 0.27, y: 0.5, z: 0.3, rz: -0.08 });
-    b.add(P.ico(0.09, 0), 0, { x: 0.3, y: 1.0, z: 0.3 });
+    hadd(P.sph(0.225, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.4, z: 0.33, sz: 1.15 });
+    b.add(P.cyl(0.028, 0.034, 1.12, 4), 0, { x: 0.27, y: 0.58, z: 0.3, rz: -0.08 });
+    b.add(P.ico(0.13, 0), 0, { x: 0.315, y: 1.2, z: 0.3 });
   } else if (variant === 5) {
-    b.add(P.sph(0.3, 8, 5), 0, { y: 0.68, z: -0.22, sx: 1.05, sy: 0.85, sz: 1.0 });
+    b.add(P.sph(0.34, 8, 5), 0, { y: 0.7, z: -0.22, sx: 1.05, sy: 0.85, sz: 1.0 });
     for (const [x, z] of [[-0.12, -0.08], [0.13, -0.14], [0, -0.38]]) b.add(P.sph(0.075, 5, 3), 0, { x, y: 0.96, z });
   } else if (variant === 6) {
-    for (const sx of [-1, 1]) b.add(P.sph(0.15, 5, 3), 0, { x: sx * 0.15, y: 0.6, z: 0.28, sz: 0.3, ...head });
+    for (const sx of [-1, 1]) hadd(P.sph(0.15, 5, 3), 0, { x: sx * 0.15, y: 0.6, z: 0.28, sz: 0.3 });
   }
   if (variant === 1) {
-    b.add(P.tor(0.17, 0.045, 3, 8), 0, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1, ...head });
+    hadd(P.tor(0.17, 0.045, 3, 8), 0, { y: 0.4, z: 0.2, rx: Math.PI / 2 - 0.3, sx: 1.1 });
     b.add(P.box(0.06, 0.03, 0.22), 0, { x: 0.05, y: 0.5, z: 0.02, rx: -0.5, ry: 0.2 });
     b.add(P.box(0.06, 0.03, 0.18), 0, { x: -0.04, y: 0.48, z: 0.0, rx: -0.4, ry: -0.25 });
   } else if (variant === 2) {
-    b.add(P.sph(0.22, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.44, z: 0.36, sz: 1.15, ...head });
-    b.add(P.box(0.05, 0.08, 0.32), 0, { y: 0.66, z: 0.34, ...head });
-    b.add(P.box(0.34, 0.05, 0.06), 0, { y: 0.47, z: 0.56, ...head });
+    hadd(P.sph(0.22, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.44, z: 0.36, sz: 1.15 });
+    hadd(P.box(0.05, 0.08, 0.32), 0, { y: 0.66, z: 0.34 });
+    hadd(P.box(0.34, 0.05, 0.06), 0, { y: 0.47, z: 0.56 });
     for (let i = 0; i < 3; i++) b.add(P.sph(0.3, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.4 - i * 0.015, z: 0.12 - i * 0.24, sx: 1.05, sy: 0.7, sz: 0.55 });
     for (const sx of [-1, 1]) b.add(P.sph(0.12, 5, 2, 0, Math.PI * 2, 0, Math.PI / 2), 0, { x: sx * 0.24, y: 0.38, z: 0.2, sx: 0.8, rz: -sx * 0.6 });
   } else if (variant === 7) {
-    b.add(P.sph(0.3, 8, 6), 0, { y: 0.84, z: -0.14 });
-    b.add(P.cyl(0.1, 0.11, 0.09, 6), 0, { y: 1.14, z: -0.14 });
+    b.add(P.sph(0.37, 9, 7), 0, { y: 0.9, z: -0.16 });
+    b.add(P.cyl(0.11, 0.12, 0.1, 6), 0, { y: 1.29, z: -0.16 });
   } else if (variant === 8) {
-    b.add(P.sph(0.215, 6, 4), 0, { y: 0.39, z: 0.37, sz: 1.22, ...head });
+    hadd(P.sph(0.215, 6, 4), 0, { y: 0.39, z: 0.37, sz: 1.22 });
     b.add(P.box(0.045, 0.03, 0.82), 0, { x: 0.04, y: 0.62, z: -0.26, rx: 0.55, ry: 0.35 });
     b.add(P.box(0.055, 0.055, 0.24), 0, { x: 0.18, y: 0.92, z: 0.18, rx: 0.55, ry: 0.35 });
   } else if (variant === 9) {
-    b.add(P.sph(0.222, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.44, z: 0.36, sz: 1.15, ...head });
+    hadd(P.sph(0.222, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), 0, { y: 0.44, z: 0.36, sz: 1.15 });
     b.add(P.box(0.34, 0.3, 0.1), 0, { y: 0.64, z: -0.2 });
     for (const sx of [-1, 1]) {
-      b.add(P.cyl(0.095, 0.095, 0.42, 6), 0, { x: sx * 0.13, y: 0.66, z: -0.31 });
-      b.add(P.cone(0.095, 0.13, 6), 0, { x: sx * 0.13, y: 0.935, z: -0.31 });
+      b.add(P.cyl(0.12, 0.12, 0.54, 6), 0, { x: sx * 0.15, y: 0.72, z: -0.33 });
+      b.add(P.cone(0.12, 0.2, 6), 0, { x: sx * 0.15, y: 1.09, z: -0.33 });
     }
   }
   const tail = { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] };
@@ -260,9 +288,9 @@ export function gruntInkGeometry(variant = 0) {
 // style: false (giant rat) or a boss: 'warlord' (horned helmet, red cape),
 // 'baron' (steel armour, visor, blue cape) or 'king' (gold crown, purple cape).
 const BOSS_LOOKS = {
-  warlord: { fur: 0x6b4a3d, furLight: 0x9a7564, sash: 0xb31a22, eye: 0xff7a1a, cape: 0xb31a22 },
-  baron: { fur: 0x55505a, furLight: 0x847c86, sash: 0x23527a, eye: 0x7fd8ff, cape: 0x23527a },
-  king: { fur: 0x4d4447, furLight: 0x80777a, sash: 0x5a1a8a, eye: 0xd8262d, cape: 0x5a1a8a },
+  warlord: { fur: 0x6b4a3d, furLight: 0x9a7564, sash: 0xb31a22, eye: 0xff7a1a, cape: 0xb31a22, trim: 0x2a1d1a, weapon: 'mace' },
+  baron: { fur: 0x55505a, furLight: 0x847c86, sash: 0x23527a, eye: 0x7fd8ff, cape: 0x23527a, trim: 0xc9a23a, weapon: 'mace', steel: true },
+  king: { fur: 0x4d4447, furLight: 0x80777a, sash: 0x5a1a8a, eye: 0xd8262d, cape: 0x6a24a8, trim: 0xf6f0e6, weapon: 'sceptre' },
 };
 export function giantParts(style = false) {
   if (style === true) style = 'king';
@@ -277,6 +305,10 @@ export function giantParts(style = false) {
   const t = new GB()
     .add(P.sph(0.95, 12, 10), fur, { y: 1.62, sx: 1.05, sy: 1.08, sz: 0.9 })                  // body
     .add(P.sph(0.72, 10, 8), RAT.belly, { y: 1.5, z: 0.42, sx: 0.9, sy: 1.0, sz: 0.5 })       // belly
+    .add(P.sph(0.5, 9, 7), fur, { x: -0.78, y: 2.12, z: 0.05, sy: 0.85 })                      // big shoulders
+    .add(P.sph(0.5, 9, 7), fur, { x: 0.78, y: 2.12, z: 0.05, sy: 0.85 })
+    .add(P.sph(0.42, 9, 7), furLight, { x: -0.36, y: 2.0, z: 0.55, sz: 0.55 })                 // chest muscles
+    .add(P.sph(0.42, 9, 7), furLight, { x: 0.36, y: 2.0, z: 0.55, sz: 0.55 })
     .add(P.cyl(0.99, 0.99, 0.18, 12), PAL.woodDark, { y: 1.08, sz: 0.9 })                      // belt
     .add(P.box(0.3, 0.26, 0.1), boss ? PAL.gold : PAL.bronze, { y: 1.08, z: 0.84 })             // buckle
     .add(P.box(0.16, 1.5, 0.1), sash, { y: 1.75, z: 0.78, rz: 0.55 })                           // sash
@@ -288,15 +320,37 @@ export function giantParts(style = false) {
   for (const sx of [-1, 1]) {
     t.add(P.sph(0.36, 8, 6), fur, { x: sx * 0.44, y: 3.02, z: 0.02, sz: 0.28 });              // ear rim
     t.add(P.sph(0.27, 8, 6), RAT.pink, { x: sx * 0.44, y: 3.02, z: 0.08, sz: 0.25 });         // inner ear
-    t.add(P.sph(0.08, 6, 5), look ? look.eye : RAT.eye, { x: sx * 0.21, y: 2.74, z: 0.6 });   // eyes
+    // fierce eyes like the bestiary's: white, a glowing iris and a glint, under a heavy angry brow
+    t.add(P.sph(0.14, 8, 6), 0xfff6e8, { x: sx * 0.23, y: 2.72, z: 0.56, sz: 0.6 });
+    t.add(P.sph(0.085, 7, 5), look ? look.eye : 0xd8262d, { x: sx * 0.23, y: 2.71, z: 0.62, sz: 0.5 });
+    t.add(P.sph(0.03, 4, 3), 0xffffff, { x: sx * 0.2, y: 2.75, z: 0.66 });
+    t.add(P.box(0.36, 0.11, 0.12), 0x2a1d1a, { x: sx * 0.24, y: 2.88, z: 0.6, rz: sx * 0.42 });
     t.add(P.box(0.5, 0.02, 0.02), 0xe9e2d8, { x: sx * 0.38, y: 2.48, z: 1.0, ry: sx * 0.35 }); // whiskers
   }
   // one long pink tail: out from the rump, low along the ground, curling up at the tip
   t.add(P.taper([[0, 1.05, -0.6], [0, 0.82, -1.3], [0.08, 0.86, -1.95], [0.18, 1.2, -2.4], [0.22, 1.72, -2.55]], 0.16, 0, 16), RAT.pinkDark);
-  if (boss) t.add(P.box(1.9, 2.1, 0.12), look.cape, { y: 1.55, z: -0.82, rx: 0.12 });       // cape
+  if (boss) {
+    // a flowing cape: a middle panel and two side panels wrapping round the back, flaring at the hem
+    t.add(P.box(1.2, 2.3, 0.1), look.cape, { y: 1.5, z: -0.86, rx: 0.14 });
+    for (const sx of [-1, 1]) t.add(P.box(0.75, 2.2, 0.1), look.cape, { x: sx * 0.86, y: 1.52, z: -0.6, ry: sx * 0.75, rx: 0.12 });
+    t.add(P.box(1.24, 0.12, 0.13), look.trim, { y: 0.4, z: -1.02, rx: 0.14 });
+    for (const sx of [-1, 1]) t.add(P.box(0.78, 0.12, 0.13), look.trim, { x: sx * 0.9, y: 0.44, z: -0.74, ry: sx * 0.75, rx: 0.12 });
+  } else {
+    // the plain giant: a red headband knotted at the back and a leather strap across its chest
+    t.add(P.tor(0.5, 0.07, 5, 16), PAL.crimson, { y: 2.84, z: 0.16, rx: Math.PI / 2, sz: 1.15 });
+    for (const sx of [-1, 1]) t.add(P.box(0.1, 0.36, 0.06), PAL.crimsonDark, { x: sx * 0.12, y: 2.62, z: -0.42, rz: sx * 0.35, rx: 0.4 });
+    t.add(P.box(0.2, 1.9, 0.12), PAL.woodDark, { y: 1.75, z: 0.8, rz: -0.6 });
+  }
   if (style === 'king') {
-    t.add(P.cyl(0.42, 0.38, 0.22, 10), PAL.gold, { y: 3.08, z: 0.12 });                        // crown
-    for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; t.add(P.cone(0.08, 0.26, 4), PAL.gold, { x: Math.cos(a) * 0.36, y: 3.32, z: 0.12 + Math.sin(a) * 0.33 }); }
+    t.add(P.cyl(0.46, 0.4, 0.3, 12), PAL.gold, { y: 3.1, z: 0.12 });                           // crown
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2;
+      t.add(P.cone(0.1, 0.34, 4), PAL.gold, { x: Math.cos(a) * 0.4, y: 3.42, z: 0.12 + Math.sin(a) * 0.36 });
+      t.add(P.ico(0.06, 0), PAL.gold, { x: Math.cos(a) * 0.4, y: 3.62, z: 0.12 + Math.sin(a) * 0.36 });
+      t.add(P.ico(0.07, 0), i % 2 ? 0xd8262d : 0x3a7ad8, { x: Math.cos(a) * 0.45, y: 3.1, z: 0.12 + Math.sin(a) * 0.41 });   // gems
+    }
+    t.add(P.tor(0.8, 0.3, 8, 18), 0xf6f0e6, { y: 2.22, z: -0.05, rx: Math.PI / 2 + 0.15, sz: 0.85 });                  // white fur collar
+    for (let i = 0; i < 8; i++) t.add(P.sph(0.06, 4, 3), 0x2a1d1a, { x: Math.cos(i * 0.785) * 0.98, y: 2.3 + Math.sin(i * 2.3) * 0.05, z: -0.05 + Math.sin(i * 0.785) * 0.84 });
   } else if (style === 'warlord') {
     // iron war helmet with two curved horns, a scar of war paint and spiked shoulder
     t.add(P.sph(0.46, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0x6e7480, { y: 2.78, z: 0.14, sz: 1.1 });
@@ -306,8 +360,13 @@ export function giantParts(style = false) {
       t.add(P.cone(0.07, 0.32, 6), 0xefe3c8, { x: sx * 0.78, y: 3.42, z: 0.12, rz: -sx * 0.2 });
       t.add(P.box(0.06, 0.32, 0.02), 0xd8262d, { x: sx * 0.24, y: 2.55, z: 0.78, rz: sx * 0.3 });
     }
-    t.add(P.sph(0.4, 8, 6), 0x5a5f68, { x: 0.95, y: 2.25, z: 0.0, sy: 0.7 });                  // pauldron
-    for (let i = 0; i < 3; i++) t.add(P.cone(0.08, 0.3, 4), 0xc9ced6, { x: 1.0 + (i - 1) * 0.2, y: 2.6, z: 0.0 });
+    for (const sx of [-1, 1]) {                                                                   // spiked pauldrons
+      t.add(P.sph(0.44, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0x5a5f68, { x: sx * 0.95, y: 2.22, z: 0.0, sy: 0.8 });
+      t.add(P.tor(0.42, 0.05, 4, 14), 0xb08a3a, { x: sx * 0.95, y: 2.22, z: 0.0, rx: Math.PI / 2 });
+      for (let i = 0; i < 3; i++) t.add(P.cone(0.09, 0.36, 4), 0xc9ced6, { x: sx * (0.95 + (i - 1) * 0.22), y: 2.6, z: 0.0, rz: -sx * (i - 1) * 0.35 });
+    }
+    t.add(P.sph(0.2, 8, 6), 0xefe3c8, { y: 1.1, z: 0.9, sz: 0.5 });                              // a skull on its belt
+    for (const sx of [-1, 1]) t.add(P.sph(0.05, 4, 3), 0x2a1d1a, { x: sx * 0.07, y: 1.13, z: 1.0 });
   } else if (style === 'baron') {
     // full steel armour: chest plate, pauldrons, visored great helm with a plume
     const steel = 0xa9b1bc, dark = 0x6b737e;
@@ -322,24 +381,45 @@ export function giantParts(style = false) {
       t.add(P.sph(0.05, 4, 3), PAL.gold, { x: sx * 1.0, y: 2.5, z: 0.25 });
     }
   }
-  const arm = (club) => {
+  const steel = look && look.steel;
+  const weapon = look ? look.weapon : 'club';
+  const arm = (armed) => {
     const a = new GB()
-      .add(P.cap(0.26, 0.72, 3, 8), fur, { y: -0.48 })
-      .add(P.sph(0.26, 8, 6), RAT.pink, { y: -1.02 })                                           // paw
-      .add(P.cyl(0.29, 0.29, 0.16, 8), sash, { y: -0.7 });                                      // wrap
-    if (club) {
-      a.add(P.cyl(0.24, 0.1, 1.7, 8), PAL.wood, { y: -1.15, z: 0.75, rx: Math.PI / 2 - 0.35 })
-        .add(P.cone(0.07, 0.2, 4), PAL.stoneLight, { y: -0.95, z: 1.35, x: 0.24, rz: -1.57 })
-        .add(P.cone(0.07, 0.2, 4), PAL.stoneLight, { y: -0.95, z: 1.35, x: -0.24, rz: 1.57 })
-        .add(P.cone(0.07, 0.2, 4), PAL.stoneLight, { y: -0.72, z: 1.27 });
+      .add(P.cap(0.32, 0.68, 3, 8), steel ? 0xa9b1bc : fur, { y: -0.48 })
+      .add(P.sph(0.28, 8, 6), steel ? 0x6b737e : RAT.pink, { y: -1.02 })                     // paw (or gauntlet)
+      .add(P.cyl(0.31, 0.31, 0.18, 8), sash, { y: -0.7 })                                       // wrap
+      .add(P.cyl(0.3, 0.3, 0.14, 8), sash, { y: -0.2 });                                        // armband
+    if (!armed) return a.build();
+    if (weapon === 'club') {
+      // a big wooden club studded with iron nails
+      a.add(P.cyl(0.3, 0.11, 1.8, 9), PAL.wood, { y: -1.15, z: 0.8, rx: Math.PI / 2 - 0.35 });
+      for (let i = 0; i < 9; i++) {
+        const ang = (i / 3 | 0) * 2.1 + (i % 3) * 0.7, along = 0.95 + (i % 3) * 0.24;
+        a.add(P.cone(0.06, 0.22, 4), PAL.stoneLight, { x: Math.cos(ang) * 0.27, y: -1.15 + Math.sin(0.35) * along + Math.sin(ang) * 0.2, z: 0.8 + Math.cos(0.35) * along * 0.6, rz: ang - Math.PI / 2 });
+      }
+    } else if (weapon === 'mace') {
+      // a spiked steel mace on an iron-bound handle
+      a.add(P.cyl(0.08, 0.08, 1.5, 6), PAL.woodDark, { y: -1.12, z: 0.62, rx: Math.PI / 2 - 0.35 });
+      a.add(P.sph(0.36, 10, 8), 0x8c949f, { y: -0.9, z: 1.38 });
+      for (let i = 0; i < 10; i++) {
+        const u = (i + 0.5) / 10, th = Math.acos(1 - 2 * u), ph = i * 2.4;
+        const dx = Math.sin(th) * Math.cos(ph), dy = Math.cos(th), dz = Math.sin(th) * Math.sin(ph);
+        a.add(P.cone(0.08, 0.3, 4), 0xc9ced6, { x: dx * 0.42, y: -0.9 + dy * 0.42, z: 1.38 + dz * 0.42, rx: Math.atan2(dz, dy), rz: -Math.atan2(dx, Math.hypot(dy, dz)) });
+      }
+    } else {
+      // the Rat King's gold sceptre with a ruby
+      a.add(P.cyl(0.07, 0.07, 1.7, 8), PAL.gold, { y: -1.1, z: 0.66, rx: Math.PI / 2 - 0.35 });
+      a.add(P.sph(0.22, 10, 8), PAL.gold, { y: -0.82, z: 1.42 });
+      a.add(P.ico(0.17, 1), 0xd8262d, { y: -0.68, z: 1.56 });
+      for (let i = 0; i < 4; i++) a.add(P.cone(0.06, 0.22, 4), PAL.gold, { x: Math.cos(i * 1.57) * 0.2, y: -0.62, z: 1.42 + Math.sin(i * 1.57) * 0.2 });
     }
     return a.build();
   };
   const leg = new GB()
-    .add(P.cap(0.27, 0.35, 3, 8), fur, { y: -0.3 })
-    .add(P.box(0.42, 0.18, 0.7), RAT.pink, { y: -0.7, z: 0.14 })                                // long rat foot
+    .add(P.cap(0.29, 0.35, 3, 8), steel ? 0xa9b1bc : fur, { y: -0.3 })
+    .add(P.box(0.44, 0.2, 0.72), steel ? 0x6b737e : RAT.pink, { y: -0.7, z: 0.14 })            // long rat foot (or sabaton)
     .build();
-  return { torso: t.build(), armL: arm(false), armR: arm(true), leg, top: 3.55 };
+  return { torso: t.build(), armL: arm(false), armR: arm(true), leg, top: style === 'king' ? 3.75 : 3.55 };
 }
 
 // ---------------------------------------------------------------- special bosses
@@ -369,7 +449,9 @@ function slimeParts() {
   }
   t.add(P.sph(0.36, 12, 6), SLIME.mouth, { y: 0.6, z: 0.86, sx: 1.35, sy: 0.42, sz: 0.42 });           // grin
   t.add(P.sph(0.14, 8, 5), SLIME.pink, { y: 0.52, z: 0.96, sx: 1.3, sy: 0.5 });                        // tongue
-  for (const sx of [-1, 1]) t.add(P.box(0.11, 0.13, 0.06), 0xfbf6e8, { x: sx * 0.16, y: 0.72, z: 1.0 });   // fangs
+  for (let k = 0; k < 6; k++) t.add(P.cone(0.06, 0.18, 4), 0xfbf6e8, { x: (k - 2.5) * 0.13, y: 0.7, z: 0.99, rx: Math.PI });   // a row of fangs
+  for (let k = 0; k < 4; k++) t.add(P.cone(0.05, 0.14, 4), 0xfbf6e8, { x: (k - 1.5) * 0.15, y: 0.5, z: 0.98 });
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU2 + 0.8; t.add(P.cap(0.08, 0.3, 3, 6), SLIME.body, { x: Math.cos(a) * 0.82, y: 0.62, z: Math.sin(a) * 0.78 }); }   // long drips
   // a bone stuck in its side
   t.add(P.cyl(0.07, 0.07, 0.95, 6), 0xf3ead2, { x: 0.95, y: 0.95, z: -0.15, rz: 1.05, ry: 0.4 });
   for (const k of [-1, 1]) t.add(P.sph(0.11, 6, 5), 0xf3ead2, { x: 0.95 + k * 0.41, y: 0.95 + k * 0.23, z: -0.15 - k * 0.15 });
