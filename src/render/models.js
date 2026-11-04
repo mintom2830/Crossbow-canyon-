@@ -55,6 +55,14 @@ function withGait(g, variant) {
 const HC = [0, 0.41, 0.41];   // the rats' head centre; headK: how much bigger the head is than it once was (a ratling's biggest, like a baby's)
 const headK = (v) => (v === 6 ? 1.55 : 1.36);
 RAT_LOOKS[SHIELDLESS] = RAT_LOOKS[3];
+// A small rat's tail, as one tapering curve: out of the rump, down close to the
+// ground, then sweeping up into a little curl at the tip (longer on a fast rat,
+// short and stubby on a ratling).
+function ratTail(variant, tubular, radial) {
+  const k = variant === 1 ? 1.2 : variant === 6 ? 0.75 : 1;
+  const pts = [[0, 0.3, -0.38], [0, 0.25, -0.56], [0.03, 0.17, -0.56 - 0.24 * k], [0.08, 0.15, -0.56 - 0.46 * k], [0.13, 0.22, -0.56 - 0.62 * k], [0.15, 0.33, -0.56 - 0.68 * k]];
+  return P.taper(pts, 0.052, 0.012, tubular, radial, 0.9);
+}
 export function gruntGeometry(variant = 0) {
   const L = RAT_LOOKS[variant];
   const b = new GB({ parts: true });
@@ -207,11 +215,8 @@ export function gruntGeometry(variant = 0) {
       b.add(P.cone(0.055, 0.2, 6), 0xffe27a, { x: rx, y: 0.28, z: rz, rx: Math.PI });
     }
   }
-  // pink tail curling behind
-  const tail = { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] };
-  const tl = variant === 1 ? 1.25 : 1;
-  b.add(P.cyl(0.03, 0.045, 0.45 * tl, 5), RAT.pinkDark, { y: 0.28, z: -0.46 - 0.22 * tl, rx: Math.PI / 2 + 0.25, ...tail });
-  b.add(P.cyl(0.015, 0.03, 0.4 * tl, 5), RAT.pinkDark, { x: 0.06, y: 0.36 + 0.02 * tl, z: -0.6 - 0.45 * tl, rx: Math.PI / 2 - 0.35, rz: 0.3, ...tail });
+  // one smooth pink tail: thick where it leaves the rump, drooping low, curling up at a thin tip
+  b.add(ratTail(variant, 8, 5), RAT.pinkDark, { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] });
   return withGait(b.build(), variant);
 }
 
@@ -280,10 +285,7 @@ export function gruntInkGeometry(variant = 0) {
       b.add(P.cone(0.12, 0.2, 6), 0, { x: sx * 0.15, y: 1.09, z: -0.33 });
     }
   }
-  const tail = { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] };
-  const tl = variant === 1 ? 1.25 : 1;
-  b.add(P.cyl(0.03, 0.045, 0.45 * tl, 4, 1, true), 0, { y: 0.28, z: -0.46 - 0.22 * tl, rx: Math.PI / 2 + 0.25, ...tail });
-  b.add(P.cyl(0.015, 0.03, 0.4 * tl, 4, 1, true), 0, { x: 0.06, y: 0.36 + 0.02 * tl, z: -0.6 - 0.45 * tl, rx: Math.PI / 2 - 0.35, rz: 0.3, ...tail });
+  b.add(ratTail(variant, 6, 4), 0, { part: RAT_PART.tail, pivot: [0, 0.28, -0.46] });
   const g = b.build();
   g.deleteAttribute('color');
   return withGait(g, variant);
@@ -336,7 +338,7 @@ export function giantParts(style = false) {
     t.add(P.box(0.5, 0.02, 0.02), 0xe9e2d8, { x: sx * 0.38, y: 2.48, z: 1.0, ry: sx * 0.35 }); // whiskers
   }
   // one long pink tail: out from the rump, low along the ground, curling up at the tip
-  t.add(P.taper([[0, 1.05, -0.6], [0, 0.82, -1.3], [0.08, 0.86, -1.95], [0.18, 1.2, -2.4], [0.22, 1.72, -2.55]], 0.16, 0, 16), RAT.pinkDark);
+  t.add(P.taper([[0, 1.05, -0.6], [0, 0.62, -1.15], [0.1, 0.32, -1.7], [0.28, 0.3, -2.2], [0.42, 0.48, -2.5], [0.48, 0.72, -2.55]], 0.15, 0.03, 18, 7, 0.9), RAT.pinkDark);
   if (boss) {
     // a flowing cape: a middle panel and two side panels wrapping round the back, flaring at the hem
     t.add(P.box(1.2, 2.3, 0.1), look.cape, { y: 1.5, z: -0.86, rx: 0.14 });
