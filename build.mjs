@@ -3,7 +3,7 @@
 //                              dist/crossbow-canyon.html (body fragment for hosts
 //                              that supply their own <html>/<head>, e.g. Claude artifacts)
 import { build, transform } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
 
 const watch = process.argv.includes('--dev');
 const result = await build({
@@ -17,6 +17,8 @@ const result = await build({
   legalComments: 'none',
   drop: watch ? [] : ['console', 'debugger'],   // three.js warning strings are dead weight in the shipped page
   banner: { js: '/* Crossbow Canyon — includes three.js (MIT, © 2010-2024 three.js authors) */' },
+  // the tower models shipped next to the page (src/assets/models/<kind>-<tier>.glb)
+  define: { __TOWER_MODELS__: JSON.stringify(existsSync('src/assets/models') ? readdirSync('src/assets/models').filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)) : []) },
 });
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 // pictures in src/assets are written into the page itself (__ASSET(name.webp)__ in the template)
@@ -58,4 +60,13 @@ writeFileSync('dist/index.html', full);
 mkdirSync('dist/artifact', { recursive: true });
 writeFileSync('dist/artifact/game.js', js);
 writeFileSync('dist/artifact/index.html', template.replace('<script>/*__BUNDLE__*/</script>', '<script src="game.js"></script>'));
+// the towers' 3D models (src/assets/models/*.glb) go next to the pages: the
+// game loads them when a tower is built (pages opened as files keep the
+// hand-built towers)
+if (existsSync('src/assets/models')) {
+  for (const dir of ['dist/models', 'dist/artifact/models']) {
+    mkdirSync(dir, { recursive: true });
+    for (const f of readdirSync('src/assets/models')) if (f.endsWith('.glb')) copyFileSync('src/assets/models/' + f, `${dir}/${f}`);
+  }
+}
 console.log(`built dist/index.html (${(full.length / 1024).toFixed(0)} KB), dist/crossbow-canyon.html`);

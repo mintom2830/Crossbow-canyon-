@@ -104,8 +104,12 @@ export class ArsenalView {
       v.aura.material.opacity = 0.5 + 0.3 * k;
     }
     if (kind === 'warp') v.headGlow.rotation.y = t * 1.6;
-    if (kind === 'totem' && tw.roarT > 0) { const b = 1 + Math.abs(Math.sin(t * 18)) * 0.06; v.head.scale.set(b, b, b); }
-    else if (kind === 'totem') v.head.scale.set(1, 1, 1);
+    if (kind === 'totem') {
+      // Battle Roar: the totem throbs (the Meshy model has no turning head, so the whole of it)
+      const part = v.model ? v.base : v.head, k = v.model && (tw.level === 2 || tw.level === 4) ? 1.07 : 1;
+      const b = tw.roarT > 0 ? 1 + Math.abs(Math.sin(t * 18)) * 0.06 : 1;
+      part.scale.setScalar(b * k);
+    }
     // the flamethrower's jet
     if (kind === 'flame' && tw.firing && dt > 0) this._spray(tw, v, L, dt);
     // boosted towers glitter: red for a totem, blue for a time warp

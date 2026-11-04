@@ -12,6 +12,8 @@ import { TownView } from './town.js';
 import { Portraits } from './portraits.js';
 import { applySkin, skinColor } from './skins.js';
 import { ArsenalView } from './arsenal-view.js';
+import { TowerModels } from './tower-models.js';
+import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
 import { turn } from '../town.js';
 import {
@@ -323,6 +325,10 @@ export class View {
     this.crystalTex = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
     this.towerViews = new Map();
     this.ars = new ArsenalView(this);   // the thirteen Arsenal towers
+    // their Meshy 3D models (loaded when a tower is first built); a tower
+    // already standing switches to its model as soon as it arrives
+    this.models = new TowerModels();
+    this.models.onLoad = (kind) => { for (const v of this.towerViews.values()) if (v.kind === kind) { v.level = -1; v.keepPop = true; } this.shadowDirty = true; };
     this.fortressGeo = [null, fortressGeometry(1), fortressGeometry(2), fortressGeometry(3)];
     const F = CFG.fortress;
     this.fortress = new THREE.Mesh(this.fortressGeo[1], this.structMat);
@@ -505,6 +511,7 @@ export class View {
     this.skin = id;
     for (const set of [this.towerGeo, this.cannonGeo, this.rapidGeo]) for (const g of set) if (g) { applySkin(g.base, id); applySkin(g.head, id); if (g.gun) applySkin(g.gun, id); }
     this.ars.setSkin(id);
+    this.models.setSkin(id);
     applySkin(this.hero.fork.geometry, id);
     if (!this.boltBase) this.boltBase = this.boltColors.map((c) => c.clone());
     this.boltColors.forEach((c, i) => { const b = this.boltBase[i]; if (id === 'classic' || i >= 6) c.copy(b); else skinColor(id, 0.95, 0.95, 0.95, c); });
@@ -717,6 +724,16 @@ export class View {
   }
 
   _setTowerLevel(v, level, path = null) {
+    if (isArsenal(v.kind)) {
+      const model = this.models.get(v.kind, level);
+      if (model) { this._setTowerModel(v, level, model); return; }
+      if (v.model) {   // back to the hand-built model
+        v.model = null;
+        v.base.material = v.headMesh.material = this.structMat;
+        v.headMesh.visible = true;
+        v.base.scale.setScalar(1); v.head.scale.setScalar(1);
+      }
+    }
     const rapid = v.kind === 'cannon' && path === 'rapid' && level >= CFG.cannon.branchLevel;
     const ars = isArsenal(v.kind) ? this.ars.geo(v.kind, level) : null;
     const geo = ars ? ars.geo : (rapid ? this.rapidGeo : v.kind === 'cannon' ? this.cannonGeo : this.towerGeo)[level];
@@ -741,6 +758,29 @@ export class View {
     if (geo.crystal) { v.aura.position.set(...geo.crystal); v.aura.material.color.set(geo.glowColor); }
     v.level = level;
     v.pop = 0;
+    this.shadowDirty = true;
+  }
+
+  // An Arsenal tower drawn with its Meshy 3D model. Levels 2 and 4 use the
+  // model of levels 1 and 3, a little bigger.
+  _setTowerModel(v, level, m) {
+    v.model = m;
+    const k = level === 2 || level === 4 ? 1.07 : 1;
+    setInkedGeometry(v.base, m.base, m.ink.base);
+    v.base.material = m.mat;
+    v.baseGlow.visible = false;
+    v.headGlow.visible = false;
+    v.gun.visible = false;
+    v.headMesh.visible = !!m.head;
+    if (m.head) { setInkedGeometry(v.headMesh, m.head, m.ink.head); v.headMesh.material = m.mat; }
+    v.base.scale.setScalar(k); v.head.scale.setScalar(k);
+    v.head.position.y = m.headY * k;
+    v.charge.visible = false;
+    v.aura.visible = !!m.aura;
+    if (m.aura) { v.aura.position.set(...m.aura); v.aura.material.color.set(ARSENAL_LOOK[v.kind].glow || 0xffffff); }
+    v.level = level;
+    if (!v.keepPop) v.pop = 0;
+    v.keepPop = false;
     this.shadowDirty = true;
   }
 
