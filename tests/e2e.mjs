@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 
 const URL = pathToFileURL(path.resolve('dist/index.html')).href;
@@ -21,7 +21,12 @@ let server = null;
 async function httpURL() {
   if (!server) {
     server = http.createServer((req, res) => {
-      try { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(readFileSync(path.resolve('dist/index.html'))); }
+      try {
+        // the towers' 3D models next to the page, as on a web host
+        const m = /^\/models\/([\w-]+\.glb)$/.exec(req.url.split('?')[0]);
+        if (m) { res.writeHead(200, { 'content-type': 'model/gltf-binary' }); res.end(readFileSync(path.resolve('dist/models', m[1]))); return; }
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(readFileSync(path.resolve('dist/index.html')));
+      }
       catch { res.writeHead(500); res.end(); }
     });
     await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
@@ -1315,6 +1320,32 @@ await test('Arsenal: unlock towers in the Shop, pick one from the Build menu on 
   assert(zaps.z >= 3 && zaps.kills > 5, 'the tesla did not fight: ' + JSON.stringify(zaps));
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${SHOTS}/tesla-phone.png` });
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('Arsenal 3D models: served over the web, a built tower switches to its Meshy model (fitted to the pad, outlined) and changes model with its level', async () => {
+  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)) : [];
+  assert(shipped.length >= 1, 'no tower models in dist/models');
+  const [kind] = shipped[0].split('-');
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await g(page, (k) => { const s = window.__cc.sim; for (const sl of s.slots) sl.tower = null; s.towers = []; const t = s._placeTower(s.slots[0], 1, true, k); window.__cc.teleport(t.x + 2.5, t.z + 2.5); }, kind);
+  await page.waitForFunction(() => { const v = window.__cc.view.towerViews.get(0); return v && v.model; }, null, { timeout: 30000 });
+  const r = await g(page, () => {
+    const v = window.__cc.view.towerViews.get(0), m = v.model;
+    m.base.computeBoundingBox();
+    const b = m.base.boundingBox;
+    return { w: b.max.x - b.min.x, d: b.max.z - b.min.z, y0: b.min.y, tex: !!(m.mat.map && m.mat.map.image), ink: !!(v.base.userData.ink && v.base.userData.ink.visible), misses: window.__cc.view.models.misses };
+  });
+  assert(r.tex && r.ink && r.misses === 0, 'model not textured / outlined: ' + JSON.stringify(r));
+  assert(Math.max(r.w, r.d) < 2.7 && Math.max(r.w, r.d) > 1.5 && Math.abs(r.y0) < 0.01, 'model not fitted to the pad: ' + JSON.stringify(r));
+  // level 5 uses the top model (or the tower's only one, a little bigger)
+  await g(page, () => { window.__cc.sim.towers[0].level = 5; });
+  await page.waitForFunction(() => { const v = window.__cc.view.towerViews.get(0); return v.level === 5 && v.model; }, null, { timeout: 30000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${SHOTS}/arsenal-model.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

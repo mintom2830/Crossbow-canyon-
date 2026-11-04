@@ -14,9 +14,9 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { toonGradient, inkGeometry } from './toon.js';
 import { CFG } from '../config.js';
 
-const FOOT = 2.3;        // how wide a model may be (a tower pad is about 2.2)
-const MAX_H = 4.4;       // and how tall
-// per tower: cut (null: the whole model stays still), yaw (turns the model so
+const FOOT = 2.6;        // how wide a model may be (a tower pad is about 2.2; a model may overhang it a little)
+const MAX_H = 4.8;       // and how tall
+// per tower (and per model in `tiers`): cut (null: the whole model stays still), yaw (turns the model so
 // its weapon faces +Z), aura (where the glow sprite sits, as shares of the
 // model's width, height and depth), lift (shares of height the weapon's muzzle is at)
 export const MODEL_FIT = {
@@ -81,14 +81,17 @@ export class TowerModels {
   // The fitted model for a tower kind at a level, or null while it loads (or if there is none).
   get(kind, level) {
     if (this.disabled || !MODEL_FIT[kind]) return null;
-    const key = `${kind}-${modelTier(level)}`;
-    if (SHIPPED && !SHIPPED.has(key)) return null;
+    // its own tier's model, or (for towers with fewer models) the nearest one there is
+    const tier = modelTier(level);
+    const key = [tier, 2, tier === 1 ? 3 : 1, 3].map((t) => `${kind}-${t}`).find((k) => !SHIPPED || SHIPPED.has(k));
+    if (!key) return null;
     let e = this.cache.get(key);
     if (!e) {
       e = { parts: null, failed: false };
       this.cache.set(key, e);
       this.loader.loadAsync(this.base + key + '.glb').then((gltf) => {
-        e.parts = this._fit(kind, gltf);
+        e.parts = this._fit(kind, gltf, +key.slice(-1));
+        e.parts.tier = +key.slice(-1);
         if (this.onLoad) this.onLoad(kind);
       }).catch(() => { e.failed = true; this.misses++; });
     }
@@ -118,8 +121,8 @@ export class TowerModels {
 
   // One geometry from the model (world transforms applied), stood on the
   // ground, centred and scaled to fit a pad; cut into base and head if it aims.
-  _fit(kind, gltf) {
-    const fit = MODEL_FIT[kind];
+  _fit(kind, gltf, tier) {
+    const fit = { ...MODEL_FIT[kind], ...((MODEL_FIT[kind].tiers || {})[tier] || {}) };
     const geos = [];
     let map = null;
     gltf.scene.updateMatrixWorld(true);

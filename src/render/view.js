@@ -12,7 +12,7 @@ import { TownView } from './town.js';
 import { Portraits } from './portraits.js';
 import { applySkin, skinColor } from './skins.js';
 import { ArsenalView } from './arsenal-view.js';
-import { TowerModels } from './tower-models.js';
+import { TowerModels, modelTier } from './tower-models.js';
 import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
 import { turn } from '../town.js';
@@ -765,7 +765,9 @@ export class View {
   // model of levels 1 and 3, a little bigger.
   _setTowerModel(v, level, m) {
     v.model = m;
-    const k = level === 2 || level === 4 ? 1.07 : 1;
+    // a tower with one model for every level grows a little with each level instead
+    const k = m.tier === modelTier(level) ? (level === 2 || level === 4 ? 1.07 : 1) : 0.88 + level * 0.045;
+    v.modelK = k;
     setInkedGeometry(v.base, m.base, m.ink.base);
     v.base.material = m.mat;
     v.baseGlow.visible = false;

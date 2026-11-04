@@ -106,7 +106,7 @@ export class ArsenalView {
     if (kind === 'warp') v.headGlow.rotation.y = t * 1.6;
     if (kind === 'totem') {
       // Battle Roar: the totem throbs (the Meshy model has no turning head, so the whole of it)
-      const part = v.model ? v.base : v.head, k = v.model && (tw.level === 2 || tw.level === 4) ? 1.07 : 1;
+      const part = v.model ? v.base : v.head, k = v.model ? v.modelK || 1 : 1;
       const b = tw.roarT > 0 ? 1 + Math.abs(Math.sin(t * 18)) * 0.06 : 1;
       part.scale.setScalar(b * k);
     }
