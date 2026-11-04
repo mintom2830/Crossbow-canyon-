@@ -2,6 +2,8 @@
 // Every balance number lives here so the headless simulation and the
 // browser build always agree.
 
+import { ARSENAL, ARSENAL_MAX_LEVEL, isArsenal, arsenalUpgradeCost } from './arsenal.js';
+
 export const CFG = {
   version: 1,
   fixedDt: 1 / 60,
@@ -179,6 +181,7 @@ export const CFG = {
   // falls short still earns some. They add up to diamondsPerClear for a full clear.
   waveDiamonds: [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 20],
   cannonUnlockCost: 100,
+  arsenal: ARSENAL,      // thirteen more towers, unlocked in the Shop (arsenal.js)
   // Rides, bought in the Shop with diamonds: the farmer rides into every game
   // on the one picked, and runs faster on it (speedMul). The cow's bell also
   // pulls coins in from further away (magnetMul).
@@ -377,6 +380,14 @@ export function cannonSpec(level, path) {
   return CFG.cannon.paths[path === 'rapid' ? 'rapid' : 'blast'].levels[level];
 }
 export const CANNON_PATHS = ['rapid', 'blast'];
+
+// Per tower kind: its name, top level, upgrade price, build price (times the
+// crossbow's) and its Shop price in diamonds (0: always owned).
+export const towerName = (kind) => (kind === 'cannon' ? 'Cannon Tower' : isArsenal(kind) ? ARSENAL[kind].name : 'Crossbow Tower');
+export const towerMaxLevel = (kind) => (isArsenal(kind) ? ARSENAL_MAX_LEVEL : CFG.maxTowerLevel);
+export const towerUpgradeCost = (kind, level) => (kind === 'cannon' ? CFG.cannon.upgradeCosts[level] : isArsenal(kind) ? arsenalUpgradeCost(kind, level) : CFG.upgradeCosts[level]);
+export const towerBuildMul = (kind) => (kind === 'cannon' ? CFG.cannon.buildCostMul : isArsenal(kind) ? ARSENAL[kind].buildMul : 1);
+export const towerUnlockCost = (kind) => (kind === 'cannon' ? CFG.cannonUnlockCost : isArsenal(kind) ? ARSENAL[kind].cost : 0);
 
 // ---------- Maps ----------
 // Every level shares the waves, towers and the town in the north; each map

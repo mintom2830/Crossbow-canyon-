@@ -1,7 +1,8 @@
 // Crossbow Canyon — deterministic gameplay simulation.
 // No rendering or DOM code lives here, so it runs unchanged in Node for the
 // balance bot and in the browser for the real game.
-import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds } from './config.js';
+import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds, towerMaxLevel, towerUpgradeCost, towerBuildMul } from './config.js';
+import { isArsenal, arsenalSpec, WEAK_MUL } from './arsenal.js';
 import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf, inWater, oasisLayout, pondEdge } from './world.js';
 
 export const T_GRUNT = 0, T_GIANT = 1, T_BOSS = 2;
@@ -15,6 +16,8 @@ const MAX_ENEMIES = 1400;
 const tmp = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 const tmp2 = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
 const aimOut = { x: 0, z: 0 };
+// height of an Arsenal tower's muzzle above its foot
+const arsMuzzle = (t) => 1.45 + t.level * 0.07;
 const extraBuf = [];
 const AIR = CFG.airborne;   // flying higher than this: out of reach of blasts and ground effects
 // where an arrow strikes an enemy (gy: the ground under it, on a hill)
@@ -22,7 +25,7 @@ const hitY = (e) => e.gy + (e.fly > 0 ? e.fly + 0.9 : e.type === T_GRUNT ? 0.55 
 // the ground under a point of the road (0 on a map without hills)
 const roadY = (x, z) => (CFG.hills.length ? hillHeight(x, z) : 0);
 // standing still for a moment (aim straight at it, no lead)
-const holding = (e) => e.atGate || e.stun > 0 || e.fall > 0 || e.dig === 1 || e.dig === 3;
+const holding = (e) => e.atGate || e.stun > 0 || e.held > 0 || e.fall > 0 || e.dig === 1 || e.dig === 3;
 
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function angDiff(a, b) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
@@ -95,7 +98,8 @@ export function branchOffsets(slot, up) {
 export class Sim {
   constructor(opts = {}) {
     this.seed = opts.seed ?? 1234;
-    this.unlocked = { cannon: !!opts.cannon };
+    // towers bought in the Shop: { cannon: true, tesla: true, ... }
+    this.unlocked = { ...(opts.unlocks || {}), cannon: !!(opts.cannon || (opts.unlocks && opts.unlocks.cannon)) };
     this.ride = CFG.rides[opts.ride] ? opts.ride : null;   // the farmer rides a horse or a cow (Shop)
     this.autoSkip = !!opts.autoSkip;
     this.difficulty = CFG.difficulties[opts.difficulty] ? opts.difficulty : 'normal';
@@ -122,7 +126,11 @@ export class Sim {
     this.towers = [];
     this.bolts = [];
     this.shells = [];   // cannonballs in flight
-    this.zones = [];    // burning ground
+    this.zones = [];    // burning ground and poison clouds
+    this.mines = [];    // Mine Tower mines on the road
+    this.rockets = [];  // Rocket Tower homing rockets
+    this.allies = [];   // Summoner Tower rat soldiers
+    this.allyId = 1;
     this.buildKind = 'crossbow';
     this.coins = [];
     this.pads = [];
@@ -150,10 +158,10 @@ export class Sim {
     this.input.x = x; this.input.z = z;
   }
 
-  // Which tower empty build pads construct: 'crossbow' or (once unlocked) 'cannon'.
+  // Which tower empty build pads construct: 'crossbow', or any tower unlocked in the Shop.
+  canBuild(kind) { return kind === 'crossbow' || ((kind === 'cannon' || isArsenal(kind)) && !!this.unlocked[kind]); }
   setBuildKind(kind) {
-    if (kind === 'cannon' && !this.unlocked.cannon) return false;
-    if (kind !== 'cannon' && kind !== 'crossbow') return false;
+    if (!this.canBuild(kind)) return false;
     if (this.buildKind === kind) return true;
     this.buildKind = kind;
     this.refreshPads();
@@ -211,6 +219,9 @@ export class Sim {
     this._updateBolts(dt);
     this._updateShells(dt);
     this._updateZones(dt);
+    this._updateRockets(dt);
+    this._updateMines(dt);
+    this._updateAllies(dt);
     this._compact();
     this._updateCoins(dt);
     this._updatePads(dt);
@@ -363,6 +374,7 @@ export class Sim {
       gateS: type === T_GRUNT ? L - this.rng.range(0.3, 4.2) : L - this.rng.range(1.6, 2.6),
       attackT: 0, swings: kind.swings, flash: 0, radius: kind.radius, phase: this.rng() * 6.28, cell: 0,
       stun: 0, slow: 0, slowMul: 1, broken: 0,
+      weak: 0, mark: 0, burn: 0, burnDps: 0, held: 0,   // poisoned/scorched, sniper-marked, burning, held by a rat soldier
       frost: 0, frostT: 0, frozen: 0, freezeCd: 0, hitT: 0,
       shield: 0, shieldMax: 0, healT: 0, healed: 0, gy: 0,
       dodgeT: 0, jetT: 0, boost: 0,   // ninja rat: until it can dodge again · jetpack rat: until it fires, and how long it still burns
@@ -638,6 +650,13 @@ export class Sim {
       if (e.freezeCd > 0) e.freezeCd -= dt;
       if (e.hitT > 0) e.hitT -= dt;
       if (e.dodgeT > 0) e.dodgeT -= dt;
+      if (e.weak > 0) e.weak -= dt;
+      if (e.mark > 0) e.mark -= dt;
+      if (e.burn > 0) {             // on fire: damage over time
+        e.burn -= dt;
+        if (this._dot(e, e.burnDps * dt)) continue;
+        if (e.burn <= 0) e.burnDps = 0;
+      }
       if (e.fall > 0) {            // dropped by the buzzard: still falling
         e.fall -= dt;
         e.flash = Math.max(0, e.flash - dt);
@@ -646,6 +665,12 @@ export class Sim {
       }
       if (e.stun > 0) {            // stunned: no walking, no attacking
         e.stun -= dt;
+        e.flash = Math.max(0, e.flash - dt);
+        this._placeEnemy(e);
+        continue;
+      }
+      if (e.held > 0) {            // held back by a Summoner's rat soldier
+        e.held -= dt;
         e.flash = Math.max(0, e.flash - dt);
         this._placeEnemy(e);
         continue;
@@ -769,9 +794,23 @@ export class Sim {
     let d = amount;
     if (e.type !== T_GRUNT || e.armor > 0) d *= armorMul;   // armour bonuses hit giant and armored rats
     if (e.broken > 0) d *= CFG.cannon.breakMul;
+    if (e.weak > 0) d *= WEAK_MUL;
+    if (e.mark > 0) d *= WEAK_MUL;
     e.hp -= d;
     e.flash = 0.09;
     e.hitT = CFG.hitFlinch;
+    if (e.hp <= 0) { this._kill(e); return true; }
+    return false;
+  }
+
+  // Damage over time (burning): no flinch or flash, but every weakness counts.
+  _dot(e, amount) {
+    if (!e.alive) return true;
+    let d = amount;
+    if (e.broken > 0) d *= CFG.cannon.breakMul;
+    if (e.weak > 0) d *= WEAK_MUL;
+    if (e.mark > 0) d *= WEAK_MUL;
+    e.hp -= d;
     if (e.hp <= 0) { this._kill(e); return true; }
     return false;
   }
@@ -792,7 +831,7 @@ export class Sim {
   }
 
   // -------------------------------------------------------------- towers
-  _towerRadius(t) { return t.kind === 'cannon' ? CFG.cannon.radii[t.level] : CFG.towerRadii[t.level]; }
+  _towerRadius(t) { return t.kind === 'cannon' ? CFG.cannon.radii[t.level] : isArsenal(t.kind) ? 1.05 + t.level * 0.08 : CFG.towerRadii[t.level]; }
 
   _placeTower(slot, level, silent, kind = 'crossbow') {
     // face the road initially
@@ -807,6 +846,7 @@ export class Sim {
       recoil: 0, side: 0, builtAt: silent ? -10 : this.time, fired: 0,
       kind, charge: 0, pending: [], aim: null, sideFlip: 0, path: null, salvoT: 0,
       burst: 0, burstT: 0, stormT: 0, storms: [], alt: 0,
+      rateMul: 1, dmgMul: 1, rangeMul: 1, buff: 0, tick: 0, roarT: 0, firing: false, fields: null, spots: null, rally: null,
     };
     slot.tower = t;
     this.towers.push(t);
@@ -815,11 +855,11 @@ export class Sim {
 
   // The front-most enemy in range; a flier in range comes first (crossbows are
   // the only towers that can reach it, so they make it their target).
-  _findTarget(t, range) {
+  _findTarget(t, range, ground = false) {
     let best = null, bestS = -1, flier = null;
     const r2 = range * range;
     this._query(t.x - range, t.z - range, t.x + range, t.z + range, (e) => {
-      if (!e.alive) return;
+      if (!e.alive || (ground && e.fly > AIR)) return;
       const dx = e.x - t.x, dz = e.z - t.z;
       if (dx * dx + dz * dz > r2) return;
       if (e.fly > AIR && (!flier || e.s > flier.s)) flier = e;
@@ -829,16 +869,19 @@ export class Sim {
   }
 
   _updateTowers(dt) {
+    this._applyAuras(dt);
     for (const t of this.towers) {
       if (t.kind === 'cannon') { this._updateCannon(t, dt); continue; }
+      if (isArsenal(t.kind)) { this._updateArsenal(t, dt); continue; }
       const L = CFG.towers[t.level];
-      t.cooldown -= dt;
+      const range = L.range * t.rangeMul;
+      t.cooldown -= dt * t.rateMul;
       t.recoil = Math.max(0, t.recoil - dt * 4);
       t.retarget -= dt;
-      if (L.storm) this._updateStorm(t, L, dt);
+      if (L.storm) this._updateStorm(t, L, dt * t.rateMul);
       let tg = t.target;
-      if (tg && (!tg.alive || tg.under || (tg.x - t.x) ** 2 + (tg.z - t.z) ** 2 > (L.range + 0.6) ** 2)) tg = null;
-      if (!tg || t.retarget <= 0) { tg = this._findTarget(t, L.range); t.retarget = 0.15; }
+      if (tg && (!tg.alive || tg.under || (tg.x - t.x) ** 2 + (tg.z - t.z) ** 2 > (range + 0.6) ** 2)) tg = null;
+      if (!tg || t.retarget <= 0) { tg = this._findTarget(t, range); t.retarget = 0.15; }
       t.target = tg;
       if (!tg) { t.burst = 0; continue; }
       const aim = this._aimAt(tg, t.x, t.z);
@@ -849,7 +892,7 @@ export class Sim {
       const aligned = Math.abs(angDiff(t.yaw, want)) < 0.2;
       // Triple Barrage: the rapid burst after every fifth attack
       if (t.burst > 0) {
-        t.burstT -= dt;
+        t.burstT -= dt * t.rateMul;
         if (t.burstT <= 0 && aligned) { t.burst--; t.burstT = L.burst.gap; t.recoil = 1; this._fire(t, L, tg, true); }
         continue;
       }
@@ -911,9 +954,10 @@ export class Sim {
   // front rat and the next ones; against a giant every arrow focuses it.
   _fire(t, L, tg, burst) {
     const n = L.bolts;
-    const mh = CFG.muzzleHeight[t.level];
+    const ars = isArsenal(t.kind);
+    const mh = ars ? arsMuzzle(t) : CFG.muzzleHeight[t.level];
     const spread = L.twin && tg.type === T_GRUNT;
-    const extra = spread ? this._extraTargets(t, L.range, tg, Math.max(1, n - 1)) : null;
+    const extra = spread ? this._extraTargets(t, L.range * t.rangeMul, tg, Math.max(1, n - 1)) : null;
     let single = tg;
     if (n === 1 && spread) { t.alt ^= 1; if (t.alt && extra.length) single = extra[0]; }   // magazine alternates rats
     for (let i = 0; i < n; i++) {
@@ -924,7 +968,7 @@ export class Sim {
         if (k >= 0 && extra[k]) e = extra[k];
       }
       // side-by-side muzzles for double / triple crossbows
-      const lat = off * (n === 2 ? 2 * L.lateral : L.lateral);
+      const lat = off * (n === 2 ? 2 : 1) * (L.lateral || 0);
       const fx = Math.sin(t.yaw), fz = Math.cos(t.yaw);
       const ox = t.x + fx * 1.0 + Math.cos(t.yaw) * lat, oz = t.z + fz * 1.0 - Math.sin(t.yaw) * lat;
       const aim = this._aimAt(e, ox, oz);
@@ -933,18 +977,18 @@ export class Sim {
       if (dist < 0.3) { dx = fx; dz = fz; dist = 0.3; } else { dx /= dist; dz /= dist; }
       if (e === tg && n > 1 && !spread) {
         // focusing one rat: fan the arrows a touch so they read as separate shots
-        const yaw = Math.atan2(dx, dz) + off * L.spread * 0.5;
+        const yaw = Math.atan2(dx, dz) + off * (L.spread || 0.05) * 0.5;
         dx = Math.sin(yaw); dz = Math.cos(yaw);
       }
       this.bolts.push({
         x: ox, z: oz, y: t.y + mh, y0: t.y + mh, y1: hitY(e), dx, dz,
         d: 0, aim: Math.max(1, dist - 0.4), max: dist + CFG.boltExtra,
-        dmg: L.dmg, pierce: L.pierce, hits: [], alive: true, level: t.level,
-        bounces: L.bounce ? L.bounce.n : 0, fall: false, tid: e.id,
+        dmg: L.dmg * t.dmgMul, pierce: L.pierce || 1, hits: [], alive: true, level: t.level,
+        bounces: L.bounce ? L.bounce.n : 0, fall: false, tid: e.id, spec: ars ? L : null, kind: t.kind,
         air: e.fly > AIR,   // aimed up at a flier: passes over the rats on the road (and the other way round)
       });
     }
-    this.events.push({ type: 'fire', x: t.x, z: t.z, level: t.level, slot: t.slotIndex, burst, ax: tg.x, az: tg.z, tid: tg.id });
+    this.events.push({ type: 'fire', tower: t.kind, x: t.x, z: t.z, level: t.level, slot: t.slotIndex, burst, ax: tg.x, az: tg.z, tid: tg.id });
   }
 
   // Crystal Storm: every few seconds a rain of crystal arrows falls on the
@@ -959,13 +1003,13 @@ export class Sim {
       const dx = a.x - t.x, dz = a.z - t.z, l = Math.hypot(dx, dz) || 1;
       this.bolts.push({
         x: a.x, z: a.z, y: S.height, y0: S.height, y1: 0.4 + roadY(a.x, a.z), dx: dx / l, dz: dz / l,
-        d: 0, aim: 1, max: 99, dmg: S.dmg, pierce: 1, hits: [], alive: true, level: t.level,
-        bounces: 0, fall: true, air: false,
+        d: 0, aim: 1, max: 99, dmg: S.dmg * t.dmgMul, pierce: 1, hits: [], alive: true, level: t.level,
+        bounces: 0, fall: true, air: false, spec: isArsenal(t.kind) ? L : null, kind: t.kind,
       });
     }
     t.stormT = Math.min(S.every, t.stormT + dt);
     if (t.stormT < S.every || t.storms.length) return;
-    const c = this._findCluster(t, L.range, 2.4, null);
+    const c = this._findCluster(t, L.range * t.rangeMul, 2.4, null);
     if (!c) return;
     t.stormT = 0;
     for (let i = 0; i < S.arrows; i++) {
@@ -973,6 +1017,621 @@ export class Sim {
       t.storms.push({ delay: (i / S.arrows) * S.spawn, x: c.x + Math.cos(a) * r, z: c.z + Math.sin(a) * r });
     }
     this.events.push({ type: 'storm', x: c.x, z: c.z, r: S.radius, slot: t.slotIndex, tx: t.x, tz: t.z, time: S.spawn + S.height / S.speed });
+  }
+
+  // ------------------------------------------------------------ the Arsenal
+  // Berserker Totems and Time Warps boost the towers around them: damage
+  // (dmgMul), attack speed (rateMul) and reach (rangeMul). The strongest
+  // totem and the strongest warp in reach count; the two stack.
+  _applyAuras(dt) {
+    const ts = this.towers;
+    for (const t of ts) { t.rateMul = 1; t.dmgMul = 1; t.rangeMul = 1; t.buff = 0; t.bRate = 0; t.bHaste = 0; }
+    for (const a of ts) {
+      if (a.kind !== 'totem' && a.kind !== 'warp') continue;
+      const L = arsenalSpec(a.kind, a.level), R2 = L.r * L.r;
+      let k = 1;
+      if (a.kind === 'totem' && L.roar) {
+        // Battle Roar: every few seconds of battle, double boosts for a while
+        if (a.roarT > 0) { a.roarT -= dt; k = 2; }
+        else if (this.state === 'wave' && (a.stormT += dt) >= L.roar.every) {
+          a.stormT = 0; a.roarT = L.roar.t; k = 2;
+          this.events.push({ type: 'roar', slot: a.slotIndex, x: a.x, z: a.z, r: L.r });
+        }
+      }
+      for (const t of ts) {
+        if (t === a || t.kind === 'totem' || t.kind === 'warp') continue;
+        if ((t.x - a.x) ** 2 + (t.z - a.z) ** 2 > R2) continue;
+        if (a.kind === 'totem') {
+          t.dmgMul = Math.max(t.dmgMul, 1 + L.dmg * k);
+          t.bRate = Math.max(t.bRate, L.rate * k);
+          t.rangeMul = Math.max(t.rangeMul, 1 + L.reach * k);
+          t.buff |= k > 1 ? 5 : 1;
+        } else { t.bHaste = Math.max(t.bHaste, L.haste); t.buff |= 2; }
+      }
+    }
+    for (const t of ts) if (t.buff) t.rateMul = (1 + t.bRate) * (1 + t.bHaste);
+  }
+
+  _updateArsenal(t, dt) {
+    const L = arsenalSpec(t.kind, t.level);
+    t.cooldown -= dt * t.rateMul;
+    t.recoil = Math.max(0, t.recoil - dt * 3);
+    switch (t.kind) {
+      case 'spike': this._updateSpike(t, L, dt); break;
+      case 'mine': this._updateMineTower(t, L, dt); break;
+      case 'ice': case 'crystal': this._updateBolter(t, L, dt); break;
+      case 'poison': case 'mortar': this._updateLobber(t, L, dt); break;
+      case 'flame': this._updateFlame(t, L, dt); break;
+      case 'sniper': this._updateSniper(t, L, dt); break;
+      case 'tesla': this._updateTesla(t, L, dt); break;
+      case 'rocket': this._updateRocketTower(t, L, dt); break;
+      case 'summoner': this._updateSummoner(t, L, dt); break;
+      case 'warp': this._updateWarp(t, L, dt); break;
+      default: break;   // the totem only boosts (_applyAuras)
+    }
+  }
+
+  // Turn a turret toward its rat. Returns the rat once the head faces it.
+  // ground: only rats on the ground · tough: the rat with the most health.
+  _turret(t, L, dt, ground, tough = false) {
+    const R = L.range * t.rangeMul;
+    t.retarget -= dt;
+    let tg = t.target;
+    if (tg && (!tg.alive || tg.under || (ground && tg.fly > AIR) || (tg.x - t.x) ** 2 + (tg.z - t.z) ** 2 > (R + 0.6) ** 2)) tg = null;
+    if (!tg || t.retarget <= 0) { tg = tough ? this._toughest(t, R, ground) : this._findTarget(t, R, ground); t.retarget = tough ? 0.4 : 0.15; }
+    t.target = tg;
+    if (!tg) return null;
+    const want = Math.atan2(tg.x - t.x, tg.z - t.z);
+    const d = angDiff(t.yaw, want), turn = (L.turn || 6) * dt;
+    t.yaw += Math.abs(d) <= turn ? d : Math.sign(d) * turn;
+    return Math.abs(angDiff(t.yaw, want)) < 0.2 ? tg : null;
+  }
+
+  // The rat with the most health in range (the front-most on a tie).
+  _toughest(t, R, ground) {
+    let best = null, hp = -1;
+    const r2 = R * R;
+    this._query(t.x - R, t.z - R, t.x + R, t.z + R, (e) => {
+      if (!e.alive || (ground && e.fly > AIR) || (e.x - t.x) ** 2 + (e.z - t.z) ** 2 > r2) return;
+      if (e.hp > hp || (e.hp === hp && e.s > best.s)) { hp = e.hp; best = e; }
+    });
+    return best;
+  }
+
+  _nearestEnemy(x, z, R) {
+    let best = null, bd = R * R;
+    this._query(x - R, z - R, x + R, z + R, (e) => {
+      if (!e.alive) return;
+      const d = (e.x - x) ** 2 + (e.z - z) ** 2;
+      if (d < bd) { bd = d; best = e; }
+    });
+    return best;
+  }
+
+  // Road positions (s) within R of a tower.
+  _roadSpots(t, R) {
+    const out = [], R2 = R * R;
+    for (let i = 0; i < road.count; i++) if ((road.px[i] - t.x) ** 2 + (road.pz[i] - t.z) ** 2 <= R2) out.push(i * road.step);
+    return out;
+  }
+  _nearestRoadS(t) {
+    let best = 1e18, bi = 0;
+    for (let i = 0; i < road.count; i++) {
+      const d = (road.px[i] - t.x) ** 2 + (road.pz[i] - t.z) ** 2;
+      if (d < best) { best = d; bi = i; }
+    }
+    return bi * road.step;
+  }
+
+  // ---- Ice and Crystal Storm towers: bolts (with frost) like the crossbow's
+  _updateBolter(t, L, dt) {
+    if (L.storm) this._updateStorm(t, L, dt * t.rateMul);
+    if (L.blizzard) t.stormT = Math.min(L.blizzard.every, t.stormT + dt * t.rateMul);
+    const tg = this._turret(t, L, dt, false);
+    if (!tg) return;
+    if (t.cooldown <= 0) {
+      t.cooldown = L.interval;
+      t.recoil = 1;
+      t.fired++;
+      this._fire(t, L, tg, false);
+    }
+    if (L.blizzard && t.stormT >= L.blizzard.every) { t.stormT = 0; this._blizzard(t, L, tg); }
+  }
+
+  // Ice Tower's Blizzard: every rat around the target freezes (bosses only slow).
+  _blizzard(t, L, tg) {
+    const B = L.blizzard, F = L.frost, R = B.r, R2 = R * R;
+    let n = 0;
+    this._query(tg.x - R, tg.z - R, tg.x + R, tg.z + R, (e) => {
+      if (!e.alive || (e.x - tg.x) ** 2 + (e.z - tg.z) ** 2 > R2) return;
+      e.slowMul = e.slow > 0 ? Math.min(e.slowMul, 1 - F.slow) : 1 - F.slow;
+      e.slow = Math.max(e.slow, F.t);
+      if (e.type === T_BOSS) return;
+      const ft = e.type === T_GRUNT ? B.freeze : F.giantFreeze;
+      e.frozen = Math.max(e.frozen, ft);
+      e.stun = Math.max(e.stun, ft);
+      e.frost = 0;
+      n++;
+    });
+    this.stats.frozen = (this.stats.frozen || 0) + n;
+    this.events.push({ type: 'blizzard', x: tg.x, z: tg.z, r: R, slot: t.slotIndex, n });
+  }
+
+  // ---- Mortar and Poison Gas towers: lobbed shells at the densest group
+  _updateLobber(t, L, dt) {
+    const gas = t.kind === 'poison';
+    for (let i = t.pending.length - 1; i >= 0; i--) {
+      const p = t.pending[i];
+      p.delay -= dt;
+      if (p.delay <= 0) { this._lob(t, p.pt, L, p.kind, p.lateral, !gas); t.pending.splice(i, 1); }
+    }
+    const R = L.range * t.rangeMul, rad = gas ? L.cloud.r : L.radius;
+    t.retarget -= dt;
+    if (t.aim && (!t.aim.e.alive || t.aim.e.under || t.aim.e.fly > AIR)) t.aim = null;
+    if (!t.aim || t.retarget <= 0) { t.aim = this._findCluster(t, R, rad, null); t.retarget = 0.3; }
+    if (!t.aim) return;
+    const aim = this._lead(t.aim.e, t.x, t.z);
+    const want = Math.atan2(aim.x - t.x, aim.z - t.z);
+    const d = angDiff(t.yaw, want), turn = L.turn * dt;
+    t.yaw += Math.abs(d) <= turn ? d : Math.sign(d) * turn;
+    if (Math.abs(angDiff(t.yaw, want)) > 0.25 || t.cooldown > 0) return;
+    t.cooldown = L.interval;
+    t.recoil = 1;
+    t.fired++;
+    if (gas) { this._lob(t, aim, L, 'gas', 0, false); return; }
+    const pts = [aim];
+    if (L.shells === 3) {
+      // Shell Rain: two more shells along the road around the target group
+      const e = aim.e;
+      for (const ds of [L.spread, -L.spread]) {
+        road.sample(Math.max(0, e.s + ds + (e.atGate ? 0 : e.speed * 0.6)), tmp2);
+        pts.push({ x: tmp2.x + tmp2.nx * e.lat, z: tmp2.z + tmp2.nz * e.lat, e });
+      }
+    }
+    for (let i = 0; i < pts.length; i++) t.pending.push({ delay: i * (L.gap || 0), pt: pts[i], lateral: 0, kind: 'mortar' });
+  }
+
+  _lob(t, pt, L, kind, lateral, heavy) {
+    const yaw = t.yaw, fx = Math.sin(yaw), fz = Math.cos(yaw);
+    const ox = t.x + fx * 0.7 + Math.cos(yaw) * lateral, oz = t.z + fz * 0.7 - Math.sin(yaw) * lateral;
+    const oy = t.y + arsMuzzle(t) + 0.2;
+    const dist = Math.hypot(pt.x - ox, pt.z - oz);
+    const T = Math.max(0.35, dist / CFG.cannon.shellSpeed) * (heavy ? 1.2 : 1);
+    const h = heavy ? 2.8 + dist * 0.2 : 1.6 + dist * 0.12;
+    this.shells.push({
+      x0: ox, y0: oy, z0: oz, tx: pt.x, tz: pt.z, ty: 0.3 + roadY(pt.x, pt.z), t: 0, T, h,
+      r: kind === 'gas' ? L.cloud.r : L.radius, dmg: L.dmg || 0, x: ox, y: oy, z: oz,
+      level: t.level, path: null, spec: L, kind, tower: t.kind, alive: true, mul: t.dmgMul,
+    });
+    this.events.push({ type: 'fire', tower: t.kind, kind, x: t.x, z: t.z, level: t.level, slot: t.slotIndex, ax: pt.x, az: pt.z });
+  }
+
+  // A gas canister lands: a poison cloud (see _updateZones).
+  _gasLand(s) {
+    const C = s.spec.cloud;
+    this.zones.push({ x: s.tx, z: s.tz, r: C.r, t: C.t, max: C.t, dps: C.dps * (s.mul || 1), tick: 0, gas: true, weak: !!C.weak, slow: C.slow || 0 });
+    this.events.push({ type: 'gas', x: s.tx, z: s.tz, r: C.r, level: s.level });
+  }
+
+  // ---- Flamethrower: a cone of fire, every 0.2 s, at every rat in front
+  _updateFlame(t, L, dt) {
+    if (L.inferno) t.stormT = Math.min(L.inferno.every, t.stormT + dt * t.rateMul);
+    this._turret(t, L, dt, true);
+    const R = L.range * t.rangeMul, tg = t.target;
+    t.firing = !!tg && (tg.x - t.x) ** 2 + (tg.z - t.z) ** 2 <= R * R && Math.abs(angDiff(t.yaw, Math.atan2(tg.x - t.x, tg.z - t.z))) < L.arc + 0.3;
+    if (!t.firing) return;
+    t.tick -= dt * t.rateMul;
+    if (t.tick > 0) return;
+    t.tick = 0.2;
+    const dmg = L.dps * 0.2 * t.dmgMul, fx = Math.sin(t.yaw), fz = Math.cos(t.yaw), cosA = Math.cos(L.arc), R2 = R * R;
+    let hits = 0;
+    this._query(t.x - R, t.z - R, t.x + R, t.z + R, (e) => {
+      if (!e.alive || e.fly > AIR) return;
+      const dx = e.x - t.x, dz = e.z - t.z, d2 = dx * dx + dz * dz;
+      if (d2 > R2) return;
+      const d = Math.sqrt(d2) || 0.01;
+      if ((dx * fx + dz * fz) / d < cosA && d > e.radius + 0.8) return;   // outside the cone
+      hits++;
+      if (this._damage(e, dmg, 1)) return;
+      e.burn = Math.max(e.burn, L.burn.t);
+      e.burnDps = Math.max(e.burnDps, L.burn.dps * t.dmgMul);
+      if (L.weak) e.weak = Math.max(e.weak, 2);
+    });
+    if (hits) this.stats.burned = (this.stats.burned || 0) + hits;
+    if (L.inferno && t.stormT >= L.inferno.every) {
+      // Inferno Zone: the road catches fire where the crowd is thickest
+      const c = this._findCluster(t, R + 2, L.inferno.r, null);
+      if (c) {
+        t.stormT = 0;
+        this.zones.push({ x: c.x, z: c.z, r: L.inferno.r, t: L.inferno.t, max: L.inferno.t, dps: L.inferno.dps * t.dmgMul, tick: 0 });
+        this.events.push({ type: 'inferno', x: c.x, z: c.z, r: L.inferno.r, slot: t.slotIndex });
+      }
+    }
+  }
+
+  // ---- Sniper: one huge shot at the toughest rat in reach
+  _updateSniper(t, L, dt) {
+    const tg = this._turret(t, L, dt, false, true);
+    if (!tg || t.cooldown > 0) return;
+    t.cooldown = L.interval;
+    t.recoil = 1;
+    t.fired++;
+    const head = this.rng() < L.head.chance;
+    const dmg = L.dmg * (head ? L.head.mul : 1) * t.dmgMul;
+    let dx = tg.x - t.x, dz = tg.z - t.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    dx /= dist; dz /= dist;
+    let ex = tg.x, ez = tg.z, ey = hitY(tg);
+    const behind = [];
+    if (L.through) {
+      // Penetrator: the bullet flies on through the rats behind the target
+      const X = 7;
+      this._query(Math.min(tg.x, tg.x + dx * X) - 1, Math.min(tg.z, tg.z + dz * X) - 1, Math.max(tg.x, tg.x + dx * X) + 1, Math.max(tg.z, tg.z + dz * X) + 1, (e) => {
+        if (!e.alive || e === tg || (e.fly > AIR) !== (tg.fly > AIR)) return;
+        const ux = e.x - tg.x, uz = e.z - tg.z, u = ux * dx + uz * dz;
+        if (u <= 0 || u > X) return;
+        const px = ux - dx * u, pz = uz - dz * u;
+        if (px * px + pz * pz <= (e.radius + 0.25) ** 2) behind.push([u, e]);
+      });
+      behind.sort((a, b) => a[0] - b[0]);
+    }
+    this._sniperHit(tg, dmg, L);
+    for (let i = 0; i < Math.min(L.through || 0, behind.length); i++) {
+      const e = behind[i][1];
+      ex = e.x; ez = e.z; ey = hitY(e);
+      this._sniperHit(e, dmg * 0.6, L);
+    }
+    if (head) this.stats.headshots = (this.stats.headshots || 0) + 1;
+    const mh = arsMuzzle(t);
+    this.events.push({ type: 'snipe', slot: t.slotIndex, x: t.x + dx * 1.3, y: t.y + mh + 0.15, z: t.z + dz * 1.3, tx: ex, ty: ey, tz: ez, head, level: t.level, id: tg.id });
+  }
+  _sniperHit(e, dmg, L) {
+    if (!e.alive) return;
+    if (e.type !== T_GRUNT) this.events.push({ type: 'hit', x: e.x, z: e.z, y: e.fly > 0 ? e.fly + 1.2 : e.type === T_BOSS ? 2.6 : 1.9, giant: true, id: e.id });
+    if (e.shield > 0) { this._shieldHit(e, dmg, L); return; }
+    let mul = 1;
+    if (e.armor > 0 && !(e.broken > 0)) mul = 1 - e.armor * (1 - (L.armorPierce || 0));
+    if (this._damage(e, dmg, mul)) return;
+    if (L.mark) e.mark = Math.max(e.mark, L.mark);
+  }
+
+  // ---- Tesla: lightning that jumps from rat to rat
+  _updateTesla(t, L, dt) {
+    if (L.overload) t.stormT = Math.min(L.overload.every, t.stormT + dt * t.rateMul);
+    const R = L.range * t.rangeMul;
+    t.retarget -= dt;
+    let tg = t.target;
+    if (tg && (!tg.alive || tg.under || (tg.x - t.x) ** 2 + (tg.z - t.z) ** 2 > (R + 0.6) ** 2)) tg = null;
+    if (!tg || t.retarget <= 0) { tg = this._findTarget(t, R); t.retarget = 0.15; }
+    t.target = tg;
+    t.yaw += dt * (tg ? 3 : 0.6);   // the coil spins faster when it has a rat to strike
+    if (!tg) return;
+    const top = t.y + arsMuzzle(t) + 0.75;
+    const zapMul = (e) => (e.armor > 0 ? 1 - e.armor * 0.5 : 1);   // lightning goes round most armour
+    if (L.overload && t.stormT >= L.overload.every) {
+      // Overload: a blast of lightning at every rat in range
+      t.stormT = 0;
+      const O = L.overload, R2 = R * R, pts = [];
+      this._query(t.x - R, t.z - R, t.x + R, t.z + R, (e) => {
+        if (!e.alive || (e.x - t.x) ** 2 + (e.z - t.z) ** 2 > R2) return;
+        if (pts.length < 48) pts.push(e.x, hitY(e), e.z);
+        if (this._damage(e, O.dmg * t.dmgMul, zapMul(e))) return;
+        if (e.type === T_GRUNT) e.stun = Math.max(e.stun, O.stun);
+      });
+      this.events.push({ type: 'overload', slot: t.slotIndex, x: t.x, y: top, z: t.z, r: R, pts });
+    }
+    if (t.cooldown > 0) return;
+    t.cooldown = L.interval;
+    t.recoil = 1;
+    t.fired++;
+    const pts = [t.x, top, t.z], hit = [tg];
+    let cur = tg, dmg = L.dmg * t.dmgMul;
+    for (let i = 0; i < L.chain; i++) {
+      pts.push(cur.x, hitY(cur), cur.z);
+      if (!this._damage(cur, dmg, zapMul(cur)) && L.stun && cur.type === T_GRUNT) cur.stun = Math.max(cur.stun, L.stun);
+      if (i === L.chain - 1) break;
+      let best = null, bd = L.jump * L.jump;
+      const J = L.jump, c = cur;
+      this._query(c.x - J, c.z - J, c.x + J, c.z + J, (e) => {
+        if (!e.alive || hit.includes(e)) return;
+        const d2 = (e.x - c.x) ** 2 + (e.z - c.z) ** 2;
+        if (d2 < bd) { bd = d2; best = e; }
+      });
+      if (!best) break;
+      hit.push(best);
+      cur = best;
+      dmg *= L.falloff;
+    }
+    this.stats.zapped = (this.stats.zapped || 0) + hit.length;
+    this.events.push({ type: 'zap', slot: t.slotIndex, pts, level: t.level });
+  }
+
+  // ---- Rocket Tower: homing rockets
+  _updateRocketTower(t, L, dt) {
+    const tg = this._turret(t, L, dt, false, L.rockets >= 3);
+    if (!tg || t.cooldown > 0) return;
+    t.cooldown = L.interval;
+    t.recoil = 1;
+    t.fired++;
+    let targets = [tg];
+    if (L.rockets > 1) {
+      if (L.rockets >= 3) {
+        // Missile Barrage: the toughest rats in range
+        const R = L.range * t.rangeMul, R2 = R * R, all = [];
+        this._query(t.x - R, t.z - R, t.x + R, t.z + R, (e) => { if (e.alive && e !== tg && (e.x - t.x) ** 2 + (e.z - t.z) ** 2 <= R2) all.push(e); });
+        all.sort((a, b) => b.hp - a.hp);
+        targets = [tg, ...all.slice(0, L.rockets - 1)];
+      } else targets = [tg, ...this._extraTargets(t, L.range * t.rangeMul, tg, L.rockets - 1)];
+    }
+    const fx = Math.sin(t.yaw), fz = Math.cos(t.yaw);
+    for (let i = 0; i < L.rockets; i++) {
+      const e = targets[i % targets.length];
+      const side = L.rockets === 1 ? 0 : (i - (L.rockets - 1) / 2) * 0.42;
+      const x = t.x + fx * 0.5 + fz * side, z = t.z + fz * 0.5 - fx * side, y = t.y + arsMuzzle(t) + 0.35;
+      this.rockets.push({ x, y, z, vx: fx * L.speed * 0.6, vy: L.speed * 0.45, vz: fz * L.speed * 0.6, speed: L.speed, e, dmg: L.dmg * t.dmgMul, r: L.r, life: 5, age: 0, delay: i * 0.12, alive: true, level: t.level, slot: t.slotIndex });
+    }
+    this.events.push({ type: 'fire', tower: 'rocket', x: t.x, z: t.z, level: t.level, slot: t.slotIndex, n: L.rockets, ax: tg.x, az: tg.z });
+  }
+
+  _updateRockets(dt) {
+    const rs = this.rockets;
+    let j = 0;
+    for (const r of rs) {
+      if (r.delay > 0) { r.delay -= dt; rs[j++] = r; continue; }
+      r.age += dt; r.life -= dt;
+      let e = r.e;
+      if (!e || !e.alive || e.under) e = r.e = this._nearestEnemy(r.x, r.z, 7);
+      let tx, ty, tz;
+      if (e) { tx = e.x; tz = e.z; ty = hitY(e); } else { tx = r.x + r.vx; tz = r.z + r.vz; ty = r.y - 6; }
+      const dx = tx - r.x, dy = ty - r.y, dz = tz - r.z;
+      const d = Math.hypot(dx, dy, dz) || 0.001;
+      // a short climb out of the tube, then it turns hard onto its rat
+      const k = Math.min(1, dt * (r.age < 0.3 ? 2.5 : 8));
+      r.vx += ((dx / d) * r.speed - r.vx) * k; r.vy += ((dy / d) * r.speed - r.vy) * k; r.vz += ((dz / d) * r.speed - r.vz) * k;
+      const v = Math.hypot(r.vx, r.vy, r.vz) || 1;
+      r.vx *= r.speed / v; r.vy *= r.speed / v; r.vz *= r.speed / v;
+      r.x += r.vx * dt; r.y += r.vy * dt; r.z += r.vz * dt;
+      const gy = roadY(r.x, r.z);
+      if ((e && d < 0.55 + e.radius * 0.6) || r.y <= gy + 0.15 || r.life <= 0) { this._rocketBlast(r, e && d < 1.6 + e.radius ? e : null); continue; }
+      rs[j++] = r;
+    }
+    rs.length = j;
+  }
+  _rocketBlast(r, e) {
+    const R = r.r, R2 = R * R, air = !!(e && e.fly > AIR);
+    let hits = 0;
+    if (e) {
+      hits++;
+      if (e.type !== T_GRUNT) this.events.push({ type: 'hit', x: e.x, z: e.z, y: e.fly > 0 ? e.fly + 1.2 : e.type === T_BOSS ? 2.6 : 1.9, giant: true, id: e.id });
+      this._damage(e, r.dmg, 1);
+    }
+    if (!air) {
+      this._query(r.x - R, r.z - R, r.x + R, r.z + R, (o) => {
+        if (!o.alive || o === e || o.fly > AIR || (o.x - r.x) ** 2 + (o.z - r.z) ** 2 > R2) return;
+        hits++;
+        this._damage(o, r.dmg * 0.6, 1);
+      });
+    }
+    const x = e ? e.x : r.x, z = e ? e.z : r.z;
+    this.events.push({ type: 'explode', x, z, y: air ? e.fly + 0.9 : 0, r: R, level: r.level, kind: 'rocketHit', tower: 'rocket', hits });
+  }
+
+  // ---- Mine Tower: plants mines on the road
+  _updateMineTower(t, L, dt) {
+    if (!t.spots) t.spots = this._roadSpots(t, L.range * t.rangeMul);
+    if (!t.spots.length || t.cooldown > 0) return;
+    let n = 0;
+    for (const m of this.mines) if (m.slot === t.slotIndex) n++;
+    if (n >= L.max) return;
+    t.cooldown = L.interval;
+    t.recoil = 1;
+    t.fired++;
+    // a fresh spot, away from the mines already down
+    let x = 0, z = 0;
+    for (let tries = 0; tries < 6; tries++) {
+      road.sample(t.spots[(this.rng() * t.spots.length) | 0], tmp2);
+      const lat = (this.rng() - 0.5) * 2 * (CFG.roadHalfWidth - 1);
+      x = tmp2.x + tmp2.nx * lat; z = tmp2.z + tmp2.nz * lat;
+      if (!this.mines.some((m) => (m.x - x) ** 2 + (m.z - z) ** 2 < 2.2)) break;
+    }
+    t.yaw = Math.atan2(x - t.x, z - t.z);
+    this.mines.push({ id: this.allyId++, x, z, y: roadY(x, z), sx: t.x, sy: t.y + arsMuzzle(t), sz: t.z, slot: t.slotIndex, level: t.level, dmg: L.dmg * t.dmgMul, r: L.r, stun: L.stun || 0, chain: L.chain || 0, fly: 0.7, fuse: -1, alive: true });
+    this.events.push({ type: 'plant', slot: t.slotIndex, x: t.x, z: t.z, tx: x, tz: z });
+  }
+
+  _updateMines(dt) {
+    const ms = this.mines;
+    for (const m of ms) {
+      if (!m.alive) continue;
+      if (m.fly > 0) { m.fly -= dt; continue; }   // still flying out of the tower
+      if (m.fuse >= 0) { m.fuse -= dt; if (m.fuse < 0) this._mineBlast(m); continue; }
+      let trig = false;
+      this._query(m.x - 1.6, m.z - 1.6, m.x + 1.6, m.z + 1.6, (e) => {
+        if (!e.alive || e.fly > AIR || e.fall > 0) return;
+        if ((e.x - m.x) ** 2 + (e.z - m.z) ** 2 <= (0.75 + e.radius * 0.6) ** 2) { trig = true; return true; }
+      });
+      if (trig) this._mineBlast(m);
+    }
+    let j = 0;
+    for (const m of ms) if (m.alive) ms[j++] = m;
+    ms.length = j;
+  }
+  _mineBlast(m) {
+    m.alive = false;
+    const R = m.r, R2 = R * R;
+    let hits = 0;
+    this._query(m.x - R, m.z - R, m.x + R, m.z + R, (e) => {
+      if (!e.alive || e.fly > AIR || (e.x - m.x) ** 2 + (e.z - m.z) ** 2 > R2) return;
+      hits++;
+      if (e.type !== T_GRUNT) this.events.push({ type: 'hit', x: e.x, z: e.z, y: e.type === T_BOSS ? 2.6 : 1.9, giant: true, id: e.id });
+      if (this._damage(e, m.dmg, 1)) return;
+      if (m.stun && e.type === T_GRUNT) e.stun = Math.max(e.stun, m.stun);
+    });
+    // Chain Mine: the blast sets off the mines around it
+    if (m.chain) for (const o of this.mines) if (o.alive && o.fly <= 0 && o.fuse < 0 && (o.x - m.x) ** 2 + (o.z - m.z) ** 2 <= m.chain * m.chain) o.fuse = 0.15;
+    this.stats.mines = (this.stats.mines || 0) + 1;
+    this.events.push({ type: 'explode', x: m.x, z: m.z, r: R, level: m.level, kind: 'mine', tower: 'mine', hits });
+  }
+
+  // ---- Spike Trap: beds of spikes on the road
+  _updateSpike(t, L, dt) {
+    if (!t.fields) t.fields = this._spikeFields(t, L);
+    if (L.impale) t.stormT = Math.min(L.impale.every, t.stormT + dt * t.rateMul);
+    t.tick -= dt;
+    if (t.tick > 0) return;
+    t.tick = 0.25;
+    const dmg = L.dps * 0.25 * t.dmgMul, R = L.r;
+    const impale = !!L.impale && t.stormT >= L.impale.every;
+    let on = 0;
+    const Q = R + CFG.roadHalfWidth;
+    for (const f of t.fields) {
+      // a bed covers the whole width of the road, R either side of its centre
+      this._query(f.x - Q, f.z - Q, f.x + Q, f.z + Q, (e) => {
+        if (!e.alive || e.fly > AIR || e.fall > 0 || Math.abs(e.s - f.s) > R || (e.x - f.x) ** 2 + (e.z - f.z) ** 2 > Q * Q) return;
+        on++;
+        e.slowMul = e.slow > 0 ? Math.min(e.slowMul, 1 - L.slow) : 1 - L.slow;
+        e.slow = Math.max(e.slow, 0.4);
+        if (this._dot(e, dmg)) return;
+        if (impale) {
+          if (this._damage(e, L.impale.dmg * t.dmgMul, 1)) return;
+          if (e.type !== T_BOSS) e.stun = Math.max(e.stun, L.impale.stun);
+        }
+      });
+    }
+    t.firing = on > 0;   // (view) the spikes stab while rats cross
+    if (impale && on) {
+      t.stormT = 0;
+      t.recoil = 1;
+      this.events.push({ type: 'impale', slot: t.slotIndex, fields: t.fields.map((f) => [f.x, f.z]), r: R });
+    }
+  }
+  // The first bed sits where the road passes closest to the tower; the second one beside it.
+  _spikeFields(t, L) {
+    const s0 = this._nearestRoadS(t), ss = [s0];
+    if (L.fields > 1) {
+      const gap = L.r * 2 + 0.4;
+      road.sample(s0 + gap, tmp2);
+      const da = (tmp2.x - t.x) ** 2 + (tmp2.z - t.z) ** 2;
+      road.sample(s0 - gap, tmp2);
+      const db = (tmp2.x - t.x) ** 2 + (tmp2.z - t.z) ** 2;
+      ss.push(s0 - gap >= 0 && db < da ? s0 - gap : Math.min(road.length, s0 + gap));
+    }
+    return ss.map((s) => { road.sample(s, tmp2); return { s, x: tmp2.x, z: tmp2.z, yaw: Math.atan2(tmp2.tx, tmp2.tz) }; });
+  }
+
+  // ---- Summoner: rat soldiers that hold the road
+  _updateSummoner(t, L) {
+    if (t.rally === null) t.rally = this._nearestRoadS(t);
+    this._refreshAllies(t, false);
+  }
+  // Tops up the tower's soldiers to its level (heal: an upgrade heals them all).
+  _refreshAllies(t, heal) {
+    const L = arsenalSpec('summoner', t.level);
+    let n = 0;
+    for (const a of this.allies) {
+      if (a.slot !== t.slotIndex) continue;
+      n++;
+      a.maxHp = L.hp;
+      if (heal && a.state !== 'dead') a.hp = L.hp;
+    }
+    for (let i = n; i < L.allies; i++) {
+      this.allies.push({ id: this.allyId++, slot: t.slotIndex, i, x: t.x, z: t.z, y: t.y, hp: L.hp, maxHp: L.hp, state: 'walk', respawn: 0, yaw: t.yaw, atk: 0.3, swing: 0, foe: null, hurt: 0 });
+      this.events.push({ type: 'allyUp', slot: t.slotIndex, x: t.x, z: t.z });
+    }
+  }
+
+  _updateAllies(dt) {
+    if (!this.allies.length) return;
+    const usable = CFG.roadHalfWidth - 0.7;
+    for (const a of this.allies) {
+      const t = this.slots[a.slot].tower;
+      if (!t || t.kind !== 'summoner' || t.rally === null) continue;
+      const L = arsenalSpec('summoner', t.level);
+      a.swing = Math.max(0, a.swing - dt * 3);
+      a.hurt = Math.max(0, a.hurt - dt);
+      if (a.state === 'dead') {
+        if ((a.respawn -= dt * t.rateMul) <= 0) {
+          a.state = 'walk'; a.hp = a.maxHp; a.x = t.x; a.z = t.z; a.y = t.y;
+          this.events.push({ type: 'allyUp', slot: t.slotIndex, x: t.x, z: t.z });
+        }
+        continue;
+      }
+      // its post: a line across the road where it passes the tower
+      const n = L.allies, lat = n === 1 ? 0 : clamp((a.i - (n - 1) / 2) * Math.min(1.5, (usable * 2) / (n - 1)), -usable, usable);
+      road.sample(t.rally + (a.i % 2 ? 0.5 : -0.5), tmp2);
+      const px = tmp2.x + tmp2.nx * lat, pz = tmp2.z + tmp2.nz * lat;
+      if (a.state === 'walk') {
+        const dx = px - a.x, dz = pz - a.z, d = Math.hypot(dx, dz);
+        const step = 4.5 * dt;
+        if (d <= step) { a.x = px; a.z = pz; a.state = 'post'; }
+        else { a.x += (dx / d) * step; a.z += (dz / d) * step; a.yaw = Math.atan2(dx, dz); }
+        a.y = groundHeight(a.x, a.z);
+        continue;
+      }
+      // on guard: hold back the rats that reach it, and fight them
+      let held = 0, foe = null, hurt = 0;
+      const reach = 0.8;
+      this._query(a.x - 2.5, a.z - 2.5, a.x + 2.5, a.z + 2.5, (e) => {
+        if (!e.alive || e.fly > AIR || e.fall > 0) return;
+        const d = Math.hypot(e.x - a.x, e.z - a.z);
+        if (d > reach + e.radius) return;
+        const boss = e.type === T_BOSS;
+        if (!boss) {
+          const cost = e.type === T_GIANT ? 2 : 1;
+          if (held + cost > L.block) return;
+          held += cost;
+          if (!e.atGate) e.held = Math.max(e.held, 0.15);
+        }
+        if (!foe || boss) foe = e;
+        hurt += (1.5 + e.maxHp * 0.025) * (boss ? 2 : 1);
+      });
+      a.foe = foe ? foe.id : null;
+      if (foe) {
+        a.yaw = Math.atan2(foe.x - a.x, foe.z - a.z);
+        a.hp -= hurt * (1 - (L.armor || 0)) * dt;
+        a.hurt = 0.2;
+        a.atk -= dt * t.rateMul;
+        if (a.atk <= 0) {
+          a.atk = 0.5; a.swing = 1;
+          if (!this._damage(foe, L.dps * 0.5 * t.dmgMul, 1) && L.stun && foe.type === T_GRUNT) foe.stun = Math.max(foe.stun, L.stun);
+        }
+        if (a.hp <= 0) {
+          a.state = 'dead'; a.respawn = L.respawn; a.hp = 0;
+          this.stats.alliesLost = (this.stats.alliesLost || 0) + 1;
+          this.events.push({ type: 'allyDown', slot: t.slotIndex, x: a.x, z: a.z });
+        }
+      } else {
+        a.yaw = Math.atan2(-tmp2.tx, -tmp2.tz);   // face down the road, toward the coming rats
+        a.hp = Math.min(a.maxHp, a.hp + a.maxHp * 0.05 * dt);   // catches its breath
+      }
+    }
+  }
+
+  // ---- Time Warp: slows every rat in its area; Rewind and Time Loop
+  _updateWarp(t, L, dt) {
+    const R = L.r, R2 = R * R;
+    t.yaw += dt * 0.5;
+    if (L.rewind) t.stormT = Math.min(L.rewind.every, t.stormT + dt);
+    if (L.stop) t.roarT = Math.min(L.stop.every, t.roarT + dt);
+    const rewind = !!L.rewind && t.stormT >= L.rewind.every;
+    const stop = !!L.stop && t.roarT >= L.stop.every;
+    t.tick -= dt;
+    if (t.tick > 0 && !rewind && !stop) return;
+    if (t.tick <= 0) t.tick = 0.2;
+    let n = 0;
+    this._query(t.x - R, t.z - R, t.x + R, t.z + R, (e) => {
+      if (!e.alive || (e.x - t.x) ** 2 + (e.z - t.z) ** 2 > R2) return;
+      n++;
+      e.slowMul = e.slow > 0 ? Math.min(e.slowMul, 1 - L.slow) : 1 - L.slow;
+      e.slow = Math.max(e.slow, 0.3);
+      if (rewind && e.type !== T_BOSS && !(e.fall > 0)) {
+        e.s = Math.max(0, e.s - L.rewind.dist * (e.type === T_GIANT ? 0.5 : 1));
+        if (e.atGate) { e.atGate = false; e.s = Math.min(e.s, e.gateS - 0.6); }
+      }
+      if (stop) e.stun = Math.max(e.stun, e.type === T_BOSS ? L.stop.boss : L.stop.t);
+    });
+    if (rewind && n) { t.stormT = 0; t.recoil = 1; this.events.push({ type: 'warp', kind: 'rewind', slot: t.slotIndex, x: t.x, z: t.z, r: R, n }); }
+    if (stop && n) { t.roarT = 0; t.recoil = 1; this.events.push({ type: 'warp', kind: 'stop', slot: t.slotIndex, x: t.x, z: t.z, r: R, n }); }
   }
 
   // ------------------------------------------------------------- cannons
@@ -1020,7 +1679,8 @@ export class Sim {
 
   _updateCannon(t, dt) {
     const L = cannonSpec(t.level, t.path);
-    t.cooldown -= dt;
+    const range = L.range * t.rangeMul;
+    t.cooldown -= dt * t.rateMul;
     t.recoil = Math.max(0, t.recoil - dt * 3);
     // shells waiting in a burst
     for (let i = t.pending.length - 1; i >= 0; i--) {
@@ -1028,19 +1688,19 @@ export class Sim {
       p.delay -= dt;
       if (p.delay <= 0) { this._launch(t, p.pt, p.lateral, p.kind); t.pending.splice(i, 1); }
     }
-    if (L.nova) t.charge = Math.min(L.nova.charge, t.charge + dt);
+    if (L.nova) t.charge = Math.min(L.nova.charge, t.charge + dt * t.rateMul);
     else t.charge = 0;
     t.retarget -= dt;
     if (t.aim && (!t.aim.e.alive || t.aim.e.under || t.aim.e.fly > AIR)) t.aim = null;
-    if (!t.aim || t.retarget <= 0) { t.aim = this._findCluster(t, L.range, L.radius, null); t.retarget = 0.3; }
+    if (!t.aim || t.retarget <= 0) { t.aim = this._findCluster(t, range, L.radius, null); t.retarget = 0.3; }
     if (!t.aim) return;
     const aim = this._lead(t.aim.e, t.x, t.z);
     // Rocket Barrage: a salvo at the front of the crowd every few seconds
     if (L.salvo) {
-      t.salvoT += dt;
+      t.salvoT += dt * t.rateMul;
       if (t.salvoT >= L.salvo.every) {
         const front = [];
-        const R = L.range, R2 = R * R;
+        const R = range, R2 = R * R;
         this._query(t.x - R, t.z - R, t.x + R, t.z + R, (e) => { if (e.alive && !(e.fly > AIR) && (e.x - t.x) ** 2 + (e.z - t.z) ** 2 <= R2) front.push(e); });
         if (front.length) {
           front.sort((a, b) => b.s - a.s);
@@ -1081,7 +1741,7 @@ export class Sim {
       return;
     }
     const pts = [aim];
-    if (L.shells >= 2 && L.split) pts.push(this._findCluster(t, L.range, L.radius, aim) || { x: aim.x + 0.8, z: aim.z + 0.8, e: aim.e });
+    if (L.shells >= 2 && L.split) pts.push(this._findCluster(t, range, L.radius, aim) || { x: aim.x + 0.8, z: aim.z + 0.8, e: aim.e });
     else if (L.shells === 2) pts.push(aim);
     if (L.shells === 3) {
       // three shells spread along the road around the target group
@@ -1114,7 +1774,7 @@ export class Sim {
       x0: ox, y0: oy, z0: oz, tx: pt.x, tz: pt.z, ty: 0.3 + roadY(pt.x, pt.z), t: 0, T, h,
       r: kind === 'nova' ? L.nova.radius : kind === 'rocket' ? L.salvo.r : L.radius,
       dmg: kind === 'nova' ? L.nova.dmg : kind === 'rocket' ? L.salvo.dmg : L.dmg,
-      x: ox, y: oy, z: oz, level: t.level, path: t.path, spec: L, kind, alive: true,
+      x: ox, y: oy, z: oz, level: t.level, path: t.path, spec: L, kind, alive: true, mul: t.dmgMul,
     });
     this.events.push({ type: 'fire', tower: 'cannon', kind, x: t.x, z: t.z, level: t.level, path: t.path, slot: t.slotIndex, ax: pt.x, az: pt.z });
   }
@@ -1127,7 +1787,7 @@ export class Sim {
       s.x = s.x0 + (s.tx - s.x0) * k;
       s.z = s.z0 + (s.tz - s.z0) * k;
       s.y = s.y0 + (s.ty - s.y0) * k + 4 * s.h * k * (1 - k);
-      if (k >= 1) { s.alive = false; this._explode(s); }
+      if (k >= 1) { s.alive = false; if (s.kind === 'gas') this._gasLand(s); else this._explode(s); }
     }
   }
 
@@ -1135,7 +1795,8 @@ export class Sim {
     const L = s.spec || cannonSpec(s.level, s.path);
     const nova = s.kind === 'nova';
     const small = s.kind === 'bomblet' || s.kind === 'rocket';   // extras: no fire, rings or bomblets of their own
-    const dmg = s.dmg ?? (nova ? L.nova.dmg : L.dmg);
+    const mul = s.mul || 1;
+    const dmg = (s.dmg ?? (nova ? L.nova.dmg : L.dmg)) * mul;
     const R = s.r ?? (nova ? L.nova.radius : L.radius);
     const armor = L.armor || 1;
     const x = s.tx, z = s.tz;
@@ -1161,7 +1822,7 @@ export class Sim {
         if (L.stun) e.stun = Math.max(e.stun, L.stun * (1 - 0.5 * d / R));   // survivors are dazed, longest near the impact
       }
     });
-    if (L.burn && !nova && !small) this.zones.push({ x, z, r: L.burn.r, t: L.burn.t, max: L.burn.t, dps: L.burn.dps, tick: 0 });
+    if (L.burn && !nova && !small) this.zones.push({ x, z, r: L.burn.r, t: L.burn.t, max: L.burn.t, dps: L.burn.dps * mul, tick: 0 });
     // Cluster Shells: bomblets scatter out of the blast onto the rats around it
     if (L.cluster && !small && !nova) {
       const gy = roadY(x, z);
@@ -1170,7 +1831,7 @@ export class Sim {
         const a = a0 + (k / C.n) * Math.PI * 2, d = C.spread * (0.8 + this.rng() * 0.4);
         this.shells.push({
           x0: x, y0: 0.5 + gy, z0: z, tx: x + Math.cos(a) * d, tz: z + Math.sin(a) * d, ty: 0.25 + roadY(x + Math.cos(a) * d, z + Math.sin(a) * d), t: 0, T: 0.3 + this.rng() * 0.08, h: 0.9,
-          r: C.r, dmg: C.dmg, x, y: 0.5 + gy, z, level: s.level, path: s.path, spec: L, kind: 'bomblet', alive: true,
+          r: C.r, dmg: C.dmg, x, y: 0.5 + gy, z, level: s.level, path: s.path, spec: L, kind: 'bomblet', alive: true, mul,
         });
       }
     }
@@ -1180,12 +1841,12 @@ export class Sim {
       const RR = ringR * ringR;
       this._query(x - ringR, z - ringR, x + ringR, z + ringR, (e) => {
         if (!e.alive || e.fly > AIR || (e.x - x) ** 2 + (e.z - z) ** 2 > RR) return;
-        if (this._damage(e, L.ring.dmg, 1)) return;
+        if (this._damage(e, L.ring.dmg * mul, 1)) return;
         e.slow = Math.max(e.slow, L.ring.t);
         e.slowMul = 1 - L.ring.slow;
       });
     }
-    this.events.push({ type: 'explode', x, z, r: R, level: s.level, path: s.path, kind: s.kind, ring: ringR, burn: !!(L.burn && !nova && !small), hits });
+    this.events.push({ type: 'explode', x, z, r: R, level: s.level, path: s.path, kind: s.kind, tower: s.tower || 'cannon', ring: ringR, burn: !!(L.burn && !nova && !small), hits });
   }
 
   _updateZones(dt) {
@@ -1199,7 +1860,13 @@ export class Sim {
         zn.tick += 0.25;
         const r2 = zn.r * zn.r;
         this._query(zn.x - zn.r, zn.z - zn.r, zn.x + zn.r, zn.z + zn.r, (e) => {
-          if (e.alive && !(e.fly > AIR) && (e.x - zn.x) ** 2 + (e.z - zn.z) ** 2 <= r2) this._damage(e, zn.dps * 0.25, 1);
+          if (!e.alive || e.fly > AIR || e.under || (e.x - zn.x) ** 2 + (e.z - zn.z) ** 2 > r2) return;
+          if (zn.gas) {
+            // poison gas: eats away at the rat, corrodes it (more damage from everything) and may slow it
+            if (zn.weak) e.weak = Math.max(e.weak, 0.6);
+            if (zn.slow) { e.slowMul = e.slow > 0 ? Math.min(e.slowMul, 1 - zn.slow) : 1 - zn.slow; e.slow = Math.max(e.slow, 0.4); }
+            this._dot(e, zn.dps * 0.25);
+          } else this._damage(e, zn.dps * 0.25, 1);
         });
       }
       if (zn.t > 0) zs[j++] = zn;
@@ -1211,7 +1878,7 @@ export class Sim {
     const sp = CFG.boltSpeed;
     for (const b of this.bolts) {
       if (!b.alive) continue;
-      const L = CFG.towers[b.level];
+      const L = b.spec || CFG.towers[b.level];
       if (b.fall) {                       // a Crystal Storm arrow dropping from the sky
         const step = L.storm.speed * dt;
         b.y -= step; b.d += step;
@@ -1451,16 +2118,17 @@ export class Sim {
       if (s.tower) continue;
       if (shown >= CFG.visibleBuildPads) break;
       const base = CFG.buildCosts[Math.min(this.builtOrder, CFG.buildCosts.length - 1)];
-      const kind = this.buildKind === 'cannon' && this.unlocked.cannon ? 'cannon' : 'crossbow';
-      const cost = kind === 'cannon' ? Math.round((base * CFG.cannon.buildCostMul) / 5) * 5 : base;
+      const kind = this.canBuild(this.buildKind) ? this.buildKind : 'crossbow';
+      const cost = kind === 'crossbow' ? base : Math.round((base * towerBuildMul(kind)) / 5) * 5;
       add('build:' + s.id, 'build', s.x, s.z, cost, { slot: s.index, tower: kind });
       shown++;
     }
     // upgrade pads: towers below the fortress level
     for (const s of this.slots) {
       const t = s.tower;
-      if (!t || t.level >= CFG.maxTowerLevel) continue;
-      const costs = t.kind === 'cannon' ? CFG.cannon.upgradeCosts : CFG.upgradeCosts;
+      if (!t || t.level >= towerMaxLevel(t.kind)) continue;
+      const costs = [];
+      for (let lv = 0; lv <= t.level + 1; lv++) costs.push(towerUpgradeCost(t.kind, lv));
       if (t.kind === 'cannon' && t.level + 1 === CFG.cannon.branchLevel) {
         // the upgrade choice: one pad per path, side by side
         ['rapid', 'blast'].forEach((path, i) => {
@@ -1556,6 +2224,8 @@ export class Sim {
       s.tower.charge = 0;
       s.tower.salvoT = 0;
       s.tower.pending.length = 0;
+      s.tower.fields = null; s.tower.spots = null; s.tower.rally = null;
+      if (s.tower.kind === 'summoner') this._refreshAllies(s.tower, true);
       if (p.choice) {
         s.tower.path = p.path;
         // the path not taken: whatever was paid into its pad comes back
@@ -1601,7 +2271,8 @@ export class Sim {
       gold: this.gold,
       builtOrder: this.builtOrder,
       fortress: { level: this.fortress.level, hp: this.fortress.hp },
-      towers: this.towers.map((t) => [t.slotIndex, t.level, t.kind === 'cannon' ? 1 : 0, t.path === 'rapid' ? 1 : t.path === 'blast' ? 2 : 0]),
+      // kind: 0 crossbow, 1 cannon, or the Arsenal tower's name
+      towers: this.towers.map((t) => [t.slotIndex, t.level, t.kind === 'cannon' ? 1 : isArsenal(t.kind) ? t.kind : 0, t.path === 'rapid' ? 1 : t.path === 'blast' ? 2 : 0]),
       buildKind: this.buildKind,
       padPaid: { ...this.padPaid },
       coins: this.coins.filter((c) => c.state === 0).map((c) => [Math.round(c.x * 10) / 10, Math.round(c.z * 10) / 10, c.value]),
@@ -1623,11 +2294,12 @@ export class Sim {
       const s = this.slots[si];
       // a saved cannon stays a cannon even if the save is opened on a fresh profile
       if (!s) continue;
-      const t = this._placeTower(s, clamp(lv | 0, 1, CFG.maxTowerLevel), true, k === 1 ? 'cannon' : 'crossbow');
+      const kind = k === 1 ? 'cannon' : isArsenal(k) ? k : 'crossbow';
+      const t = this._placeTower(s, clamp(lv | 0, 1, towerMaxLevel(kind)), true, kind);
       // saves from before the upgrade choice carry on as Thunder Mortars
       if (t.kind === 'cannon' && t.level >= CFG.cannon.branchLevel) t.path = pc === 1 ? 'rapid' : 'blast';
     }
-    if (d.buildKind === 'cannon' && this.unlocked.cannon) this.buildKind = 'cannon';
+    if (this.canBuild(d.buildKind)) this.buildKind = d.buildKind;
     this.waveIndex = clamp(d.waveIndex | 0, 0, CFG.waves.length - 1);
     this.gold = Math.max(0, d.gold | 0);
     this.builtOrder = d.builtOrder | 0;
