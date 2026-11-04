@@ -215,6 +215,18 @@ Late in a game every tower is usually at level 7 and gold piles up with nothing 
   - Second barrels only pick another group the cannon is roughly facing, so every cannonball visibly leaves its barrel toward its target.
 
 ## Rat animations
+
+**Every kind of rat moves its own way** (a gait built into its model and read by the walk cycle on the graphics card, so hundreds of rats still cost nothing extra on the processor):
+- **Plain, healer and jetpack rats trot**: legs in diagonal pairs, a little bounce with a squash on each footfall.
+- **Fast rats gallop**: front legs together, back legs together, the body rocking and stretching, the head low and the tail streaming up.
+- **Armored and shield rats stomp**: slower, heavier steps with a squash on every footfall and a side-to-side sway.
+- **Brood and bomb rats waddle**, rolling from side to side under their load, the tail swinging.
+- **Ninja rats sneak**: crouched low, quick little steps, nose down, the tail held straight, darting glances left and right.
+- **Ratlings hop** along in bouncy leaps, squashing as they land.
+- Rats glance about now and then as they go, each at its own moment. At the gate their front paws now take turns scratching before the bite.
+
+**Giants and bosses** swagger: hips sway, shoulders roll, the weapon arm swings wide, the head nods with each stomp and a puff of dust comes up from every footfall (a boss's steps shake the screen a little). Now and then a boss stops to **roar**, head up and arms flung wide, sending out a ring in its aura colour. Each has its own **attack on the gate**: the giant rat's overhead club smash, the Rat Warlord's wide sideways sweep of his spiked mace (with sparks), the Iron Rat Baron's ground-shaking two-handed slam (with a shockwave), and the Rat King raising his sceptre to the sky and thrusting it at the gate in a burst of gold.
+
 - **Small rats** are animated on the graphics card, so hundreds of them still draw in one call. Each rat's legs, tail and head move around their own joints.
   - **Climbing out:** a new rat rises out of the burrow nose first, with a little dirt puff.
   - **Walking:** a trotting walk cycle, with diagonal legs together, a nodding head and a swishing tail. The cycle follows the distance actually walked, so feet don't slide, and slowed rats walk slower.

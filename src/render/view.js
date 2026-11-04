@@ -1249,24 +1249,83 @@ export class View {
         else if (e.stun > 0) {
           // stunned or frozen: hold the pose
         } else if (!e.atGate) {
-          const sw = Math.sin(ph);
-          v.legL.rotation.x = sw * 0.55; v.legR.rotation.x = -sw * 0.55;
-          v.armL.rotation.x = -sw * 0.35; v.armR.rotation.x = sw * 0.25 - 0.1;
-          v.body.position.y = Math.abs(Math.cos(ph)) * 0.12;
-          v.body.rotation.z = sw * 0.05;
-          lean += 0.06;                                                         // heavy forward stomp
+          // a heavy, swaggering walk: hips sway, shoulders roll, the weapon arm swings
+          // wide, the head nods with every stomp and dust puffs up from each footfall
+          const sw = Math.sin(ph), step = Math.abs(Math.cos(ph));
+          v.legL.rotation.x = sw * 0.6; v.legR.rotation.x = -sw * 0.6;
+          v.armL.rotation.set(-sw * 0.45, 0, -0.12 - 0.08 * step);
+          v.armR.rotation.set(sw * 0.4 - 0.25, 0, 0.18 + 0.08 * step);
+          v.body.position.y = step * 0.14;
+          v.body.rotation.z = sw * 0.09;
+          v.body.rotation.y = sw * 0.12;
+          lean += 0.08 + 0.04 * (1 - step);                                     // heavy forward stomp
+          // footfalls: a puff of dust under each foot (bosses shake the ground a little)
+          const stepNow = Math.cos(ph) > 0;
+          if (v.stepSide !== stepNow && em > 0.5 && this.dustBudget >= 1) {
+            this.dustBudget--;
+            const side = stepNow ? 1 : -1, cx = Math.cos(e.yaw), sx2 = -Math.sin(e.yaw);
+            this._lift(e.x, e.z).puff(e.x + cx * 0.5 * side * sc, 0, e.z + sx2 * 0.5 * side * sc, 0xd9c7a8, 0.6 + 0.3 * sc); this.fx.lift = 0;
+            if (e.type === T_BOSS) this.shake = Math.max(this.shake, 0.18);
+          }
+          v.stepSide = stepNow;
+          // now and then a boss stops to roar: head up, arms flung wide
+          if (e.type === T_BOSS && style !== 'mole') {
+            v.roarT = (v.roarT ?? 3 + Math.random() * 4) - dt;
+            if (v.roarT < 0) {
+              const k = Math.min(1, -v.roarT / 1.2), r = Math.sin(k * Math.PI);
+              v.armL.rotation.set(-1.9 * r, 0, -0.9 * r); v.armR.rotation.set(-1.9 * r, 0, 0.9 * r);
+              lean -= 0.35 * r; v.body.position.y += 0.12 * r;
+              if (!v.roared && k > 0.3) { v.roared = true; this._lift(e.x, e.z).ring(e.x, 0, e.z, 2.4 * sc, BOSS_AURA[style] || 0xffffff, 0.7); this.fx.lift = 0; }
+              if (k >= 1) { v.roarT = 6 + Math.random() * 5; v.roared = false; }
+            }
+          }
         } else {
-          // club smash on the gate, landing exactly when the gate takes the hit
+          // the attack on the gate, landing exactly when the gate takes the hit; each fighter has its own move
           const a = fighting ? attackPhase(e.attackT, CFG.giant.gateRate) : 0;
           const up = smooth(0.05, 0.55, a) * (1 - smooth(0.58, 0.66, a));
           const down = smooth(0.58, 0.66, a) * (1 - smooth(0.74, 1, a));
-          v.armR.rotation.x = -2.7 * up + 0.7 * down;
-          v.armL.rotation.x = -0.8 * up + 0.2 * down;
           v.legL.rotation.x = 0.25; v.legR.rotation.x = -0.25;
-          v.body.position.y = 0.1 * up;
-          v.body.rotation.z = 0;
-          lean += -0.14 * up + 0.3 * down;
-          if (down > 0.9 && !v.smashed) { v.smashed = true; this._lift(e.x, e.z).puff(e.x + Math.sin(e.yaw) * 2 * sc, 0, e.z + Math.cos(e.yaw) * 2 * sc, 0xd9c7a8, 1.3); this.fx.lift = 0; }
+          v.body.rotation.z = 0; v.body.rotation.y = 0;
+          v.armL.rotation.set(0, 0, 0); v.armR.rotation.set(0, 0, 0);
+          let hitFx = 'dust';
+          if (style === 'warlord') {
+            // a wide sideways sweep of the spiked mace, the body twisting into it
+            v.armR.rotation.set(-1.4 * up - 0.6 * down, 0, 1.3 * up - 0.9 * down);
+            v.armL.rotation.set(-0.5 * up, 0, -0.5 * up);
+            v.body.rotation.y = 0.55 * up - 0.7 * down;
+            lean += -0.08 * up + 0.2 * down;
+            v.body.position.y = 0.06 * up;
+            hitFx = 'sparks';
+          } else if (style === 'baron') {
+            // both arms raise the mace high overhead, then a ground-shaking two-handed slam
+            v.armR.rotation.set(-3.0 * up + 0.6 * down, 0, -0.35 * up);
+            v.armL.rotation.set(-3.0 * up + 0.6 * down, 0, 0.35 * up);
+            v.body.position.y = 0.18 * up - 0.1 * down;
+            lean += -0.25 * up + 0.42 * down;
+            hitFx = 'quake';
+          } else if (style === 'king') {
+            // the sceptre is raised to the sky, then thrust at the gate in a burst of gold
+            v.armR.rotation.set(-2.9 * up - 1.2 * down, 0, 0.1);
+            v.armL.rotation.set(-0.4 * up, 0, -0.6 * up);
+            v.body.position.y = 0.14 * up;
+            lean += -0.2 * up + 0.25 * down;
+            hitFx = 'gold';
+          } else {
+            // the giant rat: an overhead club smash
+            v.armR.rotation.x = -2.7 * up + 0.7 * down;
+            v.armL.rotation.x = -0.8 * up + 0.2 * down;
+            v.body.position.y = 0.1 * up;
+            lean += -0.14 * up + 0.3 * down;
+          }
+          if (down > 0.9 && !v.smashed) {
+            v.smashed = true;
+            const hx = e.x + Math.sin(e.yaw) * 2 * sc, hz = e.z + Math.cos(e.yaw) * 2 * sc, f = this._lift(e.x, e.z);
+            f.puff(hx, 0, hz, 0xd9c7a8, 1.3);
+            if (hitFx === 'sparks') for (let i = 0; i < 5; i++) f.twinkle(hx + (Math.random() - 0.5) * 1.6, 0.8 + Math.random() * 1.4, hz + (Math.random() - 0.5) * 1.6, 0.45, 0xffd23a);
+            else if (hitFx === 'quake') { f.shockRing(hx, hz, 3.2 * sc, 0x9fc8ff); this.shake = Math.max(this.shake, 0.5); }
+            else if (hitFx === 'gold') { f.glow(hx, 1.2, hz, 3.2 * sc, 0xffd23a, 0.35); for (let i = 0; i < 8; i++) f.twinkle(hx + (Math.random() - 0.5) * 2.2, 0.5 + Math.random() * 2, hz + (Math.random() - 0.5) * 2.2, 0.5, 0xfff1a0); }
+            this.fx.lift = 0;
+          }
           if (a < 0.3) v.smashed = false;
         }
         if (style !== 'slime' && style !== 'buzzard') {

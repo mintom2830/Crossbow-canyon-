@@ -44,6 +44,14 @@ const RAT_LOOKS = [
   { fur: 0xf09a44, dark: 0xc87632, light: 0xffc07a, belly: 0xffe4c0, body: [0.95, 0.86, 1.45] },     // jetpack rat: bright ginger
 ];
 export const SHIELDLESS = 10;
+// How each kind of rat moves (read by the walk cycle in ratanim.js):
+// 0 trot · 1 gallop (fast rat) · 2 heavy stomp (armored, shield) · 3 waddle (brood, bomb)
+// 4 sneak (ninja) · 5 hop (ratling)
+export const RAT_GAIT = [0, 1, 2, 2, 0, 3, 5, 3, 4, 0, 2];
+function withGait(g, variant) {
+  g.setAttribute('aGait', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(RAT_GAIT[variant] || 0), 1));
+  return g;
+}
 const HC = [0, 0.41, 0.41];   // the rats' head centre; headK: how much bigger the head is than it once was (a ratling's biggest, like a baby's)
 const headK = (v) => (v === 6 ? 1.55 : 1.36);
 RAT_LOOKS[SHIELDLESS] = RAT_LOOKS[3];
@@ -204,7 +212,7 @@ export function gruntGeometry(variant = 0) {
   const tl = variant === 1 ? 1.25 : 1;
   b.add(P.cyl(0.03, 0.045, 0.45 * tl, 5), RAT.pinkDark, { y: 0.28, z: -0.46 - 0.22 * tl, rx: Math.PI / 2 + 0.25, ...tail });
   b.add(P.cyl(0.015, 0.03, 0.4 * tl, 5), RAT.pinkDark, { x: 0.06, y: 0.36 + 0.02 * tl, z: -0.6 - 0.45 * tl, rx: Math.PI / 2 - 0.35, rz: 0.3, ...tail });
-  return b.build();
+  return withGait(b.build(), variant);
 }
 
 // Outline hull for the small rats: only the parts that make the silhouette, at
@@ -278,7 +286,7 @@ export function gruntInkGeometry(variant = 0) {
   b.add(P.cyl(0.015, 0.03, 0.4 * tl, 4, 1, true), 0, { x: 0.06, y: 0.36 + 0.02 * tl, z: -0.6 - 0.45 * tl, rx: Math.PI / 2 - 0.35, rz: 0.3, ...tail });
   const g = b.build();
   g.deleteAttribute('color');
-  return g;
+  return withGait(g, variant);
 }
 
 // ---------------------------------------------------------------- giant rat
