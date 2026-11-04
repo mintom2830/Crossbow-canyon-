@@ -626,7 +626,7 @@ function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).text
 function setStyle(id, prop, v) { const k = id + prop; if (hudCache[k] !== v) { hudCache[k] = v; $(id).style[prop] = v; } }
 function updateHud() {
   const s = sim;
-  const bk = `${s.buildKind}|${cannonUnlocked()}|${mode}`;
+  const bk = `${s.buildKind}|${ownedTowers().length}|${mode}`;
   if (hudCache.bk !== bk) { hudCache.bk = bk; syncBuildPick(); }
   setText('goldVal', String(s.gold));
   const f = s.fortress;
