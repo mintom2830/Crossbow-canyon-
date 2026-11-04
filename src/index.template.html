@@ -463,7 +463,10 @@ select { border: 2.5px solid var(--ink); }
    The menu floats over the live 3D canyon (no tablet): a gold and blue logo
    under a crossbow, wooden planks, picture cards for the maps, a crown on the
    picked difficulty, a big green Play button and a purple Shop. */
-.title-screen { background: radial-gradient(ellipse at 50% 40%, rgba(58, 29, 18, 0.12), rgba(30, 12, 8, 0.55)); }
+/* the painted canyon (Meshy) behind every menu screen: wide on computers, tall on phones */
+.menu-bg { position: absolute; inset: 0; background: #e9b578 url("__ASSET(menu-bg-wide.webp)__") center / cover no-repeat; }
+@media (max-aspect-ratio: 4/5) { .menu-bg { background-image: url("__ASSET(menu-bg-tall.webp)__"); } }
+.title-screen { background: radial-gradient(ellipse at 50% 45%, rgba(58, 29, 18, 0) 40%, rgba(30, 12, 8, 0.35)); overflow: hidden; align-items: center; justify-content: center; }
 .title-menu { margin: auto; width: min(100%, 460px); display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: center; position: relative; color: var(--umber); }
 .wood, .plank, .btn.wood, .diff-pick button, .level-card {
   background:
@@ -476,20 +479,30 @@ select { border: 2.5px solid var(--ink); }
 .plank.diff-note { font-size: 13.5px !important; font-family: var(--font-body); font-weight: 900; }
 .plank.best { font-size: 14px !important; margin-top: 2px; color: #fff6e0 !important; }
 .plank > span { min-width: 0; }
-.pstar { flex: none; width: 22px; height: 22px; background: radial-gradient(circle at 40% 35%, #fff6b0, #ffc63a 55%, #e0961c); clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); filter: drop-shadow(0 0 0 var(--ink)); }
+.pstar { flex: none; width: 26px; height: 26px; background: url("__ASSET(icon-star.webp)__") center / contain no-repeat; }
 /* the logo */
-.title-top { position: relative; padding: 4px 0 0; }
-.title-menu .logo { position: relative; z-index: 1; gap: 0; margin: 0; }
-.title-menu .logo .logo-bow { width: min(78%, 300px); height: auto; margin-bottom: -18px; filter: drop-shadow(0 3px 0 rgba(42, 24, 16, 0.6)); }
-.title-menu .logo h1 { margin: 0; width: 100%; line-height: 0; text-shadow: none; }
-.title-menu .logo .logo-text { width: min(100%, 400px); height: auto; overflow: visible; filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.35)); }
-.title-side { position: absolute; top: 18px; width: clamp(96px, 30vw, 170px); height: auto; z-index: 0; pointer-events: none; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35)); }
-.title-farmer { left: -18px; transform: scaleX(-1); }
-.title-rat { right: -22px; }
-@media (min-width: 900px) { .title-side { top: 60px; width: 220px; } .title-farmer { left: -200px; } .title-rat { right: -205px; } }
+/* the logo sign, painted by Meshy */
+.title-menu .title-logo { margin: -6px 0 -4px; line-height: 0; display: flex; justify-content: center; }
+.title-menu .title-logo img { width: min(100%, 430px); height: auto; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.35)); }
+/* share and more, top right */
+.title-corner { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); right: max(12px, env(safe-area-inset-right, 0px)); z-index: 2; display: flex; gap: 8px; padding: 5px 7px; border: 3px solid var(--ink); border-radius: 14px; box-shadow: inset 0 2px 0 rgba(255, 225, 180, 0.45), 0 4px 0 var(--ink);
+  background: repeating-linear-gradient(0deg, rgba(255, 230, 190, 0.07) 0 2px, transparent 2px 8px), linear-gradient(#cf8a4a, #a8622f); }
+.corner-btn { width: 40px; height: 36px; border: 0; background: none; color: #fff; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.corner-btn svg { width: 26px; height: 26px; filter: drop-shadow(0 2px 0 var(--ink)); }
+.corner-btn:active { transform: translateY(2px); }
+.gem-txt { color: #5fd8ff; font-weight: 900; }
+/* two halves of the menu: one column on tall screens; side by side on short, wide ones (a phone turned sideways) */
+.tm-col { display: contents; }
+@media (orientation: landscape) and (max-height: 600px) {
+  .title-screen .title-menu { flex-direction: row; align-items: center; width: min(100%, 880px); gap: 18px; }
+  .tm-col { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; min-width: 0; }
+  .tm-b .diff-pick { margin-top: 14px; }
+  .tm-b .row { flex-wrap: nowrap; }
+  .tm-b .row > * { flex: 1 1 0; min-width: 0; }
+}
 /* diamonds, with a + that opens the Shop */
 .title-gems { padding: 3px 4px 3px 12px; gap: 8px; font-size: 24px; }
-.title-gems .gem { width: 26px; height: 26px; }
+.title-gems .gem-img { width: 32px; height: auto; filter: drop-shadow(0 1px 0 var(--ink)); }
 .gem-plus { width: 30px; height: 30px; border-radius: 9px; border: 2.5px solid var(--ink); background: linear-gradient(#8ee66a, #3aa92e); color: #fff; font-family: var(--font-display); font-size: 24px; line-height: 1; padding: 0 0 2px; cursor: pointer; text-shadow: var(--ink-text); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45), 0 2px 0 var(--ink); }
 .gem-plus:active { transform: translateY(2px); box-shadow: none; }
 /* map cards: a picture, the name, the best stars; padlock while locked */
@@ -501,8 +514,9 @@ select { border: 2.5px solid var(--ink); }
 .level-card .lc-name b { font-family: var(--font-display); font-weight: 400; font-size: clamp(17px, 4.6vw, 21px); text-shadow: var(--ink-text); }
 .level-card .lc-name small { font-family: var(--font-display); font-size: clamp(11.5px, 3.1vw, 14px); color: #fff3cf; opacity: 1; text-shadow: var(--ink-text); margin-top: 2px; }
 .level-card .lc-stars { position: absolute; z-index: 1; left: 50%; bottom: 6px; transform: translateX(-50%); display: flex; gap: 2px; background: rgba(42, 24, 16, 0.72); border: 2px solid var(--ink); border-radius: 999px; padding: 2px 6px; }
-.level-card .lc-stars i { width: 17px; height: 17px; background: #6c5a4e; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
-.level-card .lc-stars i.on { background: radial-gradient(circle at 40% 35%, #fff6b0, #ffc63a 55%, #e0961c); }
+.level-card .lc-stars i { width: 19px; height: 19px; background: url("__ASSET(icon-star.webp)__") center / contain no-repeat; filter: grayscale(1) brightness(0.5); }
+.level-card .lc-stars i.on { filter: none; }
+.level-card .lc-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .title-menu .level-card[aria-checked="true"] { background: linear-gradient(#ffe27a, #f2a51e); box-shadow: 0 0 0 3px #fff3b0, 0 0 18px 4px rgba(255, 210, 60, 0.85), 0 4px 0 var(--ink); }
 .title-menu .level-card[aria-checked="true"] b { text-shadow: var(--ink-text); }
 .title-menu .level-card.locked { background: linear-gradient(#a99a8c, #7e7064); color: #f2ebe2; cursor: not-allowed; }
@@ -523,13 +537,14 @@ select { border: 2.5px solid var(--ink); }
 .title-menu .btn { display: flex; align-items: center; justify-content: center; gap: 9px; }
 .btn.go { position: relative; font-size: clamp(30px, 8.5vw, 40px); padding: 10px 18px; border-radius: 18px; background: linear-gradient(#a6f06a, #4cc232 45%, #2a9a22); box-shadow: inset 0 4px 0 rgba(255, 255, 255, 0.45), inset 0 -6px 0 rgba(0, 0, 0, 0.18), 0 6px 0 var(--ink); }
 .btn.go .bi { width: 34px; height: 34px; }
-.btn.go .go-gem { position: absolute; right: 14px; top: 50%; width: 34px; height: 34px; transform: translateY(-50%) rotate(-10deg); filter: drop-shadow(0 0 6px #b9f6ff) drop-shadow(0 2px 0 var(--ink)); animation: gemGlint 2.4s ease-in-out infinite; }
+.btn.go .go-gem { position: absolute; right: 14px; top: 50%; width: 40px; height: auto; transform: translateY(-50%) rotate(-10deg); filter: drop-shadow(0 0 6px #b9f6ff) drop-shadow(0 2px 0 var(--ink)); animation: gemGlint 2.4s ease-in-out infinite; }
 @keyframes gemGlint { 0%, 70%, 100% { filter: drop-shadow(0 0 4px #b9f6ff) drop-shadow(0 2px 0 var(--ink)); } 80% { filter: drop-shadow(0 0 14px #fff) drop-shadow(0 2px 0 var(--ink)); } }
 .btn.wood { color: #fff6e0; font-size: 21px; }
 .title-menu .btn.wood { padding: 10px 8px; white-space: nowrap; }
 .btn.wood:active, .btn.shop:active { transform: translateY(4px); }
 .btn.shop { flex-wrap: wrap; row-gap: 0; font-size: 28px; color: #ffe27a; background: linear-gradient(#b27af8, #7a3ad8 55%, #5a22b0); box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -5px 0 rgba(0, 0, 0, 0.22), 0 5px 0 var(--ink); }
-.btn.shop .stall { width: 40px; height: 32px; }
+.btn.shop .stall { width: 46px; height: auto; }
+.btn img.bi { width: 34px; height: auto; }
 .btn.shop small { flex-basis: 100%; font-size: 12.5px; color: #fff; opacity: 0.95; white-space: nowrap; margin-top: -2px; }
 #shopBtn.ready { animation: throb 0.7s ease-in-out infinite alternate; }
 .title-menu .row > * { flex: 1 1 150px; }
@@ -551,7 +566,6 @@ select { border: 2.5px solid var(--ink); }
   .btn.go .bi, .btn.go .go-gem { width: 28px; height: 28px; }
   .title-menu .btn.wood { padding: 6px 8px; font-size: 19px; }
   .btn.shop { padding: 4px 8px; font-size: 24px; }
-  .title-side { top: 30px; width: 200px; }
 }
 
 /* ================= Shop ================= */
@@ -641,63 +655,44 @@ select { border: 2.5px solid var(--ink); }
   <div id="joy" class="joy" hidden><div class="knob"></div></div>
 
   <!-- Title -->
+  <!-- the painted canyon behind every menu screen (made with Meshy from the menu mockup) -->
+  <div id="menuBg" class="menu-bg" hidden aria-hidden="true"></div>
   <div id="titleScreen" class="screen title-screen" hidden>
-    <div class="title-menu">
-      <div class="title-top">
-        <img class="title-side title-farmer" id="titleFarmer" alt="" hidden>
-        <img class="title-side title-rat" id="titleRat" alt="" hidden>
-        <div class="logo">
-          <svg class="logo-bow" viewBox="0 0 240 70" aria-hidden="true">
-            <g stroke="#3a1d12" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M30 60 L62 10 M42 62 L66 14 M210 60 L178 10 M198 62 L174 14" stroke-width="4" fill="none"/>
-              <path d="M56 6 l12 4 -6 10 z M180 6 l-12 4 6 10 z M60 2 l12 4 -6 10 z M184 2 l-12 4 6 10z" fill="#ff7a2a"/>
-              <path d="M44 40 Q120 -6 196 40" fill="none" stroke="#3a1d12" stroke-width="9"/><path d="M44 40 Q120 -6 196 40" fill="none" stroke="#9c5a31" stroke-width="5"/>
-              <path d="M46 41 L120 54 L194 41" fill="none" stroke="#fff2d8" stroke-width="2.5"/>
-              <rect x="112" y="10" width="16" height="58" rx="5" fill="#8e5b33"/><rect x="108" y="40" width="24" height="10" rx="3" fill="#5b6068"/>
-              <path d="M120 0 L130 18 H110 Z" fill="#c3ccd6"/>
-            </g>
-          </svg>
-          <h1><svg class="logo-text" viewBox="0 0 420 196" role="img" aria-label="Crossbow Canyon">
-            <defs>
-              <linearGradient id="lgGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0.12" stop-color="#fff7b0"/><stop offset="0.48" stop-color="#ffd33a"/><stop offset="0.9" stop-color="#ff8c14"/></linearGradient>
-              <linearGradient id="lgBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0.1" stop-color="#dcf9ff"/><stop offset="0.5" stop-color="#4fc8ff"/><stop offset="0.92" stop-color="#1262d2"/></linearGradient>
-            </defs>
-            <g font-family="Lilita One, Arial Rounded MT Bold, Trebuchet MS, sans-serif" text-anchor="middle" stroke-linejoin="round" paint-order="stroke">
-              <text x="210" y="92" font-size="94" textLength="380" lengthAdjust="spacingAndGlyphs" fill="#3a1406" stroke="#3a1406" stroke-width="13" transform="translate(0 7)">Crossbow</text>
-              <text x="210" y="92" font-size="94" textLength="380" lengthAdjust="spacingAndGlyphs" fill="url(#lgGold)" stroke="#3a1406" stroke-width="10">Crossbow</text>
-              <text x="210" y="92" font-size="94" textLength="380" lengthAdjust="spacingAndGlyphs" fill="none" stroke="#fff8c8" stroke-width="2" opacity="0.55" transform="translate(0 -2)">Crossbow</text>
-              <text x="210" y="182" font-size="100" textLength="330" lengthAdjust="spacingAndGlyphs" fill="#0a2350" stroke="#0a2350" stroke-width="13" transform="translate(0 7)">Canyon</text>
-              <text x="210" y="182" font-size="100" textLength="330" lengthAdjust="spacingAndGlyphs" fill="url(#lgBlue)" stroke="#0a2350" stroke-width="10">Canyon</text>
-              <text x="210" y="182" font-size="100" textLength="330" lengthAdjust="spacingAndGlyphs" fill="none" stroke="#e8fcff" stroke-width="2" opacity="0.55" transform="translate(0 -2)">Canyon</text>
-            </g>
-          </svg></h1>
-        </div>
-      </div>
+    <div class="title-corner">
+      <button id="fullBtn" class="corner-btn" type="button" aria-label="Full screen" title="Full screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="moreBtn" class="corner-btn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2.4" fill="currentColor"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/><circle cx="19" cy="12" r="2.4" fill="currentColor"/></svg></button>
+    </div>
+    <div class="title-menu" id="titleMenu">
+      <div class="tm-col tm-a">
+      <h1 class="logo title-logo"><img src="__ASSET(menu-logo.webp)__" alt="Crossbow Canyon" width="900" height="477"></h1>
       <p class="plank tagline"><i class="pstar"></i><span>Protect the town. Build crossbows. Grab every coin.</span><i class="pstar"></i></p>
-      <div class="gem-pill title-gems" aria-label="Diamonds"><svg class="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg><b id="gemVal">0</b><button id="gemPlus" class="gem-plus" type="button" aria-label="Shop: spend your diamonds">+</button></div>
+      <div class="gem-pill title-gems" aria-label="Diamonds"><img class="gem-img" src="__ASSET(icon-gem.webp)__" alt="" width="160" height="144"><b id="gemVal">0</b><button id="gemPlus" class="gem-plus" type="button" aria-label="Shop: spend your diamonds">+</button></div>
       <button id="continueBtn" class="btn gold" type="button" hidden>Continue <small id="continueInfo"></small></button>
       <div class="level-pick" id="levelPick" role="radiogroup" aria-label="Map">
-        <button type="button" class="level-card" role="radio" data-level="1" aria-checked="true"><span class="lc-art"><svg viewBox="0 0 120 84" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sk1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffcf8a"/><stop offset="1" stop-color="#ffe9c0"/></linearGradient></defs><rect width="120" height="84" fill="url(#sk1)"/><circle cx="92" cy="20" r="9" fill="#fff3b0"/><path d="M0 50 L10 30 L24 30 L30 50 Z M86 52 L92 26 L110 24 L120 34 L120 52 Z" fill="#c25a3a" stroke="#6e2a18" stroke-width="1.5"/><path d="M34 54 L38 36 Q50 22 62 36 L66 54 L58 54 L56 42 Q50 34 44 42 L42 54 Z" fill="#d76a44" stroke="#6e2a18" stroke-width="1.5"/><rect y="52" width="120" height="32" fill="#efc06a"/><path d="M48 84 Q52 70 70 64 Q90 58 96 52" fill="none" stroke="#f8e4b8" stroke-width="9" stroke-linecap="round"/><path d="M14 74 v-14 m0 6 h-4 v-5 m4 3 h4 v-6" stroke="#4e8a34" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M104 76 v-12 m0 5 h3 v-4" stroke="#4e8a34" stroke-width="3" fill="none" stroke-linecap="round"/></svg></span><span class="lc-name"><b>Level 1</b><small>Sunstone Canyon</small></span><span class="lc-stars" aria-hidden="true"><i></i><i></i><i></i></span></button>
-        <button type="button" class="level-card" role="radio" data-level="2" aria-checked="false"><span class="lc-art"><svg viewBox="0 0 120 84" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sk2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fd8f2"/><stop offset="1" stop-color="#ffe9c0"/></linearGradient></defs><rect width="120" height="84" fill="url(#sk2)"/><path d="M84 8 l8 6 -8 6 -8 -6 z" fill="#e8443a" stroke="#6e2a18" stroke-width="1"/><path d="M84 20 q-4 10 -18 18" stroke="#3a2a20" stroke-width="0.8" fill="none"/><path d="M0 84 L0 60 Q60 18 120 60 L120 84 Z" fill="#f2c56a" stroke="#a86e2a" stroke-width="1.5"/><path d="M8 82 Q40 72 62 66 Q86 60 100 54 Q78 50 52 48" fill="none" stroke="#f8e4b8" stroke-width="7" stroke-linecap="round"/><rect x="58" y="30" width="5" height="12" fill="#6e4527"/><ellipse cx="60" cy="28" rx="15" ry="7" fill="#8aa45a" stroke="#4e6a2a" stroke-width="1.5"/><circle cx="54" cy="26" r="1.4" fill="#fff"/><circle cx="62" cy="24" r="1.4" fill="#fff6c0"/><circle cx="67" cy="28" r="1.4" fill="#fff"/><path d="M66 40 h12 v4 h-12 z" fill="#e8443a"/><path d="M69 40 v4 M72 40 v4 M75 40 v4" stroke="#fff1d6" stroke-width="1.2"/></svg></span><span class="lc-name"><b>Level 2</b><small>Lonetree Hill</small></span><span class="lc-stars" aria-hidden="true"><i></i><i></i><i></i></span><i class="new-tag" hidden>New!</i><i class="lock-tag" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z"/></svg></i></button>
-        <button type="button" class="level-card" role="radio" data-level="3" aria-checked="false"><span class="lc-art"><svg viewBox="0 0 120 84" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sk3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd59a"/><stop offset="1" stop-color="#fff0cc"/></linearGradient></defs><rect width="120" height="84" fill="url(#sk3)"/><path d="M72 52 L74 30 Q88 14 102 30 L104 52 L97 52 L96 36 Q88 26 81 36 L80 52 Z" fill="#c25a3a" stroke="#6e2a18" stroke-width="1.5"/><rect y="50" width="120" height="34" fill="#efc06a"/><ellipse cx="54" cy="64" rx="30" ry="10" fill="#5cc8dc" stroke="#2d6f8a" stroke-width="1.5"/><ellipse cx="52" cy="65" rx="17" ry="5" fill="#3a9fcf"/><ellipse cx="40" cy="62" rx="3" ry="1.4" fill="#5fae4a"/><path d="M22 58 Q20 40 26 26" stroke="#7a5a38" stroke-width="3" fill="none"/><path d="M26 26 q-12 -2 -16 6 M26 26 q10 -6 18 0 M26 26 q-6 -8 -14 -6 M26 26 q8 2 12 10" stroke="#4c8a32" stroke-width="3.4" fill="none" stroke-linecap="round"/><path d="M88 58 Q90 44 86 32" stroke="#7a5a38" stroke-width="2.6" fill="none"/><path d="M86 32 q-10 0 -13 6 M86 32 q9 -4 15 2 M86 32 q-4 -7 -11 -5" stroke="#4c8a32" stroke-width="3" fill="none" stroke-linecap="round"/></svg></span><span class="lc-name"><b>Level 3</b><small>Mirage Oasis</small></span><span class="lc-stars" aria-hidden="true"><i></i><i></i><i></i></span><i class="new-tag" hidden>New!</i><i class="lock-tag" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z"/></svg></i></button>
+        <button type="button" class="level-card" role="radio" data-level="1" aria-checked="true"><span class="lc-art"><img src="__ASSET(menu-card1.webp)__" alt="" width="360" height="493"></span><span class="lc-name"><b>Level 1</b><small>Sunstone Canyon</small></span><span class="lc-stars" aria-hidden="true"><i></i><i></i><i></i></span></button>
+        <button type="button" class="level-card" role="radio" data-level="2" aria-checked="false"><span class="lc-art"><img src="__ASSET(menu-card2.webp)__" alt="" width="360" height="493"></span><span class="lc-name"><b>Level 2</b><small>Lonetree Hill</small></span><span class="lc-stars" aria-hidden="true"><i></i><i></i><i></i></span><i class="new-tag" hidden>New!</i><i class="lock-tag" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z"/></svg></i></button>
+        <button type="button" class="level-card" role="radio" data-level="3" aria-checked="false"><span class="lc-art"><img src="__ASSET(menu-card3.webp)__" alt="" width="360" height="493"></span><span class="lc-name"><b>Level 3</b><small>Mirage Oasis</small></span><span class="lc-stars" aria-hidden="true"><i></i><i></i><i></i></span><i class="new-tag" hidden>New!</i><i class="lock-tag" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 10V7a5 5 0 0 1 10 0v3h1.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20.5v-9A1.5 1.5 0 0 1 5.5 10zm2.5 0h5V7a2.5 2.5 0 0 0-5 0z"/></svg></i></button>
       </div>
       <p class="note level-note" id="levelNote" hidden></p>
+      </div>
+      <div class="tm-col tm-b">
       <div class="diff-pick" id="diffPick" role="radiogroup" aria-label="Difficulty for a new game">
         <button type="button" role="radio" data-diff="easy" aria-checked="false">Easy</button>
         <button type="button" role="radio" data-diff="normal" aria-checked="true">Normal</button>
         <button type="button" role="radio" data-diff="hard" aria-checked="false">Hard</button>
       </div>
       <p class="plank diff-note" id="diffNote"></p>
-      <button id="playBtn" class="btn go" type="button"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" fill="#fff" stroke="#1d4a12" stroke-width="1.6" stroke-linejoin="round"/></svg><span>New game</span><svg class="gem go-gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z" fill="#63e4ff" stroke="#0f6d93" stroke-width="1.6" stroke-linejoin="round"/><path d="M2 9h20M8 3l4 18 4-18M6 3l2 6m10-6-2 6" stroke="#167fa8" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+      <button id="playBtn" class="btn go" type="button"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" fill="#fff" stroke="#1d4a12" stroke-width="1.6" stroke-linejoin="round"/></svg><span>New game</span><img class="go-gem" src="__ASSET(icon-gem.webp)__" alt="" width="160" height="144"></button>
       <div class="row">
         <button id="helpBtn" class="btn wood" type="button"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" fill="#fff" stroke="#3a1d12" stroke-width="1.8" stroke-linejoin="round"/></svg>How to play</button>
         <button id="settingsBtn" class="btn wood" type="button"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" stroke="#3a1d12" stroke-width="1.5" d="M10.3 2h3.4l.5 2.6a8 8 0 0 1 2 1.1l2.5-.9 1.7 2.9-2 1.8a8 8 0 0 1 0 2.3l2 1.8-1.7 2.9-2.5-.9a8 8 0 0 1-2 1.1l-.5 2.6h-3.4l-.5-2.6a8 8 0 0 1-2-1.1l-2.5.9-1.7-2.9 2-1.8a8 8 0 0 1 0-2.3l-2-1.8 1.7-2.9 2.5.9a8 8 0 0 1 2-1.1z"/><circle cx="12" cy="12" r="3.2" fill="#8a5530" stroke="#3a1d12" stroke-width="1.5"/></svg>Settings</button>
       </div>
       <div class="row">
-        <button id="shopBtn" class="btn shop" type="button"><svg class="bi stall" viewBox="0 0 40 32" aria-hidden="true"><g stroke="#3a1d12" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="14" width="30" height="15" rx="2" fill="#c98345"/><path d="M3 14 L7 4 H33 L37 14 Z" fill="#fff"/><path d="M9.5 4 L8 14 M17 4 L16.5 14 M23 4 L23.5 14 M30.5 4 L32 14" stroke="#e8443a" stroke-width="3.4"/><path d="M3 14 L7 4 H33 L37 14 Z" fill="none"/><circle cx="12" cy="24" r="4" fill="#ffc63a"/><circle cx="19" cy="25" r="3.4" fill="#ffc63a"/><rect x="24" y="19" width="7" height="7" rx="1" fill="#63e4ff"/></g></svg><span>Shop</span><small id="shopInfo"></small></button>
-        <button id="guideBtn" class="btn wood" type="button"><svg class="bi" viewBox="0 0 32 32" aria-hidden="true"><g stroke="#2a1d1a" stroke-width="1.6" stroke-linejoin="round"><circle cx="8" cy="9" r="5.5" fill="#6f6567"/><circle cx="24" cy="9" r="5.5" fill="#6f6567"/><circle cx="8" cy="9" r="3" fill="#f2a0a6" stroke="none"/><circle cx="24" cy="9" r="3" fill="#f2a0a6" stroke="none"/><path d="M5 16 Q16 4 27 16 L19 28 Q16 31 13 28 Z" fill="#7a6f71"/><circle cx="12" cy="17" r="2" fill="#ffd23a"/><circle cx="20" cy="17" r="2" fill="#ffd23a"/><circle cx="16" cy="27" r="2" fill="#f2a0a6"/></g><path d="M12 22 l1.6 3 1.6-3 M17.4 22 l1.6 3 1.6-3" stroke="#fff" stroke-width="1.2" fill="none"/></svg>Rat guide</button>
+        <button id="shopBtn" class="btn shop" type="button"><img class="bi stall" src="__ASSET(icon-shop.webp)__" alt="" width="160" height="138"><span>Shop</span><small id="shopInfo"></small></button>
+        <button id="guideBtn" class="btn wood" type="button"><img class="bi" src="__ASSET(icon-rat.webp)__" alt="" width="160" height="142">Rat guide</button>
       </div>
       <p class="plank best"><i class="pstar"></i><span id="bestLine"></span><i class="pstar"></i></p>
+      </div>
     </div>
   </div>
 

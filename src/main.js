@@ -108,7 +108,8 @@ const diffName = (k) => CFG.difficulties[k] ? CFG.difficulties[k].name : 'Normal
 function syncDiffPick() {
   const k = diffKey();
   for (const b of document.querySelectorAll('[data-diff]')) b.setAttribute('aria-checked', String(b.dataset.diff === k));
-  $('diffNote').textContent = `${CFG.difficulties[k].blurb} · a full clear pays ${clearDiamonds(k)} diamonds`;
+  $('diffNote').innerHTML = `<span>${CFG.difficulties[k].blurb} · a full clear pays <b class="gem-txt">${clearDiamonds(k)} diamonds</b></span>`;
+  fitTitle();
 }
 for (const b of document.querySelectorAll('[data-diff]')) {
   b.addEventListener('click', () => { audio.unlock(); audio.click(); settings.difficulty = b.dataset.diff; Save.set('settings', settings); syncDiffPick(); });
@@ -171,11 +172,28 @@ const SCREENS = ['titleScreen', 'helpScreen', 'settingsScreen', 'pauseScreen', '
 function showScreen(id) {
   for (const s of SCREENS) $(s).hidden = s !== id;
   screen = id;
+  // the painted canyon sits behind every menu while no game is on
+  $('menuBg').hidden = !(mode === 'title' && id);
+  if (id === 'titleScreen') fitTitle();
   if (id) {
     const first = $(id).querySelector('button:not([hidden])');
     if (first && !coarse) first.focus({ preventScroll: true });
   }
 }
+// The title menu scales to fit any screen without scrolling: measured at its
+// natural size, then zoomed so it fills the height (or width) available.
+function fitTitle() {
+  const menu = $('titleMenu');
+  if (!menu || $('titleScreen').hidden) return;
+  menu.style.zoom = '1';
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  if (!w || !h) return;
+  // (room for the screen's own padding round the edge)
+  const k = Math.max(0.45, Math.min(1.35, (window.innerHeight - 44) / h, (window.innerWidth - 28) / w));
+  menu.style.zoom = k.toFixed(3);
+}
+window.addEventListener('resize', () => fitTitle());
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitTitle());
 
 function refreshTitle() {
   const cp = Save.get('checkpoint', null);
@@ -190,7 +208,7 @@ function refreshTitle() {
   const affordable = shopItems().filter((it) => !it.owned && it.cost <= p.diamonds);
   $('shopInfo').textContent = affordable.length ? `${affordable.length} thing${affordable.length > 1 ? 's' : ''} you can buy!` : 'rides, skins and towers';
   $('shopBtn').classList.toggle('ready', affordable.length > 0);
-  titleArt();
+  fitTitle();
   const b = levelBest(), map = levelMap();
   $('bestLine').textContent = `Level ${map.id} · ${map.name} · ` + (b.cleared
     ? `held${b.bestDiff ? ' on ' + diffName(b.bestDiff) : ''} · best ${'★'.repeat(b.bestStars)}${'☆'.repeat(3 - b.bestStars)}`
@@ -425,14 +443,14 @@ document.getElementById('shopScreen').addEventListener('click', (e) => {
     showScreen('shopScreen');
   });
 });
-// the farmer (on your ride) and a giant rat beside the logo, drawn in 3D
-function titleArt() {
-  const P = view.portraits, f = $('titleFarmer'), r = $('titleRat');
-  const fu = P.get('ride:' + (currentRide() || 'none'), false, { clear: true }), ru = P.get('boss:king', false, { clear: true });
-  P.flush();
-  if (fu) { f.src = fu; f.hidden = false; }
-  if (ru) { r.src = ru; r.hidden = false; }
-}
+// the corner buttons: full screen (where the browser allows it) and settings
+if (!document.fullscreenEnabled) $('fullBtn').hidden = true;
+click('fullBtn', () => {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen().catch(() => {});
+});
+document.addEventListener('fullscreenchange', () => setTimeout(fitTitle, 120));
+click('moreBtn', () => { backTo = 'titleScreen'; syncSettingsUi(); showScreen('settingsScreen'); });
 function refreshArmory() {
   const d = progress.diamonds, cost = CFG.cannonUnlockCost, owned = cannonUnlocked();
   $('shopGems').textContent = d;
@@ -1088,6 +1106,7 @@ function frame(now) {
   last = now;
   if (mode === 'pause' && !needsRender) return;
   if (mode === 'title' && (screen === 'guideScreen' || screen === 'shopScreen') && !needsRender) return;   // the backdrop holds still while portraits render
+  if (mode === 'title' && !$('menuBg').hidden && !needsRender) return;   // the painted canyon covers the 3D scene: save the battery
   const speed = mode === 'play' ? gameSpeed() : 1;   // fast forward only ever speeds up a game in progress
 
   if (mode === 'play' || mode === 'title') {

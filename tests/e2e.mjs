@@ -303,6 +303,31 @@ await test('repair pad: a damaged town hall gets a repair pad; walking onto it w
   await ctx.close();
 });
 
+await test('title menu: the painted canyon, logo and map pictures load, and the whole menu fits a phone, a sideways phone and a computer without scrolling', async () => {
+  for (const kind of ['phone', 'land', 'desktop']) {
+    const { ctx, page, errors } = await open(kind, { sfx: false, music: false, quality: 'low', tutorialDone: true });
+    await page.waitForTimeout(800);
+    const r = await g(page, () => {
+      const m = document.getElementById('titleMenu').getBoundingClientRect(), sc = document.getElementById('titleScreen');
+      const imgs = [...document.querySelectorAll('#titleMenu img')];
+      return {
+        fits: m.top >= 0 && m.left >= 0 && m.bottom <= innerHeight + 0.5 && m.right <= innerWidth + 0.5,
+        scroll: sc.scrollHeight > sc.clientHeight + 1,
+        zoom: +document.getElementById('titleMenu').style.zoom,
+        bg: !document.getElementById('menuBg').hidden && getComputedStyle(document.getElementById('menuBg')).backgroundImage.startsWith('url("data:image/webp'),
+        imgs: imgs.length, loaded: imgs.every((i) => i.complete && i.naturalWidth > 0),
+        twoCols: getComputedStyle(document.querySelector('.tm-a')).display === 'flex',
+      };
+    });
+    assert(r.fits && !r.scroll && r.zoom > 0.6, `${kind}: menu does not fit: ` + JSON.stringify(r));
+    assert(r.bg && r.imgs >= 7 && r.loaded, `${kind}: painted pictures missing: ` + JSON.stringify(r));
+    assert(r.twoCols === (kind === 'land'), `${kind}: two columns only on a phone turned sideways: ` + JSON.stringify(r));
+    await page.screenshot({ path: `${SHOTS}/title-${kind}.png` });
+    assert(errors.length === 0, errors.join(' | '));
+    await ctx.close();
+  }
+});
+
 await test('zoom out: the Map button, the M key and the mouse wheel show the whole map, and a two-finger pinch does on a phone', async () => {
   // the canyon floor every map shares (CFG.walk): all four corners on screen means the whole map is in view
   const corners = (page) => g(page, () => {

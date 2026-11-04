@@ -19,7 +19,9 @@ const result = await build({
   banner: { js: '/* Crossbow Canyon — includes three.js (MIT, © 2010-2024 three.js authors) */' },
 });
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-let template = readFileSync('src/index.template.html', 'utf8');
+// pictures in src/assets are written into the page itself (__ASSET(name.webp)__ in the template)
+const withAssets = (html) => html.replace(/__ASSET\(([\w.-]+)\)__/g, (_, f) => `data:image/${f.split('.').pop()};base64,${readFileSync('src/assets/' + f).toString('base64')}`);
+let template = withAssets(readFileSync('src/index.template.html', 'utf8'));
 if (!watch) {
   // minify the stylesheet and drop line-break indentation between tags
   const m = template.match(/<style>([\s\S]*?)<\/style>/);

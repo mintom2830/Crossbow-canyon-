@@ -79,13 +79,16 @@ When `dist/index.html` is hosted on a website, a phone can add it to its home sc
 
 ## Title screen
 
-The menu floats over the live canyon on wooden signs, in the style of the game's own art:
-- **The logo:** "Crossbow" in gold and "Canyon" in blue, with thick ink outlines, under a crossbow with flaming arrows. The farmer (riding your horse or cow, if you have one) and the Rat King stand on either side of it, drawn in 3D by the game itself.
-- A wooden plank with the tagline, and your **diamonds** with a green **+** that opens the Shop.
-- **Map cards** with a picture of each map (red-rock arch, the lone tree on the hill, the oasis), the stars you have earned on it, a glow round the one picked and a padlock on maps still locked.
-- **Difficulty** planks with a gold crown over the one picked, and a plank saying what a full clear pays.
-- A big green **New game** button with a sparkling diamond, wooden **How to play** and **Settings** buttons, a purple **Shop** (it says when there is something you can afford) and the **Rat guide**.
-- On a laptop-sized screen it all fits without scrolling; on a phone it scrolls.
+The title screen recreates the menu mockup in `docs/design/menu-mockup.png`:
+- **Painted art made with Meshy AI** from that mockup: the sunny canyon background (a wide picture for computers and tablets on their side, a tall one for phones) with the farmer holding his crossbow on the left, and the watchtower and the big angry rat leaning over the fence on the right; the "Crossbow Canyon" logo sign; a picture for each map (the red-rock arch, the lone tree on the hill with its picnic and kite, the oasis); and the shop stall, rat, star and diamond icons. Meshy repainted the mockup without its buttons and text, and the farmer was redrawn as an original cartoon farmer. The pictures are small WebP files in `src/assets/`, built into the page (about 490 KB together); the prompts and Meshy task ids are noted in `docs/design/meshy/`.
+- **Fits any screen without scrolling:** the menu is measured at its natural size and scaled to fill the screen's height or width, from a small phone (360 × 640) to a big monitor. On a phone turned sideways the menu splits into two columns: the logo and maps on the left, the buttons on the right.
+- Wooden planks for the tagline, the difficulty note (with the diamonds in blue) and the best result, with gold stars at each end.
+- Your **diamonds**, with a green **+** that opens the Shop.
+- **Map cards** with the painted pictures, the stars you have earned on each map, a gold glow round the one picked, a **New!** tag on a newly unlocked map and a padlock on maps still locked.
+- **Difficulty** planks with a gold crown over the one picked.
+- A big green **New game** button with a diamond, wooden **How to play** and **Settings** buttons, a purple **Shop** (it says when there is something you can afford) and the **Rat guide**.
+- Top right: a **full screen** button (where the browser allows it; iPhones don't) and **•••** for Settings.
+- The painted canyon stays behind every menu (How to play, Settings, Shop, Rat guide), and the 3D scene behind it stops drawing while it is covered, to save battery.
 
 ## Shop
 
