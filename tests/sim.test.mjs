@@ -1,6 +1,7 @@
 // Headless gameplay tests (no browser). Run: node tests/sim.test.mjs
 import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING, BOMB, NINJA, JET } from '../src/sim.js';
-import { RAT_GUIDE, firstWave, guideEntry } from '../src/ratguide.js';
+import { RAT_GUIDE, firstWave, guideEntry, QUICK_COUNTERS } from '../src/ratguide.js';
+import { existsSync, readFileSync } from 'node:fs';
 import { CFG, cannonSpec, MAPS } from '../src/config.js';
 import { road, plateauSdf, setLevel, groundHeight, hillHeight, pondDepth, streamDistance, STREAM_HALF, inWater, oasisLayout } from '../src/world.js';
 import { runLevel } from '../tools/balance.mjs';
@@ -1520,6 +1521,19 @@ test('weapon skins (Shop): classic is free, the rest cost diamonds and each has 
   assert(paid.length >= 5, 'at least five skins to buy');
   for (const [k, v] of paid) assert(v.cost > 0 && v.colors && v.colors.length === 3 && v.name && v.blurb, 'skin ' + k);
   assert(new Set(paid.map(([, v]) => v.colors.join())).size === paid.length, 'every skin looks different');
+});
+
+test('Rat Bestiary: every enemy has a painted portrait, an aura colour and its ability badges; the Quick Counter Guide covers every kind', () => {
+  const tpl = readFileSync(new URL('../src/index.template.html', import.meta.url), 'utf8');
+  for (const g of RAT_GUIDE) {
+    const file = `rat-art-${g.key.replace(':', '-')}.webp`;
+    assert(existsSync(new URL('../src/assets/' + file, import.meta.url)), 'no portrait for ' + g.key);
+    assert(tpl.includes(`"${g.key}":"__ASSET(${file})__"`), 'portrait not built into the page: ' + g.key);
+    assert(/^#[0-9a-f]{6}$/.test(g.aura), 'no aura colour for ' + g.key);
+    assert(Array.isArray(g.abilities), 'no abilities for ' + g.key);
+  }
+  assert(RAT_GUIDE.length === 17, 'the bestiary should list 17 enemies');
+  assert(QUICK_COUNTERS.length === 8 && QUICK_COUNTERS.every((q) => q.kind && q.beat && q.who), 'quick counter guide');
 });
 
 test('performance: one simulation step stays well under 1 ms', () => {

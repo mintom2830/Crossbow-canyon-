@@ -15,3 +15,11 @@ Made on 2026-11-04 with Meshy's image-to-image tool from `../menu-mockup.png`
 | icon-shop / icon-rat / icon-star / icon-gem .webp | nano-banana, background removed | 01a1a6ec-012c-70d4-98db-10b21314754e | four icons in a 2 × 2 grid, cut apart |
 
 `bg-tall-v1.jpg` and `farmer-ref.jpg` here are the two pictures the farmer edit started from.
+
+## Rat Bestiary portraits
+
+Made on 2026-11-04 with Meshy image-to-image (nano-banana-pro, background
+removed; 17 × 9 = 153 credits), each from the matching card of
+`../bestiary-upgraded.png` (crops in `../bestiary/`). The Ratling and the Rat King,
+which the design leaves out, were painted from a text description in the same
+style. Saved as 256 × 256 WebP in `src/assets/rat-art-*.webp`.

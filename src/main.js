@@ -1,6 +1,6 @@
 // Crossbow Canyon — game shell: loop, screens, HUD, saving, tutorial.
 import { describeFocus, CROSSBOW_ABILITIES, cannonAbility } from './towerinfo.js';
-import { RAT_GUIDE, guideEntry, firstWave } from './ratguide.js';
+import { RAT_GUIDE, guideEntry, firstWave, QUICK_COUNTERS } from './ratguide.js';
 import { CFG, clearDiamonds, MAPS } from './config.js';
 import { setLevel, levelMap } from './world.js';
 import { Sim, T_GRUNT, T_BOSS } from './sim.js';
@@ -11,6 +11,8 @@ import { Input } from './input.js';
 import { Save, DEFAULT_SETTINGS, DEFAULT_PROGRESS } from './save.js';
 
 const $ = (id) => document.getElementById(id);
+// painted portraits of every enemy (built into the page; see docs/design/meshy)
+const RAT_ART = (() => { try { return JSON.parse(document.getElementById('ratArt').textContent); } catch { return {}; } })();
 const TOWER_NAMES = CROSSBOW_ABILITIES.map((a) => (a ? a[0] : ''));
 const FIXED = CFG.fixedDt;
 const settings = Save.get('settings', DEFAULT_SETTINGS);
@@ -752,7 +754,7 @@ let enemyCardTimer = 0;
 function showEnemyCard(key) {
   const g = guideEntry(key);
   if (!g) return;
-  const url = view.portraits.get(key);
+  const url = RAT_ART[key] || view.portraits.get(key);
   if (url) $('ecImg').src = url; else $('ecImg').removeAttribute('src');
   const boss = key.startsWith('boss:');
   $('ecTag').textContent = boss ? 'Boss' : 'New enemy';
@@ -806,28 +808,49 @@ function guideStats(key) {
   if (B.fly) out.push(['Drops', `${B.fly.n} rats every ${B.fly.every} s`]);
   return out;
 }
+// The Rat Bestiary: a card for every enemy, then the Quick Counter Guide.
+const STAT_ICON = {
+  Health: '<svg viewBox="0 0 24 24"><path fill="#ff4a5a" stroke="#5a0a14" stroke-width="1.6" d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/></svg>',
+  Armour: '<svg viewBox="0 0 24 24"><path fill="#8fb8ff" stroke="#14305a" stroke-width="1.6" d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg>',
+  Shield: '<svg viewBox="0 0 24 24"><path fill="#ffc63a" stroke="#5a3a08" stroke-width="1.6" d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg>',
+  Speed: '<svg viewBox="0 0 24 24"><path fill="none" stroke="#ffc63a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="M4 6l6 6-6 6M12 6l6 6-6 6"/></svg>',
+  Bites: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#e0a85a" stroke="#5a3010" stroke-width="1.6"/><circle cx="9" cy="10" r="1.6" fill="#7a4a20"/><circle cx="14.5" cy="13.5" r="1.6" fill="#7a4a20"/><circle cx="13" cy="8" r="1.2" fill="#7a4a20"/></svg>',
+  other: '<svg viewBox="0 0 24 24"><path fill="#c9a2ff" stroke="#3a1a5a" stroke-width="1.4" d="M12 2l2.6 6.4L21 9l-5 4.3L17.5 20 12 16.6 6.5 20 8 13.3 3 9l6.4-.6z"/></svg>',
+};
+const TARGET_ICON = '<svg class="ge-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="#9be05a" stroke-width="2.4"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#9be05a" stroke-width="2.4"/><circle cx="12" cy="12" r="1.8" fill="#ffd23a"/></svg>';
+const QC_ICON = {
+  crowd: '<svg viewBox="0 0 24 24"><g fill="#e8603a" stroke="#5a1a08" stroke-width="1.2"><circle cx="7" cy="10" r="4"/><circle cx="17" cy="10" r="4"/><circle cx="12" cy="15" r="4.5"/></g></svg>',
+  fast: STAT_ICON.Speed, armour: STAT_ICON.Armour, shield: STAT_ICON.Shield,
+  heal: '<svg viewBox="0 0 24 24"><path fill="#4cd964" stroke="#0e4a1a" stroke-width="1.6" d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg>',
+  fly: '<svg viewBox="0 0 24 24"><path fill="#9ad8ff" stroke="#14405a" stroke-width="1.5" d="M2 9c4-3 7-2 10 2 3-4 6-5 10-2-3 1-5 3-6 6l-4-2-4 2C7 12 5 10 2 9z"/></svg>',
+  boom: '<svg viewBox="0 0 24 24"><path fill="#ff6a2a" stroke="#5a1a08" stroke-width="1.5" d="M12 2l2 5 5-2-2 5 5 2-5 2 2 5-5-2-2 5-2-5-5 2 2-5-5-2 5-2-2-5 5 2z"/></svg>',
+  split: '<svg viewBox="0 0 24 24"><g fill="#6dff4a" stroke="#1a5a10" stroke-width="1.4"><ellipse cx="9" cy="13" rx="6" ry="5"/><ellipse cx="18" cy="16" rx="3.5" ry="3"/><ellipse cx="18" cy="8" rx="3" ry="2.6"/></g></svg>',
+};
 let guideJob = 0;
 function openGuide() {
   const list = $('guideList');
   list.innerHTML = RAT_GUIDE.map((g) => {
-    const fw = firstWave(g.key);
-    const stats = guideStats(g.key).map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join('');
-    return `<section class="guide-entry" data-key="${g.key}">
-      <img alt="" width="76" height="76">
-      <div><h3>${esc(g.name)} <small>${esc(g.tag)}</small>${fw ? `<small>${g.key.startsWith('boss') ? 'wave' : 'from wave'} ${fw}</small>` : ''}</h3>
-      <div class="guide-stats">${stats}</div>
+    const fw = firstWave(g.key), boss = g.key.startsWith('boss');
+    const stats = guideStats(g.key).map(([k, v]) => `<span>${STAT_ICON[k] || STAT_ICON.other}${esc(k)}: <b>${esc(v)}</b></span>`).join('');
+    const abil = g.abilities.length ? g.abilities.map((a) => `<span>${esc(a)}</span>`).join('') : '<span>No tricks: just lots of them</span>';
+    return `<section class="guide-entry${boss ? ' boss' : ''}" data-key="${g.key}" style="--aura:${g.aura}">
+      <div class="ge-top"><h3>${esc(g.name)}</h3><span class="ge-pill">${esc(g.tag)}</span>${fw ? `<span class="ge-pill wave">${g.key === 'rat:6' || g.key === 'giant' || boss ? 'Wave' : 'From wave'} ${fw}</span>` : ''}</div>
+      <div class="ge-mid"><div class="ge-art"><img alt="" width="256" height="256" ${RAT_ART[g.key] ? `src="${RAT_ART[g.key]}"` : ''}></div><div class="ge-stats">${stats}</div></div>
       <p>${esc(g.trait)}</p>
-      <p class="counter"><em>How to beat it:</em> ${esc(g.counter)}</p></div>
+      <div class="ge-abil">${abil}</div>
+      <p class="counter">${TARGET_ICON}<span><em>How to beat it:</em>${esc(g.counter)}</span></p>
     </section>`;
-  }).join('');
+  }).join('') + `<section class="guide-entry quick"><div class="ge-top"><h3>Quick Counter Guide</h3></div>${QUICK_COUNTERS.map((q) => `<div class="qc-row">${QC_ICON[q.icon]}<span><b>${esc(q.kind)}</b> → ${esc(q.beat)}<small>${esc(q.who)}</small></span></div>`).join('')}</section>`;
   showScreen('guideScreen');
-  // draw the 3D portraits (all in one go: they are tiny) just after the screen shows
+  // any enemy without a painted portrait gets its 3D one, drawn just after the screen shows
   const job = ++guideJob;
   setTimeout(() => {
     if (job !== guideJob || screen !== 'guideScreen') return;
-    for (const el of list.querySelectorAll('.guide-entry')) {
+    for (const el of list.querySelectorAll('.guide-entry[data-key]')) {
+      const img = el.querySelector('img');
+      if (img.getAttribute('src')) continue;
       const url = view.portraits.get(el.dataset.key, false);
-      if (url) el.querySelector('img').src = url;
+      if (url) img.src = url;
     }
     view.portraits.flush();
   }, 30);

@@ -21,6 +21,7 @@ import {
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 const _v = new THREE.Vector3(), _dir = new THREE.Vector3();
 const FWD = new THREE.Vector3(0, 0, 1), UP = new THREE.Vector3(0, 1, 0);
+const _aColor = new THREE.Color();
 const smooth = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
 // how big a giant or boss is drawn (the slimes a Sewer Slime splits into get smaller each time)
 const BOSS_SCALE = { warlord: 1.85, baron: 2.0, king: 2.1, slime: 1.95, mole: 1.75, buzzard: 1.3 };
@@ -54,6 +55,52 @@ function discTexture(fill, size = 64) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+// A glowing ring for the auras under special rats: a bright rim fading into a soft inner glow.
+function auraTexture(size = 128) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const x = c.getContext('2d'), h = size / 2;
+  const g = x.createRadialGradient(h, h, 0, h, h, h);
+  g.addColorStop(0, 'rgba(255,255,255,0.10)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.22)');
+  g.addColorStop(0.8, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.88, 'rgba(255,255,255,0.75)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// A magic circle for giants and bosses: two rims with rune ticks between them and a star inside.
+function runeTexture(size = 256) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const x = c.getContext('2d'), h = size / 2;
+  x.strokeStyle = 'rgba(255,255,255,0.95)'; x.lineCap = 'round';
+  x.lineWidth = size * 0.022; x.beginPath(); x.arc(h, h, h * 0.92, 0, Math.PI * 2); x.stroke();
+  x.lineWidth = size * 0.012; x.beginPath(); x.arc(h, h, h * 0.74, 0, Math.PI * 2); x.stroke();
+  x.lineWidth = size * 0.02;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2, r0 = h * (i % 3 ? 0.78 : 0.76), r1 = h * (i % 3 ? 0.86 : 0.89);
+    x.beginPath(); x.moveTo(h + Math.cos(a) * r0, h + Math.sin(a) * r0); x.lineTo(h + Math.cos(a) * r1, h + Math.sin(a) * r1); x.stroke();
+  }
+  x.lineWidth = size * 0.01; x.globalAlpha = 0.55; x.beginPath();
+  for (let i = 0; i <= 5; i++) { const a = (i * 2 / 5) * Math.PI * 2 - Math.PI / 2; const px = h + Math.cos(a) * h * 0.7, py = h + Math.sin(a) * h * 0.7; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+  x.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// Aura colours and sizes (across, in rat lengths) for each kind of rat; plain rats and ratlings have none.
+// pulse: how fast it breathes. Giants and bosses get a magic circle as well.
+const RAT_AURA = {
+  1: { color: 0xffb02e, size: 1.35, pulse: 7 },     // fast rat: amber
+  2: { color: 0x7fb4ff, size: 1.55, pulse: 3 },     // armored rat: steel blue
+  3: { color: 0xffd24a, size: 1.55, pulse: 3 },     // shield rat (while it has its shield): gold
+  4: { color: 0x5dff7a, size: 0, pulse: 4 },        // healer: green, as wide as its healing reach
+  5: { color: 0xc77dff, size: 1.75, pulse: 2.5 },   // brood rat: purple
+  7: { color: 0xff3a1a, size: 1.6, pulse: 11 },     // bomb rat: flickering red
+  8: { color: 0xb04aff, size: 1.45, pulse: 5 },     // ninja: violet
+  9: { color: 0xff8a24, size: 1.45, pulse: 6 },     // jetpack: orange, flaring as it boosts
+};
+const BOSS_AURA = { giant: 0xff5a3a, warlord: 0xff4020, baron: 0x7fb8ff, king: 0xffd23a, slime: 0x6dff4a, mole: 0xffc04a, buzzard: 0x9ad8ff };
 
 export class View {
   // renderer: an existing renderer to draw with (a new map reuses the old one)
@@ -187,6 +234,16 @@ export class View {
     this.blobMesh.frustumCulled = false;
     this.blobMesh.count = 0;
     scene.add(this.blobMesh);
+    // auras: a glowing ring under every special rat, a magic circle under giants and bosses
+    const auraGeo = new THREE.PlaneGeometry(1, 1); auraGeo.rotateX(-Math.PI / 2);
+    this.auraMax = this.quality === 'low' ? 220 : 700;
+    this.auraMesh = new THREE.InstancedMesh(auraGeo, new THREE.MeshBasicMaterial({ map: auraTexture(), transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), this.auraMax + 40);
+    this.runeMesh = new THREE.InstancedMesh(auraGeo, new THREE.MeshBasicMaterial({ map: runeTexture(), transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 }), 40);
+    for (const m of [this.auraMesh, this.runeMesh]) {
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.count = 0; m.renderOrder = 1;
+      m.setColorAt(0, new THREE.Color(0xffffff));
+      scene.add(m);
+    }
     // ---- coins
     this.coinMesh = new THREE.InstancedMesh(coinGeometry(), toon({ emissive: 0x6a4400 }), CFG.coin.max + 10);
     this.coinMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1065,8 +1122,10 @@ export class View {
     // ---- grunts + blobs + giants
     const bm = this.blobMesh, im = this.iceMesh, RM = this.ratMeshes, RA = this.ratAnims;
     const rn = this._rn || (this._rn = new Int32Array(RM.length)); rn.fill(0);
-    let bn = 0, icn = 0, dzn = 0;
-    const dzm = this.dizzyMesh;
+    let bn = 0, icn = 0, dzn = 0, an = 0, rnn = 0;
+    const dzm = this.dizzyMesh, am = this.auraMesh, runes = this.runeMesh, aMax = this.auraMax;
+    const ac = _aColor;
+    this.moteBudget = Math.min(6, (this.moteBudget || 0) + dt * 24);
     this.pokeBudget = Math.min(6, this.pokeBudget + dt * 60);
     this.jetBudget = Math.min(6, (this.jetBudget || 0) + dt * 40);
     this.sparkBudget = Math.min(3, this.sparkBudget + dt * 10);
@@ -1153,6 +1212,20 @@ export class View {
           }
         }
         if (em > 0.3) { _p.set(ex, gy + 0.06, ez); _s.set(0.85 * k, 1, 1.6 * k); _q.setFromAxisAngle(UP, e.yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
+        // its aura: a glowing ring that breathes (dim while frozen or stunned)
+        const AU = vt === SHIELDLESS ? null : RAT_AURA[e.v || 0];
+        if (AU && em > 0.5 && an < aMax) {
+          const breathe = Math.sin(t * AU.pulse + e.phase * 3);
+          let size = (AU.size || CFG.ratTypes[4].heal.r * 2 / sc) * sc * (1 + 0.1 * breathe), glow = 0.75 + 0.25 * breathe;
+          if (trick === 1 || (e.v === JET && e.boost > 0)) { size *= 1.5; glow = 1.25; }       // the jetpack flares
+          if (e.v === 4 && e.healed > 0) glow = 1.3;
+          if (e.frozen > 0 || e.stun > 0) glow *= 0.35;
+          _p.set(ex, gy + 0.08, ez); _s.set(size, 1, size); _q.setFromAxisAngle(UP, t * 0.6 + e.phase);
+          _m.compose(_p, _q, _s); am.setMatrixAt(an, _m);
+          am.setColorAt(an++, ac.setHex(AU.color).multiplyScalar(glow));
+          // a healer's aura gives off little green sparkles
+          if (e.v === 4 && this.moteBudget >= 1 && Math.random() < 0.06) { this.moteBudget--; this.fx.twinkle(ex + (Math.random() - 0.5) * 2, y + 0.5 + Math.random() * 0.8, ez + (Math.random() - 0.5) * 2, 0.35, 0x8dffa0); }
+        }
       } else {
         seen.add(e.id);
         let v = this.giantViews.get(e.id);
@@ -1214,6 +1287,26 @@ export class View {
           if (style === 'slime') { _p.set(e.x, ggy + 0.75 * sc, e.z); _s.set(3.4 * sc, 2.4 * sc, 3.4 * sc); }
           else { _p.set(e.x, ggy + 1.35 * sc, e.z); _s.set(1.6 * sc, 2.4 * sc, 1.6 * sc); }
           _m.compose(_p, _q.setFromAxisAngle(UP, e.yaw), _s); im.setMatrixAt(icn++, _m);
+        }
+        // giants and bosses: a glowing ring, a slowly turning magic circle, sparkles
+        // rising round them and, every few seconds, a pulse of power
+        if (em > 0.3 && !e.under && rnn < 40 && an < aMax + 40) {
+          const col = BOSS_AURA[style || 'giant'] || BOSS_AURA.giant, boss = e.type === T_BOSS;
+          const breathe = Math.sin(t * 2.4 + e.phase), dim = e.frozen > 0 || e.stun > 0 ? 0.35 : 1;
+          const R = (style === 'slime' ? 3.6 : style === 'buzzard' ? 3.4 : boss ? 4.4 : 3.6) * sc;
+          _p.set(e.x, ggy + 0.08, e.z); _s.set(R * (1 + 0.06 * breathe), 1, R * (1 + 0.06 * breathe)); _q.identity();
+          _m.compose(_p, _q, _s); am.setMatrixAt(an, _m); am.setColorAt(an++, ac.setHex(col).multiplyScalar((0.85 + 0.25 * breathe) * dim));
+          _p.y = ggy + 0.1; _s.set(R * 0.92, 1, R * 0.92); _q.setFromAxisAngle(UP, t * (boss ? 0.5 : 0.3) * (e.id % 2 ? 1 : -1));
+          _m.compose(_p, _q, _s); runes.setMatrixAt(rnn, _m); runes.setColorAt(rnn++, ac.setHex(col).multiplyScalar((boss ? 1.1 : 0.7) * dim));
+          if (this.moteBudget >= 1 && Math.random() < (boss ? 0.5 : 0.15)) {
+            this.moteBudget--;
+            const a = Math.random() * Math.PI * 2, r = R * 0.45 * Math.sqrt(Math.random());
+            this.fx.twinkle(e.x + Math.cos(a) * r, ggy + 0.4 + Math.random() * 2.6 * sc + (style === 'buzzard' ? e.fly : 0), e.z + Math.sin(a) * r, boss ? 0.55 : 0.4, col);
+          }
+          if (boss && dim === 1) {
+            v.pulseT = (v.pulseT ?? 1.5 + Math.random()) - dt;
+            if (v.pulseT <= 0) { v.pulseT = 3.2; this._lift(e.x, e.z).ring(e.x, 0, e.z, R * 0.55, col, 0.9); this.fx.lift = 0; }
+          }
         }
         if (em > 0.3 && !e.under) {
           // a flier's shadow shrinks the higher it flies
@@ -1288,6 +1381,8 @@ export class View {
       RA[i].needsUpdate = true;
     }
     im.count = icn; im.instanceMatrix.needsUpdate = true;
+    am.count = an; am.instanceMatrix.needsUpdate = true; if (am.instanceColor) am.instanceColor.needsUpdate = true;
+    runes.count = rnn; runes.instanceMatrix.needsUpdate = true; if (runes.instanceColor) runes.instanceColor.needsUpdate = true;
     dzm.count = dzn; dzm.instanceMatrix.needsUpdate = true;
     // ---- hero
     const h = sim.hero, hv = this.hero;

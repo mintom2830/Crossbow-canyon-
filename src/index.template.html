@@ -406,7 +406,7 @@ select { border: 2.5px solid var(--ink); }
 /* the New enemy card: tap it anywhere to close it; on phones it keeps only
    the name and how to beat it (the Rat guide has the rest) */
 .ecard { width: min(320px, calc(100vw - 24px)); grid-template-columns: 64px 1fr; gap: 9px; padding: 8px 28px 9px 8px; cursor: pointer; }
-.ecard img { width: 64px; height: 64px; }
+.ecard img { width: 64px; height: 64px; object-fit: contain; animation: float 2.6s ease-in-out infinite; }
 .ecard b { font-size: 19px; }
 .ecard p { font-size: 12px; }
 @media (max-width: 640px) {
@@ -586,6 +586,54 @@ select { border: 2.5px solid var(--ink); }
 .shop-item .btn .gem { width: 20px; height: 20px; }
 .shop-item .swatch { display: flex; gap: 3px; }
 .shop-item .swatch i { width: 18px; height: 10px; border-radius: 3px; border: 1.5px solid var(--ink); }
+
+/* ================= Rat Bestiary (the Rat guide) =================
+   Dark cards in gold frames, a painted portrait floating in its own aura,
+   stats with icons, ability badges and how to beat it. */
+.guide-screen { padding: 12px; background: radial-gradient(ellipse at 50% 30%, rgba(40, 22, 14, 0.55), rgba(16, 9, 6, 0.85)); }
+.bestiary { margin: 0 auto; width: min(100%, 1240px); display: flex; flex-direction: column; gap: 12px; color: #fff; }
+.best-head { text-align: center; }
+.guide-screen .best-head h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(34px, 7vw, 54px); line-height: 1.05; color: #ffd33a; text-shadow: var(--ink-text-lg), 0 6px 0 #3a1406, 0 0 22px rgba(255, 170, 40, 0.55); }
+.best-head p { display: inline-block; margin: 6px 0 0; font-family: var(--font-display); font-size: 15px; color: #3a1406; background: linear-gradient(#fff3c0, #f2c45a); border: 2.5px solid #3a1406; border-radius: 999px; padding: 2px 14px; }
+.guide-screen .guide-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; text-align: left; }
+.guide-screen .guide-entry { display: flex; flex-direction: column; gap: 6px; position: relative; padding: 9px 11px 11px; color: #f4e6d0; border-radius: 16px; border: 3px solid #e7a73a;
+  background: radial-gradient(ellipse at 30% 20%, rgba(255, 210, 120, 0.08), transparent 60%), linear-gradient(#2c211c, #17110e);
+  box-shadow: inset 0 0 0 2px #5a3a14, inset 0 0 18px rgba(255, 180, 60, 0.18), 0 4px 0 #120b08, 0 8px 18px rgba(0, 0, 0, 0.45); }
+.guide-screen .guide-entry.boss { border-color: #ffcf4a; box-shadow: inset 0 0 0 2px #7a4a10, inset 0 0 26px rgba(255, 120, 60, 0.28), 0 4px 0 #120b08, 0 8px 22px rgba(0, 0, 0, 0.5); }
+.ge-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.guide-screen .guide-entry h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 22px; line-height: 1.05; color: #fff; text-shadow: var(--ink-text); display: block; }
+.ge-pill { font-family: var(--font-display); font-size: 12px; color: #3a1406; background: linear-gradient(#fff3c0, #f2c45a); border: 2px solid #3a1406; border-radius: 999px; padding: 0 8px; white-space: nowrap; }
+.ge-pill.wave { margin-left: auto; }
+.ge-mid { display: grid; grid-template-columns: 118px 1fr; gap: 8px; align-items: center; }
+.ge-art { position: relative; width: 118px; height: 108px; display: grid; place-items: center; }
+.ge-art::before { content: ''; position: absolute; inset: 2px 0 0; border-radius: 50%; background: radial-gradient(circle, var(--aura) 0%, transparent 70%); opacity: 0.6; animation: aura 2.6s ease-in-out infinite; }
+.guide-entry.boss .ge-art::after { content: ''; position: absolute; inset: 0 2px; border-radius: 50%; border: 2px dashed var(--aura); opacity: 0.7; animation: spin 9s linear infinite; }
+.guide-screen .ge-art img { background: none; border: 0; border-radius: 0; }
+.ge-art img { position: relative; z-index: 1; width: 112px; height: 112px; object-fit: contain; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.6)); animation: float 2.6s ease-in-out infinite; }
+@keyframes aura { 0%, 100% { transform: scale(0.88); opacity: 0.4; } 50% { transform: scale(1.08); opacity: 0.75; } }
+@keyframes float { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-4px); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ge-stats { display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 800; }
+.ge-stats span { display: flex; align-items: center; gap: 5px; color: #e8d8c0; }
+.ge-stats b { color: #fff; font-weight: 900; }
+.ge-stats svg { width: 15px; height: 15px; flex: none; }
+.guide-screen .guide-entry p { margin: 0 !important; font-size: 12.5px !important; line-height: 1.35 !important; color: #e8dccb !important; }
+.ge-abil { display: flex; flex-wrap: wrap; gap: 5px; }
+.ge-abil span { font-size: 11.5px; font-weight: 900; color: #fff; background: rgba(0, 0, 0, 0.35); border: 1.5px solid #c98a2a; border-radius: 8px; padding: 1px 7px; box-shadow: inset 0 0 8px rgba(255, 180, 60, 0.18); }
+.ge-abil span::before { content: '✦ '; color: var(--aura); }
+.guide-screen .guide-entry .counter { display: grid; grid-template-columns: 22px 1fr; gap: 6px; align-items: start; color: #d8f6c8 !important; }
+.guide-screen .guide-entry .counter em { font-style: normal; font-weight: 900; color: #ffd23a; display: block; }
+.ge-target { width: 22px; height: 22px; }
+/* the Quick Counter Guide: a parchment card */
+.guide-screen .guide-entry.quick { background: linear-gradient(#fbecc4, #efd093); color: #3a1406; border-color: #e7a73a; }
+.guide-entry.quick h3 { text-align: center; }
+.qc-row { display: grid; grid-template-columns: 26px 1fr; gap: 7px; align-items: center; padding: 4px 0; border-bottom: 1.5px dashed rgba(90, 50, 20, 0.35); font-size: 12.5px; font-weight: 800; line-height: 1.25; }
+.qc-row:last-child { border-bottom: 0; }
+.qc-row svg { width: 24px; height: 24px; }
+.qc-row b { color: #8a2a10; }
+.qc-row small { display: block; font-weight: 700; color: #7a5030; font-size: 11px; }
+.best-back { align-self: center; min-width: 200px; }
+@media (prefers-reduced-motion: reduce) { .ge-art::before, .ge-art::after, .ge-art img { animation: none; } }
 </style>
 
 <div id="app">
@@ -804,13 +852,17 @@ select { border: 2.5px solid var(--ink); }
 
   <!-- Pause -->
   <!-- Rat guide -->
-  <div id="guideScreen" class="screen" hidden>
-    <div class="tablet wide"><div class="tablet-inner">
-      <h2>Rat guide</h2>
-      <p class="note">Every enemy needs a different plan. Here is what each one does and how to beat it.</p>
+  <!-- painted portraits of every enemy (Meshy, from the bestiary design): used by the Rat guide and the New enemy card -->
+  <script type="application/json" id="ratArt">{"rat:0":"__ASSET(rat-art-rat-0.webp)__","rat:1":"__ASSET(rat-art-rat-1.webp)__","rat:2":"__ASSET(rat-art-rat-2.webp)__","rat:3":"__ASSET(rat-art-rat-3.webp)__","rat:4":"__ASSET(rat-art-rat-4.webp)__","rat:5":"__ASSET(rat-art-rat-5.webp)__","rat:6":"__ASSET(rat-art-rat-6.webp)__","rat:7":"__ASSET(rat-art-rat-7.webp)__","rat:8":"__ASSET(rat-art-rat-8.webp)__","rat:9":"__ASSET(rat-art-rat-9.webp)__","giant":"__ASSET(rat-art-giant.webp)__","boss:warlord":"__ASSET(rat-art-boss-warlord.webp)__","boss:slime":"__ASSET(rat-art-boss-slime.webp)__","boss:baron":"__ASSET(rat-art-boss-baron.webp)__","boss:mole":"__ASSET(rat-art-boss-mole.webp)__","boss:buzzard":"__ASSET(rat-art-boss-buzzard.webp)__","boss:king":"__ASSET(rat-art-boss-king.webp)__"}</script>
+  <div id="guideScreen" class="screen guide-screen" hidden>
+    <div class="bestiary">
+      <header class="best-head">
+        <h2>Rat Bestiary</h2>
+        <p>All enemies · stats · abilities · how to beat them</p>
+      </header>
       <div id="guideList" class="guide-list"></div>
-      <button class="btn" type="button" data-back>Back</button>
-    </div></div>
+      <button class="btn best-back" type="button" data-back>Back</button>
+    </div>
   </div>
 
   <div id="pauseScreen" class="screen" hidden>
