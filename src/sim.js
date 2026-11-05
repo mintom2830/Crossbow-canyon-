@@ -21,19 +21,13 @@ const arsMuzzle = (t) => 1.75 + t.level * 0.08;
 const extraBuf = [];
 const AIR = CFG.airborne;   // flying higher than this: out of reach of blasts and ground effects
 // where an arrow strikes an enemy (gy: the ground under it, on a hill)
-const hitY = (e) => e.gy + (e.hy || 0) + (e.fly > 0 ? e.fly + 0.9 : e.type === T_GRUNT ? 0.55 : e.type === T_GIANT ? 1.6 : 2.2);
+const hitY = (e) => e.gy + (e.fly > 0 ? e.fly + 0.9 : e.type === T_GRUNT ? 0.55 : e.type === T_GIANT ? 1.6 : 2.2);
 // the ground under a point of the road (0 on a map without hills)
 const roadY = (x, z) => (CFG.hills.length ? hillHeight(x, z) : 0);
 // standing still for a moment (aim straight at it, no lead)
 const holding = (e) => e.atGate || e.stun > 0 || e.held > 0 || e.fall > 0 || e.dig === 1 || e.dig === 3;
 
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
-
-// ---- enemy physics (see _crowd, _kick and _steer)
-const GRAVITY = 22;          // thrown rats fall back down (m/s²)
-const KNOCK_DRAG = 6;        // a thrown rat slides to a stop: velocity falls by e^(-6t), so a kick of v travels v/6
-const CROWD_SQUASH = 0.55;   // rats are long: along the road two of them need ~1/0.55 times the room they need side by side
-const CROWD_ROOM = 0.65;     // how much of their radius rats keep clear of each other (a crowd still packs in tight)
 function angDiff(a, b) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
 
 // Where each slot's upgrade pad sits (beside the tower, on solid ground).
@@ -388,14 +382,6 @@ export class Sim {
       // mole tunnelling (dig, digT, under), buzzard flight (fly, dropT), rats falling from it (fall)
       kind: null, boss: null, tier: 0, root: 0, rootHp: 0, dig: 0, digT: 0, under: false,
       fly: 0, dropT: 0, fall: 0, fallT: 0, fallH: 0, born: 0,
-      // physics: speed along the road (vs; vm: how much of its pace it has built up after a
-      // stop), how fast it is moving across the road (latV), a kick from a blast (kv along the road,
-      // kl across it, drag slows it), height in the air (hy, vy, falling back under gravity),
-      // a tumble while thrown (spin, spinV), distance walked (walk, for the stride) and how
-      // far it leans into a turn (bank). px/pz/pyaw/pwalk/phy: last step's values, so the
-      // view can draw in between steps
-      vs: speed, vm: 1, latV: 0, kv: 0, kl: 0, hy: 0, vy: 0, spin: 0, spinV: 0, walk: 0, bank: 0,
-      tx: 0, tz: 1, nx: 1, nz: 0, aimed: false,
     };
     if (kind.shieldMul) e.shield = e.shieldMax = hp * kind.shieldMul;      // shield rats
     if (kind.heal) e.healT = this.rng() * kind.heal.every;
@@ -639,126 +625,23 @@ export class Sim {
   }
 
   // ------------------------------------------------------------- enemies
-  _placeEnemy(e, dt = 0) {
+  _placeEnemy(e) {
     road.sample(e.s, tmp);
     e.x = tmp.x + tmp.nx * e.lat;
     e.z = tmp.z + tmp.nz * e.lat;
-    e.tx = tmp.tx; e.tz = tmp.tz; e.nx = tmp.nx; e.nz = tmp.nz;
+    e.yaw = Math.atan2(tmp.tx, tmp.tz);
     e.gy = roadY(e.x, e.z);
-    if (!e.aimed) { e.aimed = true; e.yaw = Math.atan2(tmp.tx, tmp.tz); }
-    if (dt > 0) this._steer(e, dt);
-  }
-
-  // Turns an enemy smoothly toward where it is really going (down the road, plus
-  // any sidestep round the crowd), and leans it into the turn. A rat thrown back
-  // keeps facing the town; one held still keeps its heading.
-  _steer(e, dt) {
-    e.latV += ((e.lat - e.plat) / dt - e.latV) * Math.min(1, 10 * dt);
-    if (e.under || e.stun > 0 || e.held > 0 || e.fall > 0 || e.frozen > 0) { e.bank *= 0.9; return; }
-    const fwd = e.atGate ? 1 : Math.max(e.vs, e.speed * 0.35);
-    const side = e.atGate ? 0 : clamp(e.latV, -1.5 * fwd, 1.5 * fwd);
-    const want = Math.atan2(e.tx * fwd + e.nx * side, e.tz * fwd + e.nz * side);
-    const d = angDiff(e.yaw, want), turn = (e.type === T_GRUNT ? 7 : 2.4) * dt;
-    const step = Math.abs(d) <= turn ? d : Math.sign(d) * turn;
-    e.yaw += step;
-    e.bank += (clamp((step / dt) * Math.min(1.5, e.vs / 2.5), -3, 3) - e.bank) * Math.min(1, 6 * dt);
-  }
-
-  // A blast kicks an enemy: back down the road by about dist (sliding to a stop),
-  // a little away from the blast across the road, and up into the air; a big kick
-  // turns it head over heels.
-  _kick(e, dist, fromX, fromZ) {
-    if (dist <= 0) return;
-    e.kv -= dist * KNOCK_DRAG;
-    const dx = e.x - fromX, dz = e.z - fromZ, d = Math.hypot(dx, dz);
-    if (d > 0.05) e.kl += ((dx * e.nx + dz * e.nz) / d) * dist * KNOCK_DRAG * 0.35;
-    const up = Math.min(7.5, 2.2 + dist * 2.6);
-    if (up > e.vy) {
-      const air = (2 * up) / GRAVITY;
-      e.vy = up; e.hy = Math.max(e.hy, 0.01);
-      e.spin = 0; e.spinV = dist > 1.1 ? (-Math.PI * 2) / air : 0;
-    }
-  }
-
-  // Momentum: a kick slides the enemy along until drag stops it; thrown into the
-  // air it falls back under gravity and lands with a thump.
-  _kickPhysics(e, dt) {
-    if (e.kv !== 0 || e.kl !== 0) {
-      e.s = Math.max(0, e.s + e.kv * dt);
-      const U = this._laneLimit(e);
-      e.lat = clamp(e.lat + e.kl * dt, -U, U);
-      const f = Math.exp(-KNOCK_DRAG * dt);
-      e.kv *= f; e.kl *= f;
-      if (Math.abs(e.kv) < 0.04 && Math.abs(e.kl) < 0.04) e.kv = e.kl = 0;
-      if (e.atGate && e.s < e.gateS - 0.05) e.atGate = false;
-    }
-    if (e.hy > 0) {
-      e.vy -= GRAVITY * dt; e.hy += e.vy * dt; e.spin += e.spinV * dt;
-      if (e.hy <= 0) {
-        if (e.vy < -3) this.events.push({ type: 'land', id: e.id, x: e.x, z: e.z, v: -e.vy });
-        e.hy = 0; e.vy = 0; e.spin = 0; e.spinV = 0;
-      }
-    }
-  }
-
-  // how far from the middle of the road an enemy's centre may go
-  _laneLimit(e) { return e.type === T_GRUNT ? CFG.roadHalfWidth - 0.4 : Math.max(0.3, CFG.roadHalfWidth - e.radius); }
-
-  // The crowd: enemies push each other apart instead of walking through each other.
-  // Pairs that overlap are pushed sideways across the road (heavier ones barely move:
-  // a giant shoulders rats aside); one squeezed against the edge of the road has to
-  // slow down and fall in behind. Rats attacking the gate hold their ground. Enemies
-  // are bucketed by road distance so each one only checks its neighbours.
-  _crowd(dt) {
-    const es = this.enemies, n = es.length;
-    const NB = Math.ceil(road.length) + 8;
-    if (!this._cb || this._cb.length < NB + 1) { this._cb = new Int32Array(NB + 1); this._cbFill = new Int32Array(NB + 1); }
-    if (!this._co || this._co.length < n) this._co = new Int32Array(Math.max(64, n * 2));
-    const start = this._cb, fill = this._cbFill, order = this._co;
-    start.fill(0);
-    const bucket = (e) => (!e.alive || e.under || e.fly > AIR || e.fall > 0 || e.hy > 0.35) ? -1 : clamp(Math.floor(e.s), 0, NB - 1);
-    for (let i = 0; i < n; i++) { const b = bucket(es[i]); es[i]._b = b; if (b >= 0) start[b + 1]++; }
-    for (let b = 0; b < NB; b++) start[b + 1] += start[b];
-    fill.set(start);
-    for (let i = 0; i < n; i++) { const b = es[i]._b; if (b >= 0) order[fill[b]++] = i; }
-    const k = Math.min(1, 9 * dt);   // soft: overlaps melt away over a few frames
-    for (let b = 0; b < NB; b++) {
-      for (let oi = start[b]; oi < start[b + 1]; oi++) {
-        const a = es[order[oi]];
-        const reach = Math.min(NB - 1, b + 1 + Math.ceil((a.radius + 1.6) * CROWD_ROOM / CROWD_SQUASH));
-        for (let oj = oi + 1; oj < start[reach + 1]; oj++) {
-          const c = es[order[oj]];
-          const R = (a.radius + c.radius) * CROWD_ROOM;
-          const ds = (c.s - a.s) * CROWD_SQUASH, dl = c.lat - a.lat;
-          if (ds >= R || ds <= -R || dl >= R || dl <= -R) continue;
-          const q = ds * ds + dl * dl;
-          if (q >= R * R) continue;
-          if (a.atGate && c.atGate) continue;
-          // the sideways gap that clears them, shared by weight (rats attacking the gate don't budge)
-          const need = Math.sqrt(R * R - ds * ds) - Math.abs(dl);
-          const dir = dl > 0 ? 1 : dl < 0 ? -1 : ((a.id + c.id) & 1 ? 1 : -1);
-          const ma = a.atGate ? 1e6 : a.radius * a.radius * (a.type === T_GRUNT ? 1 : 4);
-          const mc = c.atGate ? 1e6 : c.radius * c.radius * (c.type === T_GRUNT ? 1 : 4);
-          const wa = mc / (ma + mc), wc = ma / (ma + mc);
-          const Ua = this._laneLimit(a), Uc = this._laneLimit(c);
-          const la = clamp(a.lat - dir * need * k * wa, -Ua, Ua), lc = clamp(c.lat + dir * need * k * wc, -Uc, Uc);
-          // pinned against the edge of the road: the one behind gives way and slows
-          const stuck = (la === a.lat && wa > 0.01 && Math.abs(a.lat) >= Ua - 0.01) || (lc === c.lat && wc > 0.01 && Math.abs(c.lat) >= Uc - 0.01);
-          a.lat = la; c.lat = lc;
-          if (stuck) {
-            const back = a.s < c.s ? a : c, front = back === a ? c : a;
-            if (!back.atGate && front.type !== T_GRUNT) back.s -= back.speed * dt * 0.6;
-          }
-        }
-      }
-    }
   }
 
   _updateEnemies(dt) {
     const f = this.fortress;
-    // last step's pose, so the view can draw smoothly in between steps
-    for (const e of this.enemies) { e.px = e.x; e.pz = e.z; e.pyaw = e.yaw; e.pwalk = e.walk; e.phy = e.hy; e.plat = e.lat; }
-    this._crowd(dt);
+    const usable = CFG.roadHalfWidth - 0.4;
+    // giants shoulder grunts aside so the crowd flows around them
+    const giants = [];
+    for (const e of this.enemies) if (e.type !== T_GRUNT && e.alive && !e.under && !(e.fly > AIR)) giants.push(e);
+    // for drawing only (nothing here changes how enemies move): last step's place, so the
+    // view can draw in between steps; vs: how fast it is walking now; walk: how far along
+    for (const e of this.enemies) { e.px = e.x; e.pz = e.z; e.pyaw = e.yaw; e.pwalk = e.s; e.vs = 0; }
     for (const e of this.enemies) {
       if (!e.alive) continue;
       if (e.healed > 0) e.healed -= dt;
@@ -777,30 +660,26 @@ export class Sim {
         if (this._dot(e, e.burnDps * dt)) continue;
         if (e.burn <= 0) e.burnDps = 0;
       }
-      this._kickPhysics(e, dt);
       if (e.fall > 0) {            // dropped by the buzzard: still falling
         e.fall -= dt;
         e.flash = Math.max(0, e.flash - dt);
-        e.vs = 0; e.vm = 0;
-        this._placeEnemy(e, dt);
+        this._placeEnemy(e);
         continue;
       }
       if (e.stun > 0) {            // stunned: no walking, no attacking
         e.stun -= dt;
         e.flash = Math.max(0, e.flash - dt);
-        e.vs *= 0.8; e.vm *= 0.8;  // skids to a stop
-        this._placeEnemy(e, dt);
+        this._placeEnemy(e);
         continue;
       }
       if (e.held > 0) {            // held back by a Summoner's rat soldier
         e.held -= dt;
         e.flash = Math.max(0, e.flash - dt);
-        e.vs *= 0.8; e.vm *= 0.8;
-        this._placeEnemy(e, dt);
+        this._placeEnemy(e);
         continue;
       }
       if (e.kind) {
-        if (e.kind.dig && this._updateMole(e, dt)) { e.flash = Math.max(0, e.flash - dt); this._placeEnemy(e, dt); continue; }
+        if (e.kind.dig && this._updateMole(e, dt)) { e.flash = Math.max(0, e.flash - dt); this._placeEnemy(e); continue; }
         if (e.kind.fly) this._updateFlier(e, dt);
       }
       if (!e.atGate) {
@@ -815,15 +694,23 @@ export class Sim {
             this.events.push({ type: 'jet', x: e.x, z: e.z, id: e.id });
           }
         }
-        // a jetpack surges in and fades out (vm: how much of its pace it has built up);
-        // other rats are back to full pace the moment they can walk again
-        if (e.v === JET && e.type === T_GRUNT) { const acc = 14 * dt; e.vm = e.vm < jet ? Math.min(jet, e.vm + acc) : Math.max(jet, e.vm - acc); }
-        else e.vm = 1;
-        e.vs = e.speed * (e.slow > 0 ? e.slowMul : 1) * e.vm;
+        e.vs = e.speed * (e.slow > 0 ? e.slowMul : 1) * jet;
         e.s += e.vs * dt;
-        e.walk += e.vs * dt + Math.abs(e.lat - e.plat) * 0.6;
+        if (e.type === T_GRUNT && giants.length) {
+          for (const g of giants) {
+            const ds = e.s - g.s; const R = g.radius + 0.35;
+            if (ds > -R && ds < R) {
+              const dl = e.lat - g.lat;
+              if (dl > -R && dl < R) {
+                const dir = dl === 0 ? (e.id & 1 ? 1 : -1) : Math.sign(dl);
+                e.lat = clamp(e.lat + dir * 3.2 * dt, -usable, usable);
+                if (Math.abs(e.lat) >= usable - 0.01) e.s -= e.speed * dt * 0.6; // squeezed: slow down
+              }
+            }
+          }
+        }
         if (e.s >= e.gateS) {
-          e.s = e.gateS; e.atGate = true; e.vs = 0; e.vm = 0;
+          e.s = e.gateS; e.atGate = true;
           e.attackT = this.rng() * 0.8;
         }
       } else if (this.state === 'wave') {
@@ -848,7 +735,7 @@ export class Sim {
         }
       }
       e.flash = Math.max(0, e.flash - dt);
-      this._placeEnemy(e, dt);
+      this._placeEnemy(e);
     }
   }
 
@@ -899,10 +786,7 @@ export class Sim {
       const n = e.kind && e.kind.coins != null ? e.kind.coins : giantCoins(e.maxHp, e.type === T_BOSS);
       for (let i = 0; i < n; i++) this._dropCoin(e.x, e.z, gy + 1.2 + e.fly, 1, e.type === T_BOSS ? 6 : 4.5);
     }
-    // its momentum carries the body on: walking pace plus any kick, and any height it was thrown to
-    const fw = (e.atGate || e.stun > 0 ? 0 : e.vs) + e.kv;
-    this.events.push({ type: 'death', x: e.x, z: e.z, kind: e.type, v: e.v, id: e.id, yaw: e.yaw, dir: e.id & 1 ? 1 : -1, sh: e.shield > 0, boss: e.boss, tier: e.tier, fly: e.fly,
-      vx: e.tx * fw + e.nx * (e.latV + e.kl), vz: e.tz * fw + e.nz * (e.latV + e.kl), vy: e.vy, hy: e.hy, gy: e.gy });
+    this.events.push({ type: 'death', x: e.x, z: e.z, kind: e.type, v: e.v, id: e.id, yaw: e.yaw, dir: e.id & 1 ? 1 : -1, sh: e.shield > 0, boss: e.boss, tier: e.tier, fly: e.fly });
     if (e.type === T_GRUNT && CFG.ratTypes[e.v].split) this._split(e, CFG.ratTypes[e.v].split);
     if (e.type === T_GRUNT && CFG.ratTypes[e.v].bomb) this._bombBlast(e);
     if (e.boss === 'slime' && e.tier < CFG.bosses.slime.split.tiers.length) this._slimeSplit(e);
@@ -1032,12 +916,12 @@ export class Sim {
   // Where to shoot so an arrow from (ox, oz) meets the enemy.
   _aimAt(e, ox, oz) {
     let ax = e.x, az = e.z;
-    if (!holding(e) || e.kv !== 0) {
+    if (!holding(e)) {
+      const sp = e.speed * (e.slow > 0 ? e.slowMul : 1);
       for (let it = 0; it < 2; it++) {
         const flight = Math.hypot(ax - ox, az - oz) / CFG.boltSpeed;
-        road.sample(this._futureS(e, flight), tmp2);
-        const lat = this._futureLat(e, flight);
-        ax = tmp2.x + tmp2.nx * lat; az = tmp2.z + tmp2.nz * lat;
+        road.sample(e.s + sp * flight, tmp2);
+        ax = tmp2.x + tmp2.nx * e.lat; az = tmp2.z + tmp2.nz * e.lat;
       }
     }
     aimOut.x = ax; aimOut.z = az;
@@ -1758,20 +1642,10 @@ export class Sim {
   // Where an enemy will be when a cannonball fired from (ox, oz) lands.
   _lead(e, ox, oz) {
     const flight = Math.hypot(e.x - ox, e.z - oz) / CFG.cannon.shellSpeed;
-    if (holding(e) && e.kv === 0) return { x: e.x, z: e.z, e };
-    road.sample(this._futureS(e, flight), tmp2);
-    const lat = this._futureLat(e, flight);
-    return { x: tmp2.x + tmp2.nx * lat, z: tmp2.z + tmp2.nz * lat, e };
-  }
-
-  // Where an enemy will be after t seconds: walking on at its pace, plus whatever
-  // is left of a kick (it slides to a stop under drag).
-  _futureS(e, t) {
-    const walk = holding(e) ? 0 : e.speed * (e.slow > 0 ? e.slowMul : 1);
-    return Math.max(0, e.s + walk * t + (e.kv ? (e.kv * (1 - Math.exp(-KNOCK_DRAG * t))) / KNOCK_DRAG : 0));
-  }
-  _futureLat(e, t) {
-    return e.kl ? e.lat + (e.kl * (1 - Math.exp(-KNOCK_DRAG * t))) / KNOCK_DRAG : e.lat;
+    if (holding(e)) return { x: e.x, z: e.z, e };
+    const sp = e.speed * (e.slow > 0 ? e.slowMul : 1);
+    road.sample(e.s + sp * flight, tmp2);
+    return { x: tmp2.x + tmp2.nx * e.lat, z: tmp2.z + tmp2.nz * e.lat, e };
   }
 
   // Picks the densest group among the front-most enemies in range.
@@ -1946,7 +1820,7 @@ export class Sim {
       else if (L.crack && !small) e.broken = Math.max(e.broken || 0, L.crack);   // Crystal Quake cracks armour
       if (e.type === T_GRUNT) {
         if (L.knock) {
-          this._kick(e, L.knock * (1 - d / R) * (nova ? 2 : 1) * CFG.ratTypes[e.v].knockMul, x, z);
+          e.s = Math.max(0, e.s - L.knock * (1 - d / R) * (nova ? 2 : 1) * CFG.ratTypes[e.v].knockMul);
           if (e.atGate) { e.atGate = false; e.s = Math.min(e.s, e.gateS - 0.6); }
         }
         if (L.stun) e.stun = Math.max(e.stun, L.stun * (1 - 0.5 * d / R));   // survivors are dazed, longest near the impact

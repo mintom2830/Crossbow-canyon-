@@ -118,45 +118,6 @@ function onRoad(sim, v, s, lat = 0, hp = 100) {
 }
 const quietSim = () => { const sim = new Sim({ seed: 5 }); sim.towers.length = 0; for (const sl of sim.slots) sl.tower = null; sim.state = 'wave'; sim.spawnQueue = []; sim.spawnIndex = 0; return sim; };
 
-test('physics: a crowd spreads out instead of stacking up; giants shoulder rats aside; a blast throws a rat back under gravity; enemies turn smoothly', () => {
-  const sim = quietSim();
-  // ten rats climbing out on the very same spot push each other apart across the road
-  const rats = [];
-  for (let i = 0; i < 10; i++) { const e = sim._makeEnemy(T_GRUNT, 0, 1e5, 0, 40, CFG.ratTypes[0]); sim._placeEnemy(e); sim.enemies.push(e); rats.push(e); }
-  let maxTurn = 0;
-  run(sim, 2, () => { for (const e of rats) if (e.pyaw !== undefined) maxTurn = Math.max(maxTurn, Math.abs(e.yaw - e.pyaw)); });
-  let stacked = 0;
-  for (let i = 0; i < rats.length; i++) for (let j = i + 1; j < rats.length; j++) {
-    const a = rats[i], b = rats[j];
-    if (Math.hypot((a.s - b.s) * 0.55, a.lat - b.lat) < (a.radius + b.radius) * 0.4) stacked++;
-  }
-  const lats = rats.map((e) => e.lat);
-  assert(stacked === 0, `${stacked} pairs of rats still on top of each other`);
-  assert(Math.max(...lats) - Math.min(...lats) > 1.5, 'the crowd did not spread across the road: ' + lats.map((l) => l.toFixed(2)));
-  assert(lats.every((l) => Math.abs(l) <= CFG.roadHalfWidth - 0.4 + 1e-9), 'a rat was pushed off the road');
-  // they turn toward where they are going, never snapping round
-  assert(maxTurn <= 7 / 60 + 1e-9, 'turned too fast in one step: ' + maxTurn);
-  // a giant walking into a rat shoulders it aside; the giant barely moves
-  const g = quietSim();
-  const giant = g._makeEnemy(T_GIANT, 0, 1e5, 0, 40, CFG.giant); g._placeEnemy(giant); g.enemies.push(giant);
-  const r = g._makeEnemy(T_GRUNT, 0, 1e5, 0.1, 40.3, CFG.ratTypes[0]); r.speed = 0; g._placeEnemy(r); g.enemies.push(r);
-  run(g, 0.6);
-  assert(Math.abs(r.lat - 0.1) > 0.4 && Math.abs(giant.lat) < 0.2, `giant ${giant.lat.toFixed(2)} rat ${r.lat.toFixed(2)}`);
-  // a blast throws a rat: back down the road and up into the air, head over heels; it falls
-  // back under gravity, lands with a thump and slides to a stop about where it was kicked to
-  const k = sim._makeEnemy(T_GRUNT, 0, 1e5, 0, 60, CFG.ratTypes[0]); k.speed = 0; sim._placeEnemy(k); sim.enemies.push(k);
-  sim._kick(k, 1.5, k.x, k.z);
-  assert(k.vy > 4 && k.spinV < 0 && k.kv < 0, 'not thrown: ' + JSON.stringify({ vy: k.vy, spin: k.spinV, kv: k.kv }));
-  let peak = 0, lands = 0, maxDrop = 0, prevVy = k.vy;
-  run(sim, 2, (s) => { peak = Math.max(peak, k.hy); maxDrop = Math.max(maxDrop, prevVy - k.vy); prevVy = k.vy; lands += s.events.filter((e) => e.type === 'land' && e.id === k.id).length; s.events.length = 0; });
-  assert(peak > 0.6 && peak < 2, 'flight height ' + peak);
-  assert(lands === 1 && k.hy === 0 && k.kv === 0 && k.spin === 0, 'did not land: ' + JSON.stringify({ lands, hy: k.hy, kv: k.kv }));
-  assert(Math.abs((60 - k.s) - 1.5) < 0.15, 'slid back ' + (60 - k.s).toFixed(2) + ' (kicked 1.5)');
-  // something about to be hit in the air is hit at its height
-  sim._kick(k, 1, k.x, k.z); run(sim, 0.1);
-  assert(k.hy > 0.2, 'not airborne');
-});
-
 test('shield rats: the shield soaks up arrows and stops piercing arrows; cannons and Crystal Storm get past it', () => {
   const sim = quietSim();
   const shield = onRoad(sim, SHIELD, 40, 0, 100), behind = onRoad(sim, 0, 38.9, 0, 100);
@@ -793,9 +754,8 @@ function cannonTrial(level, waveIndex = 5, seconds = 30, slots = [0, 1, 3], path
       if (e.stun > 0) out.stunned++;
       if (e.slow > 0) out.slowed++;
       if (e.broken > 0) out.broken++;
-      // a blast kicks a rat back down the road: it slides back (kv < 0) for a moment
-      const p = lastS.get(e.id); if (e.kv < -0.5 && !(p < -0.5)) out.knocked++;
-      lastS.set(e.id, e.kv);
+      const p = lastS.get(e.id); if (p !== undefined && e.s < p - 0.05) out.knocked++;
+      lastS.set(e.id, e.s);
     }
   });
   return out;
@@ -1446,10 +1406,8 @@ test('balance (Level 2 Hard): cannons win with 3 stars; crossbows alone barely h
   try {
     const c = runLevel('cannon+hard+blast+l2', 1); balance.l2hardc = c;
     assert(c.result === 'victory' && c.stars === 3, `cannons on Level 2 Hard: ${c.result} ${c.stars}`);
-    // one seed is a knife edge (a rat pushed a step aside can tip it), so judge three
-    const bs = [1, 2, 3].map((seed) => runLevel('bot+hard+l2', seed)), b = bs[0]; balance.l2hardb = b;
-    const avgStars = bs.reduce((a, q) => a + q.stars, 0) / bs.length;
-    assert(avgStars <= 1.5, `crossbows alone should only just hold Level 2 Hard: ${bs.map((q) => q.result + ' ' + q.stars).join(', ')} (average ${avgStars.toFixed(2)} stars)`);
+    const b = runLevel('bot+hard+l2', 1); balance.l2hardb = b;
+    assert(b.result === 'defeat' || b.stars === 1, `crossbows alone should only just hold Level 2 Hard: ${b.result} ${b.stars} stars`);
     const r = runLevel('bot+hard+repair+l2', 1); balance.l2hardr = r;
     assert(r.result === 'victory' && r.stars >= b.stars, `repairs should never hurt: ${r.result} ${r.stars}`);
   } finally { setLevel(1); }

@@ -12,18 +12,14 @@
 //   The hand-built rats have separate legs, tail and head (0: they swing whole);
 //   a Meshy rat is one skin, so its legs, tail and head bend smoothly out of the
 //   body (1 at the joint, falling to 0 at the foot, the tail tip, the snout).
-// iPhys (optional, per instance): secondary motion simulated on springs in the view:
-//   x, y  unused (0)      z  a squash when it thumps down from a throw
-//   w  the ears flopped back by that landing
-// aSub / aSubPivot (zeros on the hand-built rats): smaller parts inside the head
-// and tail, and where they turn:
-//   x  1 left ear, 2 right ear, 3 jaw (0 none)   y  how much it follows that part
-//   z  along the tail, 0 at the root to 1 at the tip (0: a rigid hand-built tail)
-//   w  the stiffness above
+// aSub / aSubPivot (zeros on the hand-built rats): the ears, jaw and tail inside the
+// head and tail, and where they would turn. Only aSub.w, the stiffness above, is
+// used: the ears and jaw stay still and the tail swings whole, as on the first rats.
 // aPivot.w (per model, see RAT_GAIT in models.js) is each kind of rat's own gait; it
-// is not used: every rat walks with the same simple step it had when the game began
-// (legs swinging in pairs, a little bob and sway, the tail wagging), and only its
-// fighting (rearing up to bite, flinching, being thrown, the death roll) has more.
+// is not used: every rat moves as it did when the game began: the same simple step
+// (legs swinging in pairs, a little bob and sway, the tail wagging), rearing up to
+// bite the gate, flinching when hit, the hop when a blast knocks it back (drawn in
+// view.js) and the death roll.
 // (The gait and the stiffness ride in spare components so the shader stays well
 // under the 16 vertex inputs many graphics cards allow: the instance matrix alone
 // takes four.)
@@ -33,9 +29,7 @@ export const RAT_POSE_GLSL = [
   "attribute float aPart;",
   "attribute vec4 aPivot;",
   "attribute vec4 iAnim;",
-  "attribute vec4 iPhys;",
   "attribute vec4 aSub;",
-  "attribute vec3 aSubPivot;",
   "uniform float uTime;",
   "varying float vFlash;",
   "mat3 rX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }",
@@ -61,9 +55,8 @@ export const RAT_POSE_GLSL = [
   "float a = sin(ph + off) * 0.8;",
   "if (attacking) {",
   "if (part <= 2) {",
-  "float ak = part == 2 ? fract(atk + 0.9) : atk;",
-  "float up = smoothstep(0.05, 0.5, ak) * (1.0 - smoothstep(0.58, 0.68, ak));",
-  "float rake = smoothstep(0.58, 0.68, ak) * (1.0 - smoothstep(0.75, 1.0, ak));",
+  "float up = smoothstep(0.05, 0.5, atk) * (1.0 - smoothstep(0.58, 0.68, atk));",
+  "float rake = smoothstep(0.58, 0.68, atk) * (1.0 - smoothstep(0.75, 1.0, atk));",
   "a = -1.5 * up + 0.5 * rake + (part == 1 ? 0.0 : 0.2) * up;",
   "} else a = 0.25;",
   "}",
@@ -72,41 +65,20 @@ export const RAT_POSE_GLSL = [
   "} else if (part == 5) {",
   "float wag = still ? 0.0 : sin(uTime * 7.0 + ph * 0.5) * 0.3 + sin(ph) * 0.12;",
   "wag += sin(hit * 18.0) * 0.5 * hit;",
-  // a Meshy rat's tail bends along its length (the tip most) as it wags
-  "float bend = aSub.z > 0.0 ? aSub.z * 1.6 : 1.0;",
-  "R = rY(wag * bend * bw) * rX((attacking ? -0.35 : 0.0) * bend * bw);",
+  "R = rY(wag * bw) * rX((attacking ? -0.35 : 0.0) * bw);",
   "} else if (part == 6) {",
   "float pitch = sin(ph * 2.0) * 0.07;",
   "if (attacking) pitch += -0.35 * smoothstep(0.1, 0.55, atk) * (1.0 - smoothstep(0.58, 0.64, atk)) + 0.55 * smoothstep(0.58, 0.64, atk) * (1.0 - smoothstep(0.72, 0.9, atk));",
   "pitch -= 0.5 * sin(hit * 3.14159);",
   "R = rX(pitch * bw);",
   "}",
-  // ears and jaw move inside the head before the head turns
-  "vec3 pp = p;",
-  "mat3 RS = mat3(1.0);",
-  "if (part == 6 && aSub.x > 0.5) {",
-  "float sw = aSub.y;",
-  "if (aSub.x < 2.5) {",
-  "float side = aSub.x < 1.5 ? -1.0 : 1.0;",
-  // the ears flop when it is hit, thrown down or knocked over (not while it walks)
-  "float flop = iPhys.w + 0.35 * sin(hit * 3.14159) + (die > 0.0 ? 0.6 * smoothstep(0.0, 0.3, die) : 0.0);",
-  "RS = rZ(-side * flop * 0.9 * sw) * rX(-flop * 0.7 * sw);",
-  "} else {",
-  "float open = attacking ? smoothstep(0.45, 0.6, atk) * (1.0 - smoothstep(0.66, 0.8, atk)) : 0.0;",
-  "open = max(open, sin(hit * 3.14159) * 0.8);",
-  "if (die > 0.0) open = max(open, 0.9 * smoothstep(0.0, 0.2, die));",
-  "RS = rX(0.6 * open * sw);",
-  "}",
-  "pp = RS * (p - aSubPivot) + aSubPivot;",
-  "}",
-  "vec3 q = R * (pp - aPivot.xyz) + aPivot.xyz;",
+  "vec3 q = R * (p - aPivot.xyz) + aPivot.xyz;",
   // the body bobs once a step and sways a little
   "float bob = still ? 0.0 : abs(sin(ph)) * 0.05;",
   "float pitchB = still ? 0.0 : sin(ph * 2.0) * 0.04;",
   "float rollB = still ? 0.0 : sin(ph) * 0.05;",
   "vec3 off = vec3(0.0, bob, 0.0);",
   "vec3 sc = vec3(1.0);",
-  "sc *= vec3(1.0 + 0.5 * iPhys.z, 1.0 - iPhys.z, 1.0 + 0.5 * iPhys.z);",
   "float fl = sin(hit * 3.14159);",
   "pitchB -= 0.4 * fl;",
   "off.z -= 0.16 * fl;",
@@ -122,7 +94,7 @@ export const RAT_POSE_GLSL = [
   "mat3 B = rZ(rollB) * rX(pitchB);",
   "vec3 hip = vec3(0.0, 0.12, -0.3);",
   "vec3 r = B * ((q - hip) * sc) + hip + off;",
-  "mat3 Rt = B * R * RS;",
+  "mat3 Rt = B * R;",
   "float flash = still ? 0.0 : smoothstep(0.6, 1.0, hit) * 0.75;",
   "if (die > 0.0) {",
   "float side = iAnim.x;",
@@ -161,7 +133,7 @@ export function ratMaterial(uniforms, gradientMap, map = null) {
       .replace('#include <common>', '#include <common>\nvarying float vFlash;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.96, 0.92) * vFlash;');
   };
-  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v3' : 'rat-anim-toon-v3');
+  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v4' : 'rat-anim-toon-v4');
   return mat;
 }
 
