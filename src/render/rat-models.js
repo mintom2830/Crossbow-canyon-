@@ -10,20 +10,21 @@ import * as THREE from 'three';
 import { RAT_GAIT } from './models.js';
 import { gltfGeometry } from './tower-models.js';
 
-// per rat type: yaw turns the model so its nose points +Z; h: its height in
-// the game (the hand-built rat's); upright: a rat that stands on its hind
-// legs (only the feet swing); tail: share of the length at the back that is tail
+// per rat type: yaw turns the model so its nose points +Z; len: its length
+// nose to tail (a rat on all fours) or h: its height (a rat standing up) in
+// the game, before each type's own scale; upright: stands on its hind legs
+// (only the feet swing); tail: share of the length at the back that is tail
 export const RAT_FIT = {
-  0: { yaw: 0, h: 0.95 },
-  1: { yaw: 0, h: 0.9 },
-  2: { yaw: 0, h: 1.0 },
-  3: { yaw: 0, h: 1.25, upright: true },
-  4: { yaw: 0, h: 1.6, upright: true },
-  5: { yaw: 0, h: 1.05 },
-  6: { yaw: 0, h: 1.0, upright: true },
-  7: { yaw: 0, h: 1.2 },
-  8: { yaw: 0, h: 0.95 },
-  9: { yaw: 0, h: 1.15 },
+  0: { len: 2.0 },
+  1: { len: 2.0 },
+  2: { len: 2.05 },
+  3: { h: 1.25, upright: true },              // shield rat: stands behind its shield
+  4: { h: 1.5, upright: true, tail: 0 },      // healer: stands with its staff (its cape hides the tail)
+  5: { len: 2.05 },
+  6: { h: 1.05, upright: true, tail: 0.25 },  // ratling: a big-headed baby, sitting up
+  7: { len: 2.0, tail: 0.22 },                // bomb rat: the bomb rides on its back
+  8: { len: 2.0 },
+  9: { len: 2.1, tail: 0.22 },                // jetpack rat: the flame trails behind
 };
 
 // The model's geometry ready for the rat shader: facing +Z, standing on the
@@ -34,7 +35,7 @@ export function ratGeometry(gltf, v) {
   if (fit.yaw) geo.rotateY(fit.yaw);
   geo.computeBoundingBox();
   let b = geo.boundingBox;
-  const s = fit.h / (b.max.y - b.min.y);
+  const s = fit.len ? fit.len / (b.max.z - b.min.z) : fit.h / (b.max.y - b.min.y);
   geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
   geo.scale(s, s, s);
   geo.computeBoundingBox();
@@ -120,13 +121,13 @@ export function clusterGeometry(geo, cell) {
 // around their joints; see giantParts in models.js). A Meshy model is cut into
 // those parts by where each triangle sits. top: the height the game draws them at.
 export const GIANT_FIT = {
-  giant: { yaw: 0, top: 3.55 },
+  giant: { yaw: 0, top: 3.55, maxW: 3.8 },
   warlord: { yaw: 0, top: 3.55 },
   baron: { yaw: 0, top: 3.55 },
-  king: { yaw: 0, top: 3.75 },
+  king: { yaw: 0, top: 3.75, noArms: true },   // the robe hides his arms: it stays in one piece
   slime: { yaw: 0, top: 1.85, whole: true },
-  mole: { yaw: 0, top: 3.4 },
-  buzzard: { yaw: 0, top: 3.15, wings: true },
+  mole: { yaw: 0, top: 3.4, maxW: 4.4 },
+  buzzard: { yaw: 0, top: 3.15, wings: true, noLegs: true },   // its wings flap; the net of rats hangs from the body
 };
 export function giantModelParts(gltf, style) {
   const fit = GIANT_FIT[style] || GIANT_FIT.giant;
@@ -134,12 +135,14 @@ export function giantModelParts(gltf, style) {
   if (fit.yaw) geo.rotateY(fit.yaw);
   geo.computeBoundingBox();
   let b = geo.boundingBox;
-  const s = fit.top / (b.max.y - b.min.y);
+  // as tall as the hand-built one, but no wider than maxW (a crouching giant swinging a club is wide)
+  const s = Math.min(fit.top / (b.max.y - b.min.y), (fit.maxW || 3.6) / (b.max.x - b.min.x));
   geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
   geo.scale(s, s, s);
   geo.computeBoundingBox();
   b = geo.boundingBox;
-  if (fit.whole) return { torso: geo, top: fit.top, map };
+  const top = b.max.y + 0.15;
+  if (fit.whole) return { torso: geo, top, map };
   const H = b.max.y, W = b.max.x - b.min.x;
   const sh = fit.wings ? 0.22 : 0.27;
   const pivots = {
@@ -153,11 +156,11 @@ export function giantModelParts(gltf, style) {
     for (let k = 0; k < 3; k++) { cx += pos.getX(t * 3 + k); cy += pos.getY(t * 3 + k); }
     cx /= 3; cy /= 3;
     let g = 'torso';
-    if (cy < 0.27 * H) g = cx < 0 ? 'legL' : 'legR';
-    else if (Math.abs(cx) > sh * W && cy > (fit.wings ? 0.35 : 0.3) * H && cy < 0.88 * H) g = cx < 0 ? 'armL' : 'armR';
+    if (cy < 0.27 * H && !fit.noLegs) g = cx < 0 ? 'legL' : 'legR';
+    else if (!fit.noArms && Math.abs(cx) > sh * W && cy > (fit.wings ? 0.35 : 0.3) * H && cy < 0.88 * H) g = cx < 0 ? 'armL' : 'armR';
     groups[g].push(t);
   }
-  const out = { top: fit.top, map, pivots };
+  const out = { top, map, pivots };
   for (const [k, tris] of Object.entries(groups)) {
     const p = pickTris(geo, tris);
     const pv = pivots[k];

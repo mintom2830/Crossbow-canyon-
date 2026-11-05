@@ -527,7 +527,8 @@ export class View {
     if (!v) {
       const geo = this.giantGeo[boss || 'normal'];
       const piv = geo.pivots || { armL: [-1.12, 2.05, 0.05], armR: [1.12, 2.05, 0.05], legL: [-0.45, 0.95, 0], legR: [0.45, 0.95, 0] };
-      const mat = geo.map ? toon({ vertexColors: false, map: geo.map, emissive: 0x000000 }) : toon({ emissive: 0x000000 });
+      // a Meshy model is drawn from both sides: its open edges (a robe's hem) would show the outline behind
+      const mat = geo.map ? toon({ vertexColors: false, map: geo.map, emissive: 0x000000, side: THREE.DoubleSide }) : toon({ emissive: 0x000000 });
       const group = new THREE.Group();
       const torso = new THREE.Mesh(geo.torso, mat);
       const armL = new THREE.Group(), armR = new THREE.Group(), legL = new THREE.Group(), legR = new THREE.Group();

@@ -1325,7 +1325,7 @@ await test('Arsenal: unlock towers in the Shop, pick one from the Build menu on 
 });
 
 await test('Arsenal 3D models: served over the web, a built tower switches to its Meshy model (fitted to the pad, outlined) and changes model with its level', async () => {
-  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)) : [];
+  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => f.endsWith('.glb') && !/^(rat-|boss-|giant)/.test(f)).map((f) => f.slice(0, -4)) : [];
   assert(shipped.length >= 1, 'no tower models in dist/models');
   const [kind] = shipped[0].split('-');
   const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
@@ -1346,6 +1346,45 @@ await test('Arsenal 3D models: served over the web, a built tower switches to it
   await page.waitForFunction(() => { const v = window.__cc.view.towerViews.get(0); return v.level === 5 && v.model; }, null, { timeout: 30000 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${SHOTS}/arsenal-model.png` });
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('Meshy rats: served over the web, every rat, the giant rat and the bosses switch to their 3D models, textured and animated', async () => {
+  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => /^(rat-|boss-|giant)/.test(f)).map((f) => f.slice(0, -4)) : [];
+  assert(shipped.length >= 1, 'no rat models in dist/models');
+  const rats = shipped.filter((n) => n.startsWith('rat-')).map((n) => +n.slice(4)).sort((a, b) => a - b);
+  const bigs = shipped.filter((n) => !n.startsWith('rat-')).map((n) => n === 'giant' ? 'giant' : n.slice(5)).sort();
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await page.waitForFunction(([nr, nb]) => { const v = window.__cc.view; return (v.ratModelsLoaded || new Set()).size >= nr && (v.giantModelsLoaded || new Set()).size >= nb; }, [rats.length, bigs.length], { timeout: 30000 });
+  const r = await g(page, ([rats, bigs]) => {
+    const v = window.__cc.view;
+    const small = rats.map((i) => { const m = v.ratMeshes[i]; m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; return { i, tex: !!(m.material.map && m.material.map.image), part: !!m.geometry.attributes.aPart, legs: [...m.geometry.attributes.aPart.array].some((p) => p >= 1 && p <= 4), y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) }; });
+    const big = bigs.map((k) => { const g = v.giantGeo[k === 'giant' ? 'normal' : k]; return { k, tex: !!g.map, top: g.top, torso: g.torso.attributes.position.count }; });
+    return { small, big, misses: v.models.misses };
+  }, [rats, bigs]);
+  assert(r.misses === 0, 'a model failed to load');
+  for (const q of r.small) assert(q.tex && q.part && q.legs && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
+  for (const q of r.big) assert(q.tex && q.torso > 0 && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
+  // a wave with a giant and a boss: they are built from the models and walk
+  const out = await g(page, () => {
+    const s = window.__cc.sim; s.fortress.hp = s.fortress.maxHp = 1e6;
+    s.callWave(); s.spawnQueue.length = 0; s.spawnIndex = 0; s.waveTime = 0;
+    s.spawnQueue.push({ t: 0, type: 1, hp: 9e4, lat: 0 }, { t: 1.5, type: 2, boss: 'warlord', hp: 9e4, lat: 0 });
+    for (let v = 0; v < 10; v++) s.spawnQueue.push({ t: 0.2 * v, type: 0, v, hp: 9e4, lat: (v % 3) - 1 });
+    s.waveTotal = s.spawnQueue.length;
+    window.__cc.advance(6);
+    const e = s.enemies.find((q) => q.type === 2) || s.enemies[0];
+    window.__cc.teleport(e.x + 3, e.z + 3);
+    return s.enemies.length;
+  });
+  assert(out >= 12, 'the test wave did not spawn: ' + out);
+  await page.waitForTimeout(800);
+  const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => ({ boss: q.boss, tex: !!q.mat.map, legs: q.legL.children.length })));
+  assert(gi.length >= 2 && gi.every((q) => q.tex && q.legs === 1), 'giants not drawn from their models: ' + JSON.stringify(gi));
+  await page.screenshot({ path: `${SHOTS}/rat-models.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

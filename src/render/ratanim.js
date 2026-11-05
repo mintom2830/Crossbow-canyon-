@@ -132,7 +132,8 @@ export const RAT_POSE_GLSL = [
 // Toon-shaded rat material (gradientMap: the banded light ramp from toon.js).
 // map: a Meshy model's texture (the hand-built rats are vertex-coloured).
 export function ratMaterial(uniforms, gradientMap, map = null) {
-  const mat = new THREE.MeshToonMaterial(map ? { map, gradientMap } : { vertexColors: true, gradientMap });
+  // a Meshy model (map) is drawn from both sides, so its open edges never show the outline behind
+  const mat = new THREE.MeshToonMaterial(map ? { map, gradientMap, side: THREE.DoubleSide } : { vertexColors: true, gradientMap });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uniforms.uTime;
     sh.vertexShader = sh.vertexShader
