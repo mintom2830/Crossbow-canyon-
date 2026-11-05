@@ -7,6 +7,7 @@
 // so one draw call animates the whole crowd, each rat at its own moment.
 import * as THREE from 'three';
 import { toonGradient } from './toon.js';
+import { toonPBR } from './toonpbr.js';
 import { poseBakedParts } from './articulate.js';
 
 const FPS = 30;
@@ -84,10 +85,11 @@ mat4 crowdSkin() {
 `;
 
 // Toon-shaded crowd material: skinned from the bone texture, flashes white on a hit
-// (iAnim.y, as the other rats do).
+// (iAnim.y, as the other rats do). A model with Meshy PBR maps (normal, roughness and
+// metal) is drawn with them in the toon style (toonpbr.js), like the bosses.
 export function crowdMaterial(bake) {
-  const mat = new THREE.MeshToonMaterial({ map: bake.map, gradientMap: toonGradient(), side: THREE.DoubleSide });
-  mat.onBeforeCompile = (sh) => {
+  const M = bake.model, pbr = M.fit && M.fit.pbr;
+  const skin = (sh) => {
     sh.uniforms.uBones = { value: bake.tex };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + SKIN_GLSL + '\nattribute vec4 iAnim;\nvarying float vFlash;')
@@ -97,6 +99,11 @@ export function crowdMaterial(bake) {
       .replace('#include <common>', '#include <common>\nvarying float vFlash;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.96, 0.92) * vFlash;');
   };
+  if (pbr) {
+    return toonPBR({ map: bake.map, side: THREE.DoubleSide, ...(M.normalMap ? { normalMap: M.normalMap, normalScale: M.normalScale } : {}), ormMap: M.ormMap || null, aoStrength: M.aoStrength, extend: skin, key: '-crowd-' + M.name });
+  }
+  const mat = new THREE.MeshToonMaterial({ map: bake.map, gradientMap: toonGradient(), side: THREE.DoubleSide });
+  mat.onBeforeCompile = skin;
   mat.customProgramCacheKey = () => 'crowd-skin-' + bake.model.name;
   return mat;
 }

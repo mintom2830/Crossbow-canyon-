@@ -22,13 +22,14 @@ import { twoBoneIK, Spring } from './ik.js';
 // hand-built ones); impact: how far through the attack clip the blow lands (so it
 // lands on the frame the gate is hit); run: ground speed (m/s) above which it runs
 export const ANIM_FIT = {
-  giant: { top: 2.9, impact: 0.5, run: 4.2 },
-  warlord: { top: 3.0, impact: 0.5, run: 4 },
-  baron: { top: 3.2, impact: 0.5, run: 3.6 },
-  king: { top: 3.3, impact: 0.5, run: 4 },
-  mole: { top: 2.8, impact: 0.5, run: 4 },
-  'rat-4': { top: 1.45, impact: 0.5, run: 3.4 },
-  'rat-6': { top: 0.95, impact: 0.5, run: 3.4 },
+  // pbr: drawn with their Meshy PBR maps (colour, normal, roughness/metal) in the toon style
+  giant: { top: 2.9, impact: 0.5, run: 4.2, pbr: true },
+  warlord: { top: 3.0, impact: 0.5, run: 4, pbr: true },
+  baron: { top: 3.2, impact: 0.5, run: 3.6, pbr: true },
+  king: { top: 3.3, impact: 0.5, run: 4, pbr: true },
+  mole: { top: 2.8, impact: 0.5, run: 4, pbr: true },
+  'rat-4': { top: 1.45, impact: 0.5, run: 3.4, pbr: true },
+  'rat-6': { top: 0.95, impact: 0.5, run: 3.4, pbr: true },
   // the farmer: in his own group's units (the view scales him like the code-built farmer)
   farmer: { top: 1.47, impact: 0.5, run: 1.9, pbr: true },
 };
@@ -94,7 +95,7 @@ export class AnimModel {
   // extra parts.
   instance(px = INK_PX.big) {
     const root = cloneSkinned(this.scene);
-    // the farmer is drawn with his Meshy PBR maps (toonpbr.js); the enemies in the plain toon look
+    // models with Meshy PBR maps are drawn with them (toonpbr.js); the rest in the plain toon look
     const mat = this.fit.pbr
       ? toonPBR({ map: this.map, emissive: 0x000000, side: THREE.DoubleSide, ...(this.normalMap ? { normalMap: this.normalMap, normalScale: this.normalScale } : {}), ormMap: this.ormMap || null, aoStrength: this.aoStrength })
       : toon({ vertexColors: false, map: this.map, emissive: 0x000000, side: THREE.DoubleSide });

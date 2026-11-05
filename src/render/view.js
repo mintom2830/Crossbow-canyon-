@@ -1566,8 +1566,8 @@ export class View {
         if (hy > 0) { y += hy; pitch += e.spinV ? e.spin : clampN(-e.vy * 0.07, -0.6, 0.6); }
         const gy = this._gy(ex, ez);
         y += gy;
-        // it leans into its turns, and on a hill it tilts with the slope
-        const roll = clampN(-e.bank * 0.1, -0.3, 0.3);
+        // a simple walk: no lean into turns; on a hill it tilts with the slope
+        const roll = 0;
         if (hills) { const hx = Math.sin(yaw) * 0.45, hz = Math.cos(yaw) * 0.45; pitch -= Math.atan2(this._gy(ex + hx, ez + hz) - this._gy(ex - hx, ez - hz), 0.9); }
         if (trick === 1 && this.jetBudget >= 1) {   // flames and smoke out of the jetpack
           this.jetBudget--;
@@ -1588,25 +1588,18 @@ export class View {
         ra[o + 1] = e.stun > 0 ? -1 : Math.max(0, e.hitT / CFG.hitFlinch);
         ra[o + 2] = e.atGate && fighting ? attackPhase(e.attackT, CFG.grunt.gateRate) : -1;
         ra[o + 3] = 0;
-        // secondary motion: the tail lags out of a turn on a spring and whips back, the
-        // head looks into the turn, and a rat thumping down from a throw squashes
-        const bank = e.bank || 0;
-        if (dt > 0) {
+        // the walk stays simple (no lean, no tail or head swung by turns); only the
+        // fight shows: a rat thumping down from a throw squashes and its ears bounce
+        if (dt > 0 && (e._sq || e._ea || e._ev)) {
           const k = Math.min(dt, 0.05);
-          if (bank !== 0 || e._ta || e._tv) {
-            const ta = e._ta || 0, tv = (e._tv || 0) + ((-bank * 0.32 - ta) * 90 - (e._tv || 0) * 10) * k;
-            e._tv = Math.abs(tv) < 1e-4 && Math.abs(ta) < 1e-4 ? 0 : tv;
-            e._ta = clampN(ta + e._tv * k, -0.9, 0.9);
-          }
           if (e._sq) e._sq = e._sq < 0.005 ? 0 : e._sq * (1 - 9 * k);
-          // the ears: blown back by speed, swung out of turns, bounced by landings and
-          // jolts, on a soft spring so they overshoot and settle
-          const ea = e._ea || 0, et = Math.min(0.45, (e.vs || 0) * 0.07) + Math.abs(bank) * 0.12 + (e._sq || 0) * 1.4;
+          const ea = e._ea || 0, et = (e._sq || 0) * 1.4;
           e._ev = (e._ev || 0) + ((et - ea) * 70 - (e._ev || 0) * 7) * k;
           e._ea = clampN(ea + e._ev * k, -0.3, 0.9);
+          if (!e._sq && Math.abs(e._ea) < 1e-3 && Math.abs(e._ev) < 1e-3) e._ea = e._ev = 0;
         }
         const pa = this.ratPhys[vt].array;
-        pa[o] = e._ta || 0; pa[o + 1] = clampN(bank * 0.12, -0.45, 0.45); pa[o + 2] = e._sq || 0; pa[o + 3] = e._ea || 0;
+        pa[o] = 0; pa[o + 1] = 0; pa[o + 2] = e._sq || 0; pa[o + 3] = e._ea || 0;
         const CR = this.crowd && this.crowd[vt];
         if (CR) this._crowdPose(CR, e, sc, dt, fighting, CR.clip.array, o);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;

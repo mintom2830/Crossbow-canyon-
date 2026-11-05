@@ -37,7 +37,8 @@ export const ARTIC = {
   baron: { ears: 0.7, tail: true, fingers: ['Left'] },
   king: { ears: 0.9, cape: true, jaw: true, hat: 0.6 },
   mole: { fingers: ['Left', 'Right'], handR: 1.2 },
-  'rat-4': { ears: 1, cape: true, capeBehind: [0.025, 0.07], capeAll: true, hat: 1 },
+  // (the Meshy-7 healer wears her hood down: no hat)
+  'rat-4': { ears: 1, cape: true, capeBehind: [0.025, 0.07], capeAll: true },
   'rat-6': { ears: 1.2, earSide: [0.6, 0.85], tail: true, tailUp: 0.12, tailX: 0.3, tailBehind: 0.1, tailBone: 'LeftHand' },
   farmer: { hat: 1 },
 };
