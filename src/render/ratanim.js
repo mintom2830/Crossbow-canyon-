@@ -130,8 +130,9 @@ export const RAT_POSE_GLSL = [
 ].join('\n');
 
 // Toon-shaded rat material (gradientMap: the banded light ramp from toon.js).
-export function ratMaterial(uniforms, gradientMap) {
-  const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
+// map: a Meshy model's texture (the hand-built rats are vertex-coloured).
+export function ratMaterial(uniforms, gradientMap, map = null) {
+  const mat = new THREE.MeshToonMaterial(map ? { map, gradientMap } : { vertexColors: true, gradientMap });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uniforms.uTime;
     sh.vertexShader = sh.vertexShader
@@ -142,7 +143,7 @@ export function ratMaterial(uniforms, gradientMap) {
       .replace('#include <common>', '#include <common>\nvarying float vFlash;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.96, 0.92) * vFlash;');
   };
-  mat.customProgramCacheKey = () => 'rat-anim-toon-v2';
+  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex' : 'rat-anim-toon-v2');
   return mat;
 }
 

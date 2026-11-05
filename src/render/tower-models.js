@@ -136,18 +136,7 @@ export class TowerModels {
   // ground, centred and scaled to fit a pad; cut into base and head if it aims.
   _fit(kind, gltf, tier) {
     const fit = { ...MODEL_FIT[kind], ...((MODEL_FIT[kind].tiers || {})[tier] || {}) };
-    const geos = [];
-    let map = null;
-    gltf.scene.updateMatrixWorld(true);
-    gltf.scene.traverse((o) => {
-      if (!o.isMesh) return;
-      const g = toFloat(o.geometry);
-      g.applyMatrix4(o.matrixWorld);
-      geos.push(g);
-      if (!map && o.material && o.material.map) map = o.material.map;
-    });
-    const geo = geos.length === 1 ? geos[0] : mergeAll(geos);
-    if (!geo.attributes.normal) geo.computeVertexNormals();
+    const { geo, map } = gltfGeometry(gltf);
     if (fit.yaw) geo.rotateY(fit.yaw);
     geo.computeBoundingBox();
     const b = geo.boundingBox, w = b.max.x - b.min.x, d = b.max.z - b.min.z, h = b.max.y - b.min.y;
@@ -168,6 +157,29 @@ export class TowerModels {
     return { base, head, mat, headY, height: H, aura, ink: { base: ink(base), head: ink(head), gun: null } };
   }
 }
+
+// The whole model as one plain geometry (float position / normal / uv, world
+// transforms applied, no index) and its base colour texture.
+export function gltfGeometry(gltf) {
+  const geos = [];
+  let map = null;
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = toFloat(o.geometry);
+    g.applyMatrix4(o.matrixWorld);
+    geos.push(g);
+    if (!map && o.material && o.material.map) map = o.material.map;
+  });
+  const geo = geos.length === 1 ? geos[0] : mergeAll(geos);
+  if (!geo.attributes.normal) geo.computeVertexNormals();
+  if (map) { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4; }
+  return { geo, map };
+}
+
+// Is a model shipped with this build? (name: e.g. tesla-2, rat-0)
+export const modelShipped = (name) => !SHIPPED || SHIPPED.has(name);
+export const MODEL_EXT = EXT;
 
 // A plain copy of a geometry (no index) with float position / normal / uv:
 // compressed models store them as quantized, often interleaved, integers.

@@ -12,7 +12,8 @@ import { TownView } from './town.js';
 import { Portraits } from './portraits.js';
 import { applySkin, skinColor } from './skins.js';
 import { ArsenalView } from './arsenal-view.js';
-import { TowerModels, modelTier } from './tower-models.js';
+import { TowerModels, modelTier, modelShipped, MODEL_EXT } from './tower-models.js';
+import { ratGeometry, clusterGeometry, giantModelParts } from './rat-models.js';
 import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
 import { turn } from '../town.js';
@@ -328,6 +329,7 @@ export class View {
     // their Meshy 3D models (loaded when a tower is first built); a tower
     // already standing switches to its model as soon as it arrives
     this.models = new TowerModels();
+    this._loadRatModels();
     this.models.onLoad = (kind) => { for (const v of this.towerViews.values()) if (v.kind === kind) { v.level = -1; v.keepPop = true; } this.shadowDirty = true; };
     this.fortressGeo = [null, fortressGeometry(1), fortressGeometry(2), fortressGeometry(3)];
     const F = CFG.fortress;
@@ -525,7 +527,7 @@ export class View {
     if (!v) {
       const geo = this.giantGeo[boss || 'normal'];
       const piv = geo.pivots || { armL: [-1.12, 2.05, 0.05], armR: [1.12, 2.05, 0.05], legL: [-0.45, 0.95, 0], legR: [0.45, 0.95, 0] };
-      const mat = toon({ emissive: 0x000000 });
+      const mat = geo.map ? toon({ vertexColors: false, map: geo.map, emissive: 0x000000 }) : toon({ emissive: 0x000000 });
       const group = new THREE.Group();
       const torso = new THREE.Mesh(geo.torso, mat);
       const armL = new THREE.Group(), armR = new THREE.Group(), legL = new THREE.Group(), legR = new THREE.Group();
@@ -533,6 +535,7 @@ export class View {
       if (geo.armL) armL.add(new THREE.Mesh(geo.armL, mat));
       if (geo.armR) armR.add(new THREE.Mesh(geo.armR, mat));
       if (geo.leg) { legL.add(new THREE.Mesh(geo.leg, mat)); legR.add(new THREE.Mesh(geo.leg, mat)); }
+      else if (geo.legL) { legL.add(new THREE.Mesh(geo.legL, mat)); legR.add(new THREE.Mesh(geo.legR, mat)); }   // a Meshy model: its own left and right leg
       armL.position.set(...piv.armL); armR.position.set(...piv.armR);
       legL.position.set(...piv.legL); legR.position.set(...piv.legR);
       const body = new THREE.Group();
@@ -759,6 +762,47 @@ export class View {
     v.level = level;
     v.pop = 0;
     this.shadowDirty = true;
+  }
+
+  // Meshy 3D rats: each kind of small rat switches to its model as soon as it
+  // has loaded (the hand-built rats stay if there is none, e.g. offline).
+  _loadRatModels() {
+    if (this.models.disabled) return;
+    this._loadGiantModels();
+    for (let v = 0; v < SHIELDLESS; v++) {
+      const name = 'rat-' + v;
+      if (!modelShipped(name)) continue;
+      this.models._load(this.models.base + name + MODEL_EXT).then((gltf) => this._setRatModel(v, ratGeometry(gltf, v))).catch(() => { this.models.misses++; });
+    }
+  }
+  _loadGiantModels() {
+    for (const style of ['giant', ...Object.keys(CFG.bosses)]) {
+      const name = style === 'giant' ? 'giant' : 'boss-' + style;
+      if (!modelShipped(name)) continue;
+      this.models._load(this.models.base + name + MODEL_EXT).then((gltf) => {
+        const key = style === 'giant' ? 'normal' : style;
+        this.giantGeo[key] = giantModelParts(gltf, style);
+        // pooled giants of that style not in use are dropped, so new ones are built from the model
+        const boss = style === 'giant' ? false : style;
+        this.giantPool = this.giantPool.filter((g) => { if (g.inUse || g.boss !== boss) return true; this.scene.remove(g.group); g.label.remove(); return false; });
+        (this.giantModelsLoaded || (this.giantModelsLoaded = new Set())).add(style);
+      }).catch(() => { this.models.misses++; });
+    }
+  }
+  _setRatModel(v, { geo, map }) {
+    const mesh = this.ratMeshes[v], anim = this.ratAnims[v];
+    geo.setAttribute('iAnim', anim);
+    mesh.geometry = geo;
+    mesh.material = ratMaterial(this.ratUniforms, toonGradient(), map);
+    const ink = mesh.userData.ink;
+    if (ink) {
+      // the outline uses a lighter copy of the model (about a third of its triangles)
+      const ig = clusterGeometry(geo, 0.045);
+      inkNormals(ig);
+      ig.setAttribute('iAnim', anim);
+      ink.geometry = ig;
+    }
+    (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
   }
 
   // An Arsenal tower drawn with its Meshy 3D model. Levels 2 and 4 use the
