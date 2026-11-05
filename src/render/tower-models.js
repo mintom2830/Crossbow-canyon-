@@ -19,20 +19,21 @@ const MAX_H = 4.8;       // and how tall
 // per tower (and per model in `tiers`): cut (null: the whole model stays still), yaw (turns the model so
 // its weapon faces +Z), aura (where the glow sprite sits, as shares of the
 // model's width, height and depth), lift (shares of height the weapon's muzzle is at)
+const L90 = Math.PI / 2;   // a model whose weapon points along -X turns this way to face +Z (and -L90 for +X)
 export const MODEL_FIT = {
-  mortar: { cut: 0.52, yaw: 0 },
+  mortar: { cut: 0.5, yaw: 0, tiers: { 2: { yaw: L90 } } },
   crystal: { cut: null, aura: [0, 0.82, 0] },
-  tesla: { cut: null, aura: [0, 0.9, 0] },
-  flame: { cut: 0.42, yaw: 0 },
-  ice: { cut: null, aura: [0, 0.8, 0] },
-  poison: { cut: 0.4, yaw: 0, aura: [0, 0.55, 0] },
-  sniper: { cut: 0.5, yaw: 0 },
-  rocket: { cut: 0.5, yaw: 0 },
-  mine: { cut: null, aura: [0, 0.72, 0] },
+  tesla: { cut: null, aura: [0, 0.93, 0] },
+  flame: { cut: 0.5, yaw: L90 },
+  ice: { cut: null, aura: [0, 0.85, 0] },
+  poison: { cut: 0.3, yaw: -L90, aura: [0, 0.6, 0], tiers: { 1: { yaw: L90 } } },
+  sniper: { cut: 0.5, yaw: L90, tiers: { 1: { cut: 0.62 } } },
+  rocket: { cut: 0.55, yaw: -L90, tiers: { 1: { yaw: L90 } } },
+  mine: { cut: null, aura: [0, 0.75, 0] },
   spike: { cut: null },
-  summoner: { cut: null, aura: [0, 0.6, 0] },
+  summoner: { cut: null, aura: [0, 0.55, 0] },
   totem: { cut: null },
-  warp: { cut: null, aura: [0, 0.62, 0] },
+  warp: { cut: null, aura: [0, 0.6, 0] },
 };
 export const modelTier = (level) => (level <= 2 ? 1 : level <= 4 ? 2 : 3);
 // the models that were shipped with this build (build.mjs lists src/assets/models)
