@@ -303,7 +303,14 @@ Meshy's rig stops at the head, hands and toes: ears, jaws, tails, capes, fingers
 
 ### The farmer
 
-The farmer is built properly in code (`src/render/farmer.js`), not out of loose cylinders: a 31-bone skeleton (hips, spine, chest, neck, head, shoulders, arms, hands, legs, feet, toes, plus bones for the hat, the pitchfork and the belly) and **every garment its own skinned mesh with real thickness**:
+**On the web the farmer is Meshy-made** (`models/anim-farmer.glb`): a clean A-pose front and back sheet painted from the title-screen art (`art/meshy/farmer-ref.png`), built in 3D by Meshy-7 with PBR maps (colour, normal, roughness and metal), remeshed, rigged, and animated by Meshy (idle, walk, run, a seated idle for riding, a victory cheer). In the game:
+- His clips play on the layered rig at the speed the ground goes by, with the body-motion layer over them: leaning into acceleration and turns, breathing, and feet finding the ground on the hill.
+- His hat wobbles on a spring, and the pitchfork rides in a sprung socket on his upper back.
+- On a horse or cow he sits astride, thighs spread round the saddle and hands forward on the reins.
+- He cheers when the level is won.
+- He is drawn with the stylized PBR toon material.
+
+**Offline (and until the model loads)** the farmer is built properly in code (`src/render/farmer.js`), not out of loose cylinders: a 31-bone skeleton (hips, spine, chest, neck, head, shoulders, arms, hands, legs, feet, toes, plus bones for the hat, the pitchfork and the belly) and **every garment its own skinned mesh with real thickness**:
 
 | Piece | Built as |
 |---|---|
@@ -336,7 +343,7 @@ Clothes are shells offset from the body and skinned to the same bones by the sam
 
 ### What could not be done (yet)
 
-- **A Meshy farmer.** A clean A-pose front and back sheet of the farmer was made with Meshy (`art/meshy/farmer-ref.png` is the title art it started from), but every API key stopped at its credit limit before the 3D model, rig and animations. The farmer above is built in code instead, which is also the only way to get garments as separate meshes: Meshy always fuses a character into one surface.
+- **Separate garments on the Meshy farmer.** Meshy always fuses a character into one surface, so only the code-built farmer has his garments as separate meshes.
 - **Weapons as separate objects.** The giant's club is fused to his hands in Meshy's one surface, and its middle is weighted to his body. Cutting it out automatically (by shape, by the hands' skin weights, by the wood's colour) did not separate it cleanly from his belly and thighs, so it was left as Meshy made it rather than shipped half cut. Meshy's own part splitter can do it once the key limits are raised.
 - **Jumping, dodging, dashing, sliding.** The farmer and the enemies have no such moves in the game, and adding them would change how it plays.
 
