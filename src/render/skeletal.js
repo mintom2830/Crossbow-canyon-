@@ -2,8 +2,9 @@
 // bosses (Warlord, Baron, King, Mole), the healer rat and the ratling.
 //
 // Each model (models/anim-<name>.glb) is the Meshy character on Meshy's 24-bone
-// humanoid skeleton, with clips from Meshy's animation library merged in by state:
-//   idle, walk, run, attack, hit, die, and roar (bosses) or cast (healer).
+// humanoid skeleton, with clips merged in by state: Meshy's standard walk, run and
+// attack for every one, and from its animation library idle, hit, die, and roar
+// (bosses) or cast (healer).
 // Root motion was stripped when the file was made (the simulation moves them).
 //
 // Giants and bosses (a handful on screen) each get a cloned SkinnedMesh and an
@@ -18,13 +19,13 @@ import { toon, inkMaterial, inkNormals, INK_PX } from './toon.js';
 // hand-built ones); impact: how far through the attack clip the blow lands (so it
 // lands on the frame the gate is hit); run: ground speed (m/s) above which it runs
 export const ANIM_FIT = {
-  giant: { top: 2.9, impact: 0.55, run: 4.2 },
-  warlord: { top: 3.0, impact: 0.62, run: 4 },
-  baron: { top: 3.2, impact: 0.58, run: 3.6 },
+  giant: { top: 2.9, impact: 0.5, run: 4.2 },
+  warlord: { top: 3.0, impact: 0.5, run: 4 },
+  baron: { top: 3.2, impact: 0.5, run: 3.6 },
   king: { top: 3.3, impact: 0.5, run: 4 },
-  mole: { top: 2.8, impact: 0.45, run: 4 },
+  mole: { top: 2.8, impact: 0.5, run: 4 },
   'rat-4': { top: 1.45, impact: 0.5, run: 3.4 },
-  'rat-6': { top: 0.95, impact: 0.45, run: 3.4 },
+  'rat-6': { top: 0.95, impact: 0.5, run: 3.4 },
 };
 
 // A loaded model: its clips, how to fit it, how far it travels per walk/run loop.

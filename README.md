@@ -263,17 +263,19 @@ The physics was tuned against the balance tests over eight seeds per scenario so
 
 ## Skeletal animation (Meshy rigs and animations)
 
-The giant rat, the Rat Warlord, the Iron Rat Baron, the Rat King, the Tunnel Mole, the healer rat and the ratling are **rigged by Meshy** (its auto-rigging puts a 24-bone humanoid skeleton in each model) and **animated with clips from Meshy's animation library**, following the movement sheet: every one has idle, walk, run, attack, hit and death, plus a special.
+The giant rat, the Rat Warlord, the Iron Rat Baron, the Rat King, the Tunnel Mole, the healer rat and the ratling are **rigged by Meshy** (its auto-rigging puts a 24-bone humanoid skeleton in each model) and **animated by Meshy**, following the movement sheet: every one has idle, walk, run, attack, hit and death, plus a special.
 
-| Enemy | Idle | Walk | Run | Attack | Hit | Death | Special |
-|---|---|---|---|---|---|---|---|
-| Giant rat | combat stance | slow orc walk | forward charge | heavy hammer swing (club smash) | hit reaction | shot, falls backward | chest-pound taunt |
-| Rat Warlord | axe stance | slow orc walk | forward charge | charged ground slam (command slam) | hit reaction | knocked down | war shout |
-| Iron Rat Baron | combat stance | slow orc walk | forward charge | charged axe chop | hit reaction | slow fall backward | angry ground stomp |
-| Rat King | idle | proud strut | forward charge | charged spell cast (royal slam) | hit reaction | falls | shouting |
-| Tunnel Mole | idle | slow orc walk | lean-forward sprint | two-fist punch | hit reaction | knocked down | scream |
-| Healer rat | idle | casual walk | run | staff attack | hit reaction | dead | spell cast (heal) |
-| Ratling | idle | skip forward | run | punch | hit reaction | dying backwards | |
+Walking, running and attacking use **Meshy's standard walk, run and attack** for every one of them (the walk and run come with each Meshy rig; the attack is the library's standard weapon swing, wind-up overhead and strike down), so they move like ordinary characters; the rest is picked per enemy:
+
+| Enemy | Idle | Hit | Death | Special |
+|---|---|---|---|---|
+| Giant rat | combat stance | hit reaction | shot, falls backward | chest-pound taunt |
+| Rat Warlord | axe stance | hit reaction | knocked down | war shout |
+| Iron Rat Baron | combat stance | hit reaction | slow fall backward | angry ground stomp |
+| Rat King | idle | hit reaction | falls | shouting |
+| Tunnel Mole | idle | hit reaction | knocked down | scream |
+| Healer rat | idle | hit reaction | dead | spell cast (heal) |
+| Ratling | idle | hit reaction | dying backwards | |
 
 - **One file each.** Every Meshy clip comes as a full copy of the rigged model; `tools/merge-anim.mjs` merges them into one file per enemy (the model once, the clips renamed by state), takes out root motion (the simulation moves them; the hips keep their bob), simplifies the mesh and shrinks the texture: 520–620 KB a boss, about 370 KB a crowd rat (`models/anim-*.glb`).
 - **Giants and bosses** (`src/render/skeletal.js`) each get their own skinned copy, a toon material and an outline skinned on the same bones, and an animation mixer that crossfades between states: walk or run at their real ground speed (the stride is measured from how far a foot sweeps in the clip, so feet don't slide), the attack clip held at the swing's phase so the blow lands on the exact frame the gate is hit (with a slash arc, and a ground crack for the slams), a stagger when a hard hit lands, a roar now and then, frozen mid-move while stunned, and the death clip before they sink away.
