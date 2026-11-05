@@ -14,7 +14,10 @@
 //   body (1 at the joint, falling to 0 at the foot, the tail tip, the snout).
 // iPhys (optional, per instance): secondary motion simulated on springs in the view:
 //   x  the tail swung out of a turn (it lags, then whips back)   y  the head turned into the turn
-//   z  a squash when it lands or skids                           w  unused
+//   z  a squash when it lands or skids                           w  the ears flopped back and out
+// aSub / aSubPivot (optional, Meshy rats): smaller parts inside the head and tail:
+//   x  1 left ear, 2 right ear, 3 jaw (0 none)   y  how much it follows that part
+//   z  along the tail, 0 at the root to 1 at the tip (0: a rigid hand-built tail)
 // aGait (per model, see RAT_GAIT in models.js): how that kind of rat moves:
 //   0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop
 import * as THREE from 'three';
@@ -26,6 +29,8 @@ export const RAT_POSE_GLSL = [
   "attribute float aGait;",
   "attribute float aStiff;",
   "attribute vec4 iPhys;",
+  "attribute vec4 aSub;",
+  "attribute vec3 aSubPivot;",
   "uniform float uTime;",
   "varying float vFlash;",
   "mat3 rX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }",
@@ -76,7 +81,10 @@ export const RAT_POSE_GLSL = [
   "if (G == 4) wag *= 0.3;",
   "if (G == 3) wag += sin(ph) * 0.25;",
   "wag += sin(hit * 18.0) * 0.5 * hit;",
-  "R = rY((wag + iPhys.x) * bw) * rX(lift * bw);",
+  // a Meshy rat's tail bends along its length (the tip most) and a wave runs down it
+  "float tt = aSub.z > 0.0 ? aSub.z : 1.0, bend = aSub.z > 0.0 ? tt * 1.6 : 1.0;",
+  "float wave = (still || aSub.z <= 0.0) ? 0.0 : sin(uTime * 8.0 + ph * 0.5 - tt * 3.4) * 0.32 * tt;",
+  "R = rY(((wag + iPhys.x) * bend + wave) * bw) * rX(lift * bend * bw);",
   "} else if (part == 6) {",
   "float pitch = sin(ph * 2.0) * 0.07 - 0.04 * foot;",
   "float look = still ? 0.0 : sin(uTime * 1.3 + jit * 40.0) * 0.16 * smoothstep(0.4, 1.0, sin(uTime * 0.7 + jit * 23.0));",
@@ -87,7 +95,25 @@ export const RAT_POSE_GLSL = [
   "if (attacking) look = 0.0;",
   "R = rY((look + iPhys.y) * bw) * rX(pitch * bw);",
   "}",
-  "vec3 q = R * (p - aPivot) + aPivot;",
+  // ears and jaw move inside the head before the head turns
+  "vec3 pp = p;",
+  "mat3 RS = mat3(1.0);",
+  "if (part == 6 && aSub.x > 0.5) {",
+  "float sw = aSub.y;",
+  "if (aSub.x < 2.5) {",
+  "float side = aSub.x < 1.5 ? -1.0 : 1.0;",
+  "float tw = still ? 0.0 : pow(max(0.0, sin(uTime * 2.3 + jit * 31.0 + side * 1.7)), 14.0) * 0.55;",
+  "float flop = iPhys.w + tw + 0.35 * sin(hit * 3.14159) + (die > 0.0 ? 0.6 * smoothstep(0.0, 0.3, die) : 0.0);",
+  "RS = rZ(-side * flop * 0.9 * sw) * rX(-flop * 0.7 * sw);",
+  "} else {",
+  "float open = attacking ? smoothstep(0.45, 0.6, atk) * (1.0 - smoothstep(0.66, 0.8, atk)) : 0.0;",
+  "open = max(open, sin(hit * 3.14159) * 0.8);",
+  "if (die > 0.0) open = max(open, 0.9 * smoothstep(0.0, 0.2, die));",
+  "RS = rX(0.6 * open * sw);",
+  "}",
+  "pp = RS * (p - aSubPivot) + aSubPivot;",
+  "}",
+  "vec3 q = R * (pp - aPivot) + aPivot;",
   "float bob = abs(sin(ph)) * 0.05;",
   "float pitchB = sin(ph * 2.0) * 0.04;",
   "float rollB = sin(ph) * 0.05;",
@@ -116,7 +142,7 @@ export const RAT_POSE_GLSL = [
   "mat3 B = rZ(rollB) * rX(pitchB);",
   "vec3 hip = vec3(0.0, 0.12, -0.3);",
   "vec3 r = B * ((q - hip) * sc) + hip + off;",
-  "mat3 Rt = B * R;",
+  "mat3 Rt = B * R * RS;",
   "float flash = still ? 0.0 : smoothstep(0.6, 1.0, hit) * 0.75;",
   "if (die > 0.0) {",
   "float side = iAnim.x;",

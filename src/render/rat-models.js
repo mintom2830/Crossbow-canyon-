@@ -15,17 +15,19 @@ import { gltfGeometry } from './tower-models.js';
 // nose to tail (a rat on all fours) or h: its height (a rat standing up) in
 // the game, before each type's own scale; upright: stands on its hind legs
 // (only the feet swing); tail: share of the length at the back that is tail
+// tailBox: [x0, x1, y0, y1, z0, z1] the tail stays inside (the rest of the back half
+// is body, sack or bomb); tail: 0 for no moving tail; noJaw: no jaw to open
 export const RAT_FIT = {
   0: { len: 2.0 },
   1: { len: 2.0 },
-  2: { len: 2.05 },
-  3: { h: 1.25, upright: true },              // shield rat: stands behind its shield
+  2: { len: 2.05, tail: 0 },                  // armored rat: the armour covers its rump, no tail to swing
+  3: { h: 1.25, upright: true, noJaw: true }, // shield rat: stands behind its shield (held up in front of its face)
   4: { h: 1.5, upright: true, tail: 0 },      // healer: stands with its staff (its cape hides the tail)
-  5: { len: 2.05 },
+  5: { len: 2.05, tailBox: [-0.8, 0.8, -0.1, 0.3, -0.8, -0.1] },     // brood rat: only the tail along the ground, not the sack
   6: { h: 1.05, upright: true, tail: 0.25 },  // ratling: a big-headed baby, sitting up
-  7: { len: 2.0, tail: 0.22 },                // bomb rat: the bomb rides on its back
-  8: { len: 2.0 },
-  9: { len: 2.1, tail: 0.22 },                // jetpack rat: the flame trails behind
+  7: { len: 2.0, tail: 0 },                   // bomb rat: the bomb rides on its back (its tail is tucked beside it)
+  8: { len: 2.0, tail: 0 },                   // ninja rat: its sword rides where the tail would swing
+  9: { len: 2.1, tail: 0 },                   // jetpack rat: the flame trails behind
 };
 
 // The model's geometry ready for the rat shader: facing +Z, standing on the
@@ -71,7 +73,9 @@ export function ratGeometry(gltf, v) {
   const tailOn = fit.tail !== 0;
   for (let i = 0; i < n; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const wt = tailOn ? sm(tailZ + 0.03 * L, tailZ - 0.12 * L, z) : 0;
+    let wt = tailOn ? sm(tailZ + 0.03 * L, tailZ - 0.12 * L, z) : 0;
+    const tb = fit.tailBox;
+    if (tb && wt > 0) wt *= sm(tb[0], tb[0] + 0.04, x) * sm(tb[1], tb[1] - 0.04, x) * sm(tb[2], tb[2] + 0.04, y) * sm(tb[3], tb[3] - 0.04, y) * sm(tb[4], tb[4] + 0.04, z) * sm(tb[5], tb[5] - 0.04, z);
     const wh = sm(headZ - 0.05 * L, headZ + 0.1 * L, z) * sm(headY - 0.15 * H, headY + 0.05 * H, y);
     const wl = sm(legY, legY * 0.45, y) * sm(0.04 * W, 0.14 * W, Math.abs(x)) * sm(0.03 * L, 0.12 * L, Math.abs(z - midZ));
     let p = 0, top = 0, next = 0;
@@ -84,6 +88,42 @@ export function ratGeometry(gltf, v) {
     part[i] = p; stiff[i] = 1 - w;
     piv[i * 3] = joints[p][0]; piv[i * 3 + 1] = joints[p][1]; piv[i * 3 + 2] = joints[p][2];
   }
+  // Smaller parts, each moving on its own: inside the head, the two ears (they flop
+  // and twitch) and the jaw (it opens to bite and squeak); along the tail, how far
+  // out each vertex is (0 at the root, 1 at the tip), so the tail bends as a curve
+  // and a wave can run down it. The head's own box decides where its ears and jaw
+  // are; their weights fade out where they join the head, so nothing tears.
+  const sub = new Float32Array(n * 4), subPiv = new Float32Array(n * 3);
+  {
+    let hx0 = 9, hx1 = -9, hy0 = 9, hy1 = -9, hz0 = 9, hz1 = -9, nh = 0;
+    for (let i = 0; i < n; i++) if (part[i] === 6 && stiff[i] < 0.5) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i); nh++;
+      if (x < hx0) hx0 = x; if (x > hx1) hx1 = x; if (y < hy0) hy0 = y; if (y > hy1) hy1 = y; if (z < hz0) hz0 = z; if (z > hz1) hz1 = z;
+    }
+    const hW = hx1 - hx0, hH = hy1 - hy0, hL = hz1 - hz0, hcx = (hx0 + hx1) / 2;
+    const tp = joints[5];
+    let tmax = 1e-6;
+    for (let i = 0; i < n; i++) if (part[i] === 5) tmax = Math.max(tmax, Math.hypot(pos.getX(i) - tp[0], pos.getY(i) - tp[1], pos.getZ(i) - tp[2]));
+    for (let i = 0; i < n; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      if (part[i] === 5) { sub[i * 4 + 2] = Math.max(0.02, Math.min(1, Math.hypot(x - tp[0], y - tp[1], z - tp[2]) / tmax)); continue; }
+      if (part[i] !== 6 || nh < 20) continue;
+      const ax = Math.abs(x - hcx);
+      const ear = sm(hy0 + 0.55 * hH, hy0 + 0.72 * hH, y) * sm(0.08 * hW, 0.2 * hW, ax) * sm(hz0 + 0.78 * hL, hz0 + 0.6 * hL, z);
+      const jaw = fit.noJaw ? 0 : sm(hy0 + 0.3 * hH, hy0 + 0.17 * hH, y) * sm(hz0 + 0.55 * hL, hz0 + 0.7 * hL, z) * sm(0.3 * hW, 0.18 * hW, ax);
+      if (ear < 0.01 && jaw < 0.01) continue;
+      if (ear >= jaw) {
+        const side = x < hcx ? -1 : 1;
+        sub[i * 4] = side < 0 ? 1 : 2; sub[i * 4 + 1] = ear;
+        subPiv[i * 3] = hcx + side * 0.16 * hW; subPiv[i * 3 + 1] = hy0 + 0.62 * hH; subPiv[i * 3 + 2] = hz0 + 0.5 * hL;
+      } else {
+        sub[i * 4] = 3; sub[i * 4 + 1] = jaw;
+        subPiv[i * 3] = hcx; subPiv[i * 3 + 1] = hy0 + 0.3 * hH; subPiv[i * 3 + 2] = hz0 + 0.5 * hL;
+      }
+    }
+  }
+  geo.setAttribute('aSub', new THREE.BufferAttribute(sub, 4));
+  geo.setAttribute('aSubPivot', new THREE.BufferAttribute(subPiv, 3));
   geo.setAttribute('aStiff', new THREE.BufferAttribute(stiff, 1));
   geo.setAttribute('aPart', new THREE.BufferAttribute(part, 1));
   geo.setAttribute('aPivot', new THREE.BufferAttribute(piv, 3));
@@ -106,7 +146,7 @@ export function clusterGeometry(geo, cell) {
     if (!s) { s = [0, 0, 0, 0]; sums.set(k, s); }
     s[0] += pos.getX(i); s[1] += pos.getY(i); s[2] += pos.getZ(i); s[3]++;
   }
-  const extra = ['aPart', 'aPivot', 'aGait', 'aStiff'].filter((a) => geo.attributes[a]);
+  const extra = ['aPart', 'aPivot', 'aGait', 'aStiff', 'aSub', 'aSubPivot'].filter((a) => geo.attributes[a]);
   const out = { position: [] };
   for (const a of extra) out[a] = [];
   const seen = new Set();
