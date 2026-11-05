@@ -42,7 +42,7 @@ async function open(kind = 'desktop', settings = { sfx: false, music: false, qua
   openContexts.add(ctx);
   const page = await ctx.newPage();
   const errors = [];
-  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + ' @ ' + String(e.stack || '').split('\n').slice(1, 3).map((l) => l.trim().replace(/^at /, '').slice(-90)).join(' < ')));
   page.on('crash', () => { errors.push('page crashed'); console.log('PAGE CRASHED'); });
   page.on('console', (m) => { if (m.type() === 'error' && !/ERR_TUNNEL|ERR_FAILED|fonts\.g/.test(m.text())) errors.push('console: ' + m.text()); });
   if (settings && !keepStorage) await page.addInitScript((s) => { try { if (!localStorage.getItem('cc-test-seeded')) { localStorage.setItem('crossbow-canyon:settings:v1', JSON.stringify(s)); localStorage.setItem('cc-test-seeded', '1'); } } catch {} }, settings);
