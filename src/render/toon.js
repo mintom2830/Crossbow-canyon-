@@ -1,10 +1,10 @@
-// Cartoon look: banded toon shading and dark ink outlines.
+// Cartoon look: banded toon shading and thin, soft ink outlines.
 //
 // Shading: every lit surface uses MeshToonMaterial with a stepped gradient, so
 // light falls into three flat bands (lit, mid, shadow) instead of a smooth ramp.
 //
 // Outlines ("ink"): the inverted-hull trick. Each outlined mesh gets a twin that
-// draws only its back faces in a dark ink colour, pushed outward by a fixed
+// draws only its back faces in a soft brown ink, pushed outward by a fixed
 // number of screen pixels, so every silhouette gets an even line at any
 // distance. The push direction comes from a smoothed normal (oNormal):
 // low-poly models are flat shaded, and pushing along face normals would tear
@@ -13,7 +13,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RAT_POSE_GLSL } from './ratanim.js';
 
-export const INK = 0x2a1810;
+// a warm mid brown rather than near-black, so the lines frame shapes without shouting
+export const INK = 0x4a3326;
 
 // ------------------------------------------------------------- toon shading
 // light band by how directly a face looks at the sun (dot of normal and light)
@@ -37,8 +38,8 @@ export function toonGradient() {
 export const toon = (opts = {}) => new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), ...opts });
 
 // ------------------------------------------------------------------ outlines
-// line widths in CSS pixels
-export const INK_PX = { thin: 1.6, rat: 1.75, prop: 2.2, unit: 2.5, big: 3.1, terrain: 2.7 };
+// line widths in CSS pixels: thin and subtle (they were 1.6 to 3.1, a bold comic line)
+export const INK_PX = { thin: 0.8, rat: 0.9, prop: 1.0, unit: 1.15, big: 1.45, terrain: 1.2 };
 
 // shared by every ink material; the view updates them on resize
 export const inkUniforms = {

@@ -8,10 +8,10 @@ All characters, models, UI, the map, sounds and the name are original. The game 
 
 Everything is drawn as an outlined 3D cartoon:
 - **Toon shading:** every lit surface uses a three-band light ramp (lit, mid, shadow) instead of smooth shading. The key light comes from the upper left, so roofs and tops are bright, fronts sit in the mid band and right sides fall into shadow. Cast shadows are crisp, and units stand on hard-edged round shadows.
-- **Ink outlines:** every model gets a dark ink line around its silhouette. This covers the farmer, every rat type, giant rats and all six bosses, every tower level and cannon barrel, the town hall, houses, walls, windmill, barn, villagers and crops, cliffs, rocks, cacti, coins, arrows, cannonballs and smoke puffs.
+- **Ink outlines:** every model gets a thin, subtle line around its silhouette, in a soft warm brown rather than black (about 1 px; bosses and the town hall a little more). This covers the farmer, every rat type, giant rats and all six bosses, every tower level and cannon barrel, the town hall, houses, walls, windmill, barn, villagers and crops, cliffs, rocks, cacti, coins, arrows, cannonballs and smoke puffs.
   - The lines keep the same width in screen pixels at any distance and on any screen density.
   - Outlines follow the GPU animation: they walk, flinch, lunge and roll over with the rats, and thin away when a defeated rat vanishes.
-- **Ink lines on the ground:** the plateau lips, the foot of each cliff and both road edges carry drawn ink lines.
+- **Ink lines on the ground:** the plateau lips, the foot of each cliff, both road edges, the pool and the stream carry thin drawn lines in the same soft brown.
 - **Cartoon UI:** HUD chips, buttons, cards, menus, banners and in-world labels share the same ink rim, a light top edge, a hard ink drop shadow and ink-outlined lettering. Build pads have an ink rim too.
 
 The outlines use the inverted-hull method (`src/render/toon.js`):
@@ -622,7 +622,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - The cartoon look:
   - No smooth-shaded materials are left.
   - The rats, farmer, town hall, terrain, giant rats and towers all have ink outlines, and the rat outlines stay in step with the crowd.
-  - A rendered frame shows thousands more ink-dark pixels with outlines on than with them off.
+  - A rendered frame shows well over a thousand more ink-brown pixels with outlines on than with them off.
 - The town in the real game:
   - It has villagers, outlined houses and the windmill, and the farmers work while neighbours chat.
   - Rats in the square make villagers panic, show alarmed speech bubbles and hide indoors, and everyone comes back out once the wave is over.

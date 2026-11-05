@@ -9,7 +9,7 @@ import { coinGeometry, PAL } from './models.js';
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 const _c = new THREE.Color(), _v = new THREE.Vector3(), _qz = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0), ZAX = new THREE.Vector3(0, 0, 1);
-const INK_CSS = '#2a1810';
+const INK_CSS = '#4a3326';   // the same soft brown as the 3D outlines (toon.js)
 
 // ---- cartoon sprites, drawn once on canvases with an ink outline. The fill is
 // white (a touch greyer at the rim), so each instance's colour tints it.
@@ -34,7 +34,7 @@ function burstTexture() {
     }
     x.closePath();
     x.fillStyle = rimFill(x, c, S * 0.46); x.fill();
-    x.lineWidth = S * 0.045; x.strokeStyle = INK_CSS; x.stroke();
+    x.lineWidth = S * 0.022; x.strokeStyle = INK_CSS; x.stroke();
   });
 }
 // a four-point twinkle: coins glinting, coins collected
@@ -47,7 +47,7 @@ function twinkleTexture() {
     x.quadraticCurveTo(c - w, c + w, c - r, c); x.quadraticCurveTo(c - w, c - w, c, c - r);
     x.closePath();
     x.fillStyle = '#ffffff'; x.fill();
-    x.lineWidth = S * 0.035; x.strokeStyle = INK_CSS; x.stroke();
+    x.lineWidth = S * 0.018; x.strokeStyle = INK_CSS; x.stroke();
   });
 }
 // a cartoon splat: a lumpy blob with a few droplets around it, inked
@@ -66,7 +66,7 @@ function splatTexture() {
     };
     const drops = [];
     for (let i = 0; i < 6; i++) { const a = rnd() * Math.PI * 2, r = S * (0.4 + rnd() * 0.06); drops.push([c + Math.cos(a) * r, c + Math.sin(a) * r, S * (0.025 + rnd() * 0.035)]); }
-    x.lineWidth = S * 0.04; x.strokeStyle = INK_CSS;
+    x.lineWidth = S * 0.02; x.strokeStyle = INK_CSS;
     blob(); x.fillStyle = '#e4e4e4'; x.fill(); x.stroke();
     for (const [dx, dy, r] of drops) { x.beginPath(); x.arc(dx, dy, r, 0, Math.PI * 2); x.fill(); x.stroke(); }
     x.fillStyle = '#ffffff';   // a shiny highlight

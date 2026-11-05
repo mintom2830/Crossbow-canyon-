@@ -6,7 +6,7 @@ import { CFG } from '../config.js';
 import { road, plateauOutline, plateauSdf, makeRng, groundHeight, hillHeight, oasisLayout, pondEdge, pondDepth, streamPath, streamDistance, STREAM_HALF, inWater } from '../world.js';
 import { GB, P, orientTriangles } from './geo.js';
 const P_ = P;   // (inside buildOasis, P is the pool)
-import { toon, addInk, INK_PX } from './toon.js';
+import { toon, addInk, INK_PX, INK } from './toon.js';
 import { PAL, windmillTowerGeometry, barnGeometry, wellGeometry, marketGeometry, scarecrowGeometry } from './models.js';
 import { fieldPoint, turn } from '../town.js';
 
@@ -135,8 +135,8 @@ export function buildEnvironment(scene, quality) {
   const roadMat = toon({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const roadEdge = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.025, PAL.roadEdge, 0.35, L + 1.5), roadMat);
   const roadTop = new THREE.Mesh(ribbon(CFG.roadHalfWidth, 0.05, PAL.road, 0.3, L + 1.0), roadMat);
-  // cartoon ink lines along both edges of the road
-  const roadInk = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.03, PAL.roadInk, 0.35, L + 1.5, 0.09), roadMat);
+  // thin, soft lines along both edges of the road
+  const roadInk = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.03, PAL.roadInk, 0.35, L + 1.5, 0.045), roadMat);
   roadEdge.receiveShadow = roadTop.receiveShadow = roadInk.receiveShadow = true;
   roadGroup.add(roadEdge, roadTop, roadInk);
   // plaza at the fortress gate + footpaths to the huts
@@ -204,9 +204,9 @@ export function buildEnvironment(scene, quality) {
     const inward = (x, z, d) => { const dx = p.x - x, dz = p.z - z, l = Math.hypot(dx, dz) || 1; return [x + dx / l * d, z + dz / l * d]; };
     for (let i = 0; i < n; i++) {
       const [x0, z0] = outline[i], [x1, z1] = outline[(i + 1) % n];
-      const a0 = inward(x0, z0, 0.11), a1 = inward(x1, z1, 0.11);
+      const a0 = inward(x0, z0, 0.055), a1 = inward(x1, z1, 0.055);
       lip.push(x0, H + 0.045, z0, x1, H + 0.045, z1, a0[0], H + 0.045, a0[1], x1, H + 0.045, z1, a1[0], H + 0.045, a1[1], a0[0], H + 0.045, a0[1]);
-      const f0 = inward(x0, z0, -0.35), f1 = inward(x1, z1, -0.35), g0 = inward(x0, z0, -0.5), g1 = inward(x1, z1, -0.5);
+      const f0 = inward(x0, z0, -0.35), f1 = inward(x1, z1, -0.35), g0 = inward(x0, z0, -0.42), g1 = inward(x1, z1, -0.42);
       foot.push(f0[0], 0.035, f0[1], g0[0], 0.035, g0[1], f1[0], 0.035, f1[1], g0[0], 0.035, g0[1], g1[0], 0.035, g1[1], f1[0], 0.035, f1[1]);
     }
     for (const pts of [lip, foot]) {
@@ -215,7 +215,7 @@ export function buildEnvironment(scene, quality) {
       orientTriangles(lg, () => [0, 1, 0]);
       const ln = new Float32Array(pts.length); for (let i = 0; i < ln.length; i += 3) ln[i + 1] = 1;
       lg.setAttribute('normal', new THREE.BufferAttribute(ln, 3));
-      st.add(lg, PAL.ink, {});
+      st.add(lg, INK, {});
     }
   }
 
@@ -595,7 +595,7 @@ function buildOasis(st, D, rng, group) {
   flat(ring(1.0), 0.022, WATER.shallow);
   flat(ring(0.7), 0.028, WATER.mid);
   flat(ring(0.38), 0.033, WATER.deep);
-  band(ring(1.0), ring(1 + 0.13 / Math.min(P.rx, P.rz)), 0.038, PAL.ink);
+  band(ring(1.0), ring(1 + 0.065 / Math.min(P.rx, P.rz)), 0.038, INK);
   const inPool = (k) => { const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * k; return [P.x + Math.cos(a) * P.rx * r, P.z + Math.sin(a) * P.rz * r]; };
   // sunlight glinting on the water
   for (let i = 0; i < 9; i++) {
@@ -672,7 +672,7 @@ function buildOasis(st, D, rng, group) {
     strip(STREAM_HALF + 0.55, 0.014, WATER.bank);
     strip(STREAM_HALF, 0.024, WATER.shallow);
     strip(0.5, 0.03, WATER.mid);
-    strip(STREAM_HALF, 0.036, PAL.ink, 0.1);
+    strip(STREAM_HALF, 0.036, INK, 0.05);
     for (let s = 2; s < sp.length; s += 2.6) {   // little white ripples flowing downstream
       const o = {}; sp.sample(s, o);
       st.add(P_.box(0.07, 0.01, 0.5), 0xf4fdff, { x: o.x + o.nx * rng.range(-0.6, 0.6), y: 0.04, z: o.z + o.nz * rng.range(-0.6, 0.6), ry: Math.atan2(o.tx, o.tz) });

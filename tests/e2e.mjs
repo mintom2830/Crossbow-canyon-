@@ -419,7 +419,9 @@ await test('Level 2: pick Lonetree Hill on the title screen; rats climb the hill
     return { onHill: s.enemies.filter((e) => e.type === 0 && e.gy > 1.8).length };
   });
   assert(r.onHill > 0, 'no rat ever reached the hill');
-  await page.waitForTimeout(800);
+  // wait for the first frame that draws them (software GL can take a while after a jump)
+  await page.waitForFunction(() => window.__cc.view.gruntMesh.count > 0, null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(300);
   const drawn = await g(page, () => {
     const c = window.__cc, s = c.sim, v = c.view, m = new (v.camera.matrix.constructor)();
     const e = s.enemies.find((q) => q.type === 0 && q.gy > 1.8 && q.v === 0 && q.alive);
@@ -794,7 +796,8 @@ await test('cartoon look: every lit surface is toon shaded and models get ink ou
   assert(r.rats && r.ratCount > 0, 'rat outlines missing or out of step with the rats');
   assert(r.hero && r.keep && r.terrain && r.giant && r.tower, 'an outline is missing: ' + JSON.stringify(r));
   assert(r.width, 'outline width uniforms not set');
-  // the outlines really draw: with them on, far more ink-dark pixels appear on screen
+  // the outlines really draw: with them on, many more ink-brown pixels appear on screen
+  // (thin, soft lines: a warm brown near INK in toon.js, 0x4a3326)
   const darkPixels = (scale) => g(page, (k) => new Promise((res) => {
     const v = window.__cc.view;
     v.ink.uInkScale.value = k;
@@ -806,7 +809,7 @@ await test('cartoon look: every lit surface is toon shaded and models get ink ou
       const x = c.getContext('2d'); x.drawImage(img, 0, 0);
       const d = x.getImageData(0, 0, c.width, c.height).data;
       let n = 0;
-      for (let i = 0; i < d.length; i += 4) if (d[i] < 80 && d[i + 1] < 56 && d[i + 2] < 46) n++;
+      for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 74) < 26 && Math.abs(d[i + 1] - 51) < 22 && Math.abs(d[i + 2] - 38) < 20) n++;
       res(n);
     };
     img.src = url;
@@ -815,7 +818,7 @@ await test('cartoon look: every lit surface is toon shaded and models get ink ou
   const off = await darkPixels(0);
   const on = await darkPixels(1);
   await g(page, () => { window.__cc.view.ink.uInkScale.value = 1; });
-  assert(on - off > 3000, `outlines do not show: ${on} ink pixels with outlines, ${off} without`);
+  assert(on - off > 1500, `outlines do not show: ${on} ink pixels with outlines, ${off} without`);
   await page.screenshot({ path: `${SHOTS}/cartoon-look.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
@@ -1381,7 +1384,7 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
     return s.enemies.length;
   });
   assert(out >= 12, 'the test wave did not spawn: ' + out);
-  await page.waitForTimeout(800);
+  await page.waitForFunction(() => window.__cc.view.giantPool.filter((q) => q.inUse).length >= 2, null, { timeout: 20000 }).catch(() => {});
   const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => ({ boss: q.boss, tex: !!q.mat.map, legs: q.legL.children.length })));
   assert(gi.length >= 2 && gi.every((q) => q.tex && q.legs === 1), 'giants not drawn from their models: ' + JSON.stringify(gi));
   await page.screenshot({ path: `${SHOTS}/rat-models.png` });
