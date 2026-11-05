@@ -39,6 +39,9 @@ export const modelTier = (level) => (level <= 2 ? 1 : level <= 4 ? 2 : 3);
 // the models that were shipped with this build (build.mjs lists src/assets/models)
 /* global __TOWER_MODELS__ */
 const SHIPPED = typeof __TOWER_MODELS__ !== 'undefined' ? new Set(__TOWER_MODELS__) : null;
+// how the files are stored: .glb, or base64 text (.glb.txt) for hosts that only serve text and pictures
+/* global __MODEL_EXT__ */
+const EXT = typeof __MODEL_EXT__ !== 'undefined' ? __MODEL_EXT__ : '.glb';
 
 // Weapon skins on a textured model: the same mapping as skins.js (each colour
 // by its brightness onto the skin's dark → mid → light ramp, vivid trim in the
@@ -90,13 +93,22 @@ export class TowerModels {
     if (!e) {
       e = { parts: null, failed: false };
       this.cache.set(key, e);
-      this.loader.loadAsync(this.base + key + '.glb').then((gltf) => {
+      this._load(this.base + key + EXT).then((gltf) => {
         e.parts = this._fit(kind, gltf, +key.slice(-1));
         e.parts.tier = +key.slice(-1);
         if (this.onLoad) this.onLoad(kind);
       }).catch(() => { e.failed = true; this.misses++; });
     }
     return e.parts;
+  }
+
+  _load(url) {
+    if (!url.endsWith('.txt')) return this.loader.loadAsync(url);
+    return fetch(url).then((r) => { if (!r.ok) throw new Error(`${url}: ${r.status}`); return r.text(); }).then((t) => {
+      const bin = atob(t.trim()), buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      return this.loader.parseAsync(buf.buffer, '');
+    });
   }
 
   setSkin(id) {
