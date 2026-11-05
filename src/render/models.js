@@ -48,8 +48,16 @@ export const SHIELDLESS = 10;
 // 0 trot · 1 gallop (fast rat) · 2 heavy stomp (armored, shield) · 3 waddle (brood, bomb)
 // 4 sneak (ninja) · 5 hop (ratling)
 export const RAT_GAIT = [0, 1, 2, 2, 0, 3, 5, 3, 4, 0, 2];
+// the gait rides in the joint attribute's fourth component; the head and tail
+// sub-parts (and the soft skin) are only on the Meshy rats, so zeros here (every
+// input the rat shader reads is always set: a missing one would read whatever
+// another shader left there)
 function withGait(g, variant) {
-  g.setAttribute('aGait', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(RAT_GAIT[variant] || 0), 1));
+  const n = g.attributes.position.count, piv = g.attributes.aPivot, p4 = new Float32Array(n * 4), gait = RAT_GAIT[variant] || 0;
+  for (let i = 0; i < n; i++) { p4[i * 4] = piv.getX(i); p4[i * 4 + 1] = piv.getY(i); p4[i * 4 + 2] = piv.getZ(i); p4[i * 4 + 3] = gait; }
+  g.setAttribute('aPivot', new THREE.BufferAttribute(p4, 4));
+  g.setAttribute('aSub', new THREE.BufferAttribute(new Float32Array(n * 4), 4));
+  g.setAttribute('aSubPivot', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
   return g;
 }
 const HC = [0, 0.41, 0.41];   // the rats' head centre; headK: how much bigger the head is than it once was (a ratling's biggest, like a baby's)

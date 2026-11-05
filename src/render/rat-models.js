@@ -6,7 +6,7 @@
 // head 6, body 0. A Meshy model is one skin, so each vertex gets a part from
 // where it sits (the back is the tail, the top of the front the head, the bottom
 // the legs, front or back, left or right) and a weight, so the parts bend out of
-// the body smoothly (see aStiff in ratanim.js).
+// the body smoothly (see the stiffness, aSub.w, in ratanim.js).
 import * as THREE from 'three';
 import { RAT_GAIT } from './models.js';
 import { gltfGeometry } from './tower-models.js';
@@ -31,7 +31,7 @@ export const RAT_FIT = {
 };
 
 // The model's geometry ready for the rat shader: facing +Z, standing on the
-// ground, scaled to the rat's height, with aPart / aPivot / aGait.
+// ground, scaled to the rat's height, with aPart / aPivot (and the gait in aPivot.w).
 export function ratGeometry(gltf, v) {
   const fit = RAT_FIT[v] || RAT_FIT[0];
   const { geo, map } = gltfGeometry(gltf);
@@ -122,12 +122,13 @@ export function ratGeometry(gltf, v) {
       }
     }
   }
+  // the stiffness rides in aSub.w and the gait in aPivot.w (see ratanim.js)
+  const piv4 = new Float32Array(n * 4), gait = RAT_GAIT[v] || 0;
+  for (let i = 0; i < n; i++) { sub[i * 4 + 3] = stiff[i]; piv4[i * 4] = piv[i * 3]; piv4[i * 4 + 1] = piv[i * 3 + 1]; piv4[i * 4 + 2] = piv[i * 3 + 2]; piv4[i * 4 + 3] = gait; }
   geo.setAttribute('aSub', new THREE.BufferAttribute(sub, 4));
   geo.setAttribute('aSubPivot', new THREE.BufferAttribute(subPiv, 3));
-  geo.setAttribute('aStiff', new THREE.BufferAttribute(stiff, 1));
   geo.setAttribute('aPart', new THREE.BufferAttribute(part, 1));
-  geo.setAttribute('aPivot', new THREE.BufferAttribute(piv, 3));
-  geo.setAttribute('aGait', new THREE.BufferAttribute(new Float32Array(n).fill(RAT_GAIT[v] || 0), 1));
+  geo.setAttribute('aPivot', new THREE.BufferAttribute(piv4, 4));
   geo.computeBoundingSphere();
   return { geo, map };
 }
@@ -146,7 +147,7 @@ export function clusterGeometry(geo, cell) {
     if (!s) { s = [0, 0, 0, 0]; sums.set(k, s); }
     s[0] += pos.getX(i); s[1] += pos.getY(i); s[2] += pos.getZ(i); s[3]++;
   }
-  const extra = ['aPart', 'aPivot', 'aGait', 'aStiff', 'aSub', 'aSubPivot'].filter((a) => geo.attributes[a]);
+  const extra = ['aPart', 'aPivot', 'aSub', 'aSubPivot'].filter((a) => geo.attributes[a]);
   const out = { position: [] };
   for (const a of extra) out[a] = [];
   const seen = new Set();

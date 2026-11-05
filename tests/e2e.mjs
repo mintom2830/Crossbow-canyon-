@@ -52,6 +52,23 @@ async function open(kind = 'desktop', settings = { sfx: false, music: false, qua
   return { ctx, page, errors };
 }
 const g = (page, fn, arg) => page.evaluate(fn, arg);
+// every shader compiled so far, with how many vertex input slots it uses (a mat4
+// takes four): many graphics cards (and most phones) allow only 16, and a shader
+// over that fails to link on them even where this machine's GL lets it through
+const attribSlots = (page) => g(page, () => {
+  const r = window.__cc.view.renderer, gl = r.getContext(), out = [];
+  for (const p of r.info.programs || []) {
+    const n = gl.getProgramParameter(p.program, gl.ACTIVE_ATTRIBUTES); let slots = 0;
+    for (let i = 0; i < n; i++) { const a = gl.getActiveAttrib(p.program, i); slots += (a.type === gl.FLOAT_MAT4 ? 4 : a.type === gl.FLOAT_MAT3 ? 3 : a.type === gl.FLOAT_MAT2 ? 2 : 1) * a.size; }
+    out.push({ name: p.name + ' ' + p.cacheKey.slice(0, 40), slots });
+  }
+  return out;
+});
+const assertSlots = async (page, what) => {
+  const list = await attribSlots(page), worst = list.reduce((a, b) => (b.slots > a.slots ? b : a), { slots: 0 });
+  assert(list.length > 0 && worst.slots <= 16, `${what}: a shader needs ${worst.slots} vertex inputs (16 at most on many devices): ${worst.name}`);
+  return worst.slots;
+};
 // Writes a localStorage key, then reloads until the page sees it. Headless Chromium
 // occasionally drops a file:// storage write made shortly before a reload.
 async function setStorageAndReload(page, key, value) {
@@ -1439,6 +1456,7 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   const rows = await g(page, () => { const v = window.__cc.view, out = {}; for (const [i, C] of Object.entries(v.crowd || {})) { const n = v.ratMeshes[i].count, a = C.clip.array; out[i] = { n, rows: [...new Set(Array.from({ length: n }, (_, k) => Math.round(a[k * 4] * 10)))].length }; } return out; });
   for (const [i, q] of Object.entries(rows)) assert(q.n === 0 || q.rows >= Math.min(q.n, 1), `crowd rat ${i} frames: ` + JSON.stringify(q));
   await page.screenshot({ path: `${SHOTS}/rat-models.png` });
+  await assertSlots(page, 'Meshy rats and bosses');
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });
@@ -1676,7 +1694,7 @@ await test('phone landscape: layout fits and the game keeps running after rotati
 });
 
 await test('performance: frame cost with the biggest crowd on screen', async () => {
-  const { ctx, page } = await open();
+  const { ctx, page, errors } = await open();
   await page.click('#playBtn');
   await page.waitForFunction(() => window.__cc.mode === 'play');
   await g(page, () => { const s = window.__cc.sim; s.waveIndex = s.waveCount - 1; s.fortress.hp = 99999; s.fortress.maxHp = 99999; s.callWave(); window.__cc.advance(24); window.__cc.teleport(-14, 30); });
@@ -1699,6 +1717,8 @@ await test('performance: frame cost with the biggest crowd on screen', async () 
   assert(r.enemies > 300, 'crowd too small for the test: ' + r.enemies);
   assert(r.stepMs + r.syncMs < 8, `CPU frame cost too high: ${r.stepMs + r.syncMs} ms`);
   assert(r.calls < 120, 'too many draw calls: ' + r.calls);
+  perfReport.maxVertexInputs = await assertSlots(page, 'the biggest crowd');
+  assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });
 

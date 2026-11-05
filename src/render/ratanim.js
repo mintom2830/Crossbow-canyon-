@@ -1,33 +1,36 @@
 // GPU animation for the instanced small rats.
 // Every rat is one instance of one mesh, so hundreds of rats still cost a
 // single draw call. Each vertex knows which body part it belongs to (aPart)
-// and where that part's joint is (aPivot); each instance gets an animation
-// state (iAnim) every frame:
+// and where that part's joint is (aPivot.xyz; aPivot.w is the kind of rat's gait,
+// see below); each instance gets an animation state (iAnim) every frame:
 //   x  walk phase in radians (driven by distance walked, so feet don't slide)
 //      while dying: the side it rolls over to (+1 / -1)
 //   y  hit flinch, 1 -> 0 after a hit; -1 while stunned or frozen (hold still)
 //   z  gate attack phase 0..1 (the bite lands at 0.65); -1 when not attacking
 //   w  0 alive; 0..1 defeat progress; -1..0 "spent" poof progress
-// aStiff (optional, 0 when absent): how little a vertex follows its part's joint.
+// aSub.w: how little a vertex follows its part's joint (its stiffness).
 //   The hand-built rats have separate legs, tail and head (0: they swing whole);
 //   a Meshy rat is one skin, so its legs, tail and head bend smoothly out of the
 //   body (1 at the joint, falling to 0 at the foot, the tail tip, the snout).
 // iPhys (optional, per instance): secondary motion simulated on springs in the view:
 //   x  the tail swung out of a turn (it lags, then whips back)   y  the head turned into the turn
 //   z  a squash when it lands or skids                           w  the ears flopped back and out
-// aSub / aSubPivot (optional, Meshy rats): smaller parts inside the head and tail:
+// aSub / aSubPivot (zeros on the hand-built rats): smaller parts inside the head
+// and tail, and where they turn:
 //   x  1 left ear, 2 right ear, 3 jaw (0 none)   y  how much it follows that part
 //   z  along the tail, 0 at the root to 1 at the tip (0: a rigid hand-built tail)
-// aGait (per model, see RAT_GAIT in models.js): how that kind of rat moves:
+//   w  the stiffness above
+// aPivot.w (per model, see RAT_GAIT in models.js): how that kind of rat moves:
 //   0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop
+// (The gait and the stiffness ride in spare components so the shader stays well
+// under the 16 vertex inputs many graphics cards allow: the instance matrix alone
+// takes four.)
 import * as THREE from 'three';
 
 export const RAT_POSE_GLSL = [
   "attribute float aPart;",
-  "attribute vec3 aPivot;",
+  "attribute vec4 aPivot;",
   "attribute vec4 iAnim;",
-  "attribute float aGait;",
-  "attribute float aStiff;",
   "attribute vec4 iPhys;",
   "attribute vec4 aSub;",
   "attribute vec3 aSubPivot;",
@@ -48,8 +51,8 @@ export const RAT_POSE_GLSL = [
   "bool attacking = atk >= 0.0 && alive;",
   "if (!alive || still) ph = 0.6;",
   "int part = int(aPart + 0.5);",
-  "int G = int(aGait + 0.5);",
-  "float bw = 1.0 - aStiff;",
+  "int G = int(aPivot.w + 0.5);",
+  "float bw = 1.0 - aSub.w;",
   // quicker little steps when sneaking, slower heavy ones when stomping or waddling
   "if (alive && !still) ph *= G == 4 ? 1.45 : G == 2 ? 0.8 : G == 3 ? 0.85 : G == 5 ? 0.75 : 1.0;",
   "float jit = fract(iAnim.x * 0.137);",
@@ -113,7 +116,7 @@ export const RAT_POSE_GLSL = [
   "}",
   "pp = RS * (p - aSubPivot) + aSubPivot;",
   "}",
-  "vec3 q = R * (pp - aPivot) + aPivot;",
+  "vec3 q = R * (pp - aPivot.xyz) + aPivot.xyz;",
   "float bob = abs(sin(ph)) * 0.05;",
   "float pitchB = sin(ph * 2.0) * 0.04;",
   "float rollB = sin(ph) * 0.05;",
