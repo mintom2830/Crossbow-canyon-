@@ -220,6 +220,7 @@ export function buildFarmer() {
     inkNormals(geo);
     const ink = new THREE.SkinnedMesh(geo, inkMaterial(px)); ink.frustumCulled = false; ink.name = 'ink'; ink.raycast = () => {};
     root.add(ink); ink.bind(skeleton);
+    m.userData.ink = ink;
     meshes[name] = m;
     return m;
   };

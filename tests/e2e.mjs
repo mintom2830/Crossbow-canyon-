@@ -801,7 +801,7 @@ await test('cartoon look: every lit surface is toon shaded and models get ink ou
       bad, toon, inks,
       rats: v.ratMeshes.every((m) => m.userData.ink && m.userData.ink.isInstancedMesh && m.userData.ink.count === m.count),
       ratCount: v.ratMeshes.reduce((a, m) => a + m.count, 0),
-      hero: !!v.hero.fb.children[0].userData.ink, keep: !!v.fortress.userData.ink,
+      hero: Object.values(v.hero.farmer.meshes).length >= 10 && Object.values(v.hero.farmer.meshes).every((m) => m.userData.ink && m.userData.ink.isSkinnedMesh) && !!v.hero.fork.userData.ink, keep: !!v.fortress.userData.ink,
       terrain: !!v.env.group.children.find((m) => m.userData.ink),
       giant: !!(giant && giant.group.children[0].children[0].userData.ink),
       tower: !!(tower && tower.base.userData.ink && tower.base.userData.ink.visible && tower.headMesh.userData.ink.visible),
