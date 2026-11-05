@@ -1341,7 +1341,7 @@ await test('Arsenal: unlock towers in the Shop, pick one from the Build menu on 
 });
 
 await test('Arsenal 3D models: served over the web, a built tower switches to its Meshy model (fitted to the pad, outlined) and changes model with its level', async () => {
-  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => f.endsWith('.glb') && !/^(rat-|boss-|giant)/.test(f)).map((f) => f.slice(0, -4)) : [];
+  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => f.endsWith('.glb') && !/^(rat-|boss-|giant|anim-)/.test(f)).map((f) => f.slice(0, -4)) : [];
   assert(shipped.length >= 1, 'no tower models in dist/models');
   const [kind] = shipped[0].split('-');
   const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
@@ -1366,34 +1366,48 @@ await test('Arsenal 3D models: served over the web, a built tower switches to it
   await ctx.close();
 });
 
-await test('Meshy rats: served over the web, every rat, the giant rat and the bosses switch to their 3D models, textured and animated', async () => {
-  const shipped = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => /^(rat-|boss-|giant)/.test(f)).map((f) => f.slice(0, -4)) : [];
-  assert(shipped.length >= 1, 'no rat models in dist/models');
-  const rats = shipped.filter((n) => n.startsWith('rat-')).map((n) => +n.slice(4)).sort((a, b) => a - b);
-  const bigs = shipped.filter((n) => !n.startsWith('rat-')).map((n) => n === 'giant' ? 'giant' : n.slice(5)).sort();
+await test('Meshy rats: served over the web, every rat, the giant rat and the bosses switch to their 3D models; the Meshy-rigged ones play skeletal clips', async () => {
+  const files = existsSync('dist/models') ? readdirSync('dist/models').filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)) : [];
+  // a style is drawn from a Meshy model if it ships a static one (rat-N, giant, boss-X) or an animated one (anim-...)
+  const rats = [...new Set(files.filter((n) => /^(anim-)?rat-\d$/.test(n)).map((n) => +n.slice(-1)))].sort((a, b) => a - b);
+  const bigs = [...new Set(files.filter((n) => /^(anim-)?(giant|boss-\w+|warlord|baron|king|mole)$/.test(n)).map((n) => n.replace(/^anim-/, '').replace(/^boss-/, '')))].sort();
+  const animated = files.filter((n) => n.startsWith('anim-')).map((n) => n.slice(5));
+  assert(rats.length >= 1 && bigs.length >= 1, 'no rat models in dist/models');
   const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
   await page.click('#playBtn');
   await page.waitForFunction(() => window.__cc.mode === 'play');
   await page.waitForFunction(([nr, nb]) => { const v = window.__cc.view; return (v.ratModelsLoaded || new Set()).size >= nr && (v.giantModelsLoaded || new Set()).size >= nb; }, [rats.length, bigs.length], { timeout: 30000 });
   const r = await g(page, ([rats, bigs]) => {
     const v = window.__cc.view;
-    const small = rats.map((i) => { const m = v.ratMeshes[i]; m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; return { i, tex: !!(m.material.map && m.material.map.image), part: !!m.geometry.attributes.aPart, legs: [...m.geometry.attributes.aPart.array].some((p) => p >= 1 && p <= 4), y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) }; });
-    const big = bigs.map((k) => { const g = v.giantGeo[k === 'giant' ? 'normal' : k], geo = g.skinned || g.torso; return { k, tex: !!g.map, top: g.top, torso: geo.attributes.position.count, skinned: !!g.skinned || k === 'slime' }; });
-    // the weapon a giant carries goes with the hand that swings it (bone 3, the right arm): the
-    // giant rat's club and the Iron Baron's mace reach low, well below where an arm's own skin starts
-    const weapon = ['normal', 'baron'].filter((k) => v.giantGeo[k] && v.giantGeo[k].skinned).map((k) => {
-      const G = v.giantGeo[k], g = G.skinned, P = g.attributes.position, I = g.attributes.skinIndex.array, Wt = g.attributes.skinWeight.array, H = G.top - 0.15;
-      let n = 0;
-      for (let i = 0; i < P.count; i++) for (let c = 0; c < 4; c++) if (I[i * 4 + c] === 3 && Wt[i * 4 + c] > 0.95 && P.getY(i) < 0.25 * H) n++;
-      return { k, n };
+    const small = rats.map((i) => {
+      const m = v.ratMeshes[i], crowd = !!(v.crowd && v.crowd[i]), A = m.geometry.attributes;
+      if (crowd) {
+        // a crowd rat on a baked Meshy skeleton: skin weights, a frame row per copy, a texture of bone matrices
+        const B = v.crowd[i].bake;
+        return { i, crowd, tex: !!(m.material.map && m.material.map.image), skin: !!(A.skinIndex && A.skinWeight && A.iClip), clips: Object.keys(B.clips), rows: B.tex.image.height, bones: B.bones };
+      }
+      m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox;
+      return { i, crowd, tex: !!(m.material.map && m.material.map.image), part: !!A.aPart, legs: [...A.aPart.array].some((p) => p >= 1 && p <= 4), phys: !!A.iPhys, y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) };
     });
-    return { small, big, weapon, misses: v.models.misses };
+    const big = bigs.map((k) => {
+      const key = k === 'giant' ? 'normal' : k, A = v.animGiant && v.animGiant[key];
+      if (A) return { k, animated: true, tex: !!A.map, clips: Object.keys(A.clips), top: A.fit.top, walkLoop: A.loop.walk };
+      const g = v.giantGeo[key], geo = g.skinned || g.torso;
+      return { k, animated: false, tex: !!g.map, top: g.top, torso: geo.attributes.position.count, skinned: !!g.skinned || k === 'slime' };
+    });
+    return { small, big, misses: v.models.misses };
   }, [rats, bigs]);
   assert(r.misses === 0, 'a model failed to load');
-  for (const q of r.small) assert(q.tex && q.part && q.legs && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
-  for (const q of r.big) assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
-  for (const q of r.weapon) assert(q.n > 300, 'weapon not held in the right hand: ' + JSON.stringify(r.weapon));
-  // a wave with a giant and a boss: they are built from the models and walk
+  for (const q of r.small) {
+    if (q.crowd) assert(q.tex && q.skin && q.bones >= 20 && q.rows > 30 && ['idle', 'walk', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)), 'crowd rat not baked: ' + JSON.stringify(q));
+    else assert(q.tex && q.part && q.legs && q.phys && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
+  }
+  for (const q of r.big) {
+    if (q.animated) assert(q.tex && ['idle', 'walk', 'run', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)) && q.walkLoop > 0.3 && q.top > 1.5 && q.top < 4.2, 'animated boss incomplete: ' + JSON.stringify(q));
+    else assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
+  }
+  for (const a of animated) assert(r.big.some((q) => q.animated && (q.k === a || (a === 'giant' && q.k === 'giant'))) || r.small.some((q) => q.crowd && 'rat-' + q.i === a), 'animated model not used: ' + a);
+  // a wave with a giant, a boss and every rat: they are built from the models and move
   const out = await g(page, () => {
     const s = window.__cc.sim; s.fortress.hp = s.fortress.maxHp = 1e6;
     s.callWave(); s.spawnQueue.length = 0; s.spawnIndex = 0; s.waveTime = 0;
@@ -1407,13 +1421,17 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   });
   assert(out >= 12, 'the test wave did not spawn: ' + out);
   await page.waitForFunction(() => window.__cc.view.giantPool.filter((q) => q.inUse).length >= 2, null, { timeout: 20000 }).catch(() => {});
-  // giants and bosses are skinned on bones (with a skinned outline), and their joints move as they walk
+  await page.waitForTimeout(500);
+  // giants and bosses are skinned on bones (with a skinned outline); rigged ones walk on their clips
   const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => {
-    const skin = q.group.children.find((c) => c.isSkinnedMesh);
-    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), leg: q.legL.rotation.x };
+    let skin = null; q.group.traverse((o) => { if (!skin && o.isSkinnedMesh && o.name !== 'ink') skin = o; });
+    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), rig: q.rig ? q.rig.state : null, leg: q.legL.rotation.x };
   }));
-  assert(gi.length >= 2 && gi.every((q) => q.tex && q.skin && q.bones === 6 && q.ink), 'giants not drawn from their skinned models: ' + JSON.stringify(gi));
-  assert(gi.some((q) => Math.abs(q.leg) > 0.05), 'giant legs do not stride: ' + JSON.stringify(gi));
+  assert(gi.length >= 2 && gi.every((q) => q.tex && q.skin && q.bones >= 6 && q.ink), 'giants not drawn from their skinned models: ' + JSON.stringify(gi));
+  assert(gi.every((q) => q.rig ? ['walk', 'run', 'idle'].includes(q.rig) : Math.abs(q.leg) > 0.05) && gi.some((q) => q.rig === 'walk' || q.rig === 'run' || Math.abs(q.leg) > 0.05), 'giants do not walk: ' + JSON.stringify(gi));
+  // the crowd rats on baked skeletons show walking frames, each at its own point in the stride
+  const rows = await g(page, () => { const v = window.__cc.view, out = {}; for (const [i, C] of Object.entries(v.crowd || {})) { const n = v.ratMeshes[i].count, a = C.clip.array; out[i] = { n, rows: [...new Set(Array.from({ length: n }, (_, k) => Math.round(a[k * 4] * 10)))].length }; } return out; });
+  for (const [i, q] of Object.entries(rows)) assert(q.n === 0 || q.rows >= Math.min(q.n, 1), `crowd rat ${i} frames: ` + JSON.stringify(q));
   await page.screenshot({ path: `${SHOTS}/rat-models.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();

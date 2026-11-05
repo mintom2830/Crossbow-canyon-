@@ -170,6 +170,24 @@ export class FX {
   beam(x0, y0, z0, x1, y1, z1, w, color, life = 0.15) {
     this.beams.spawn({ x0, y0, z0, x1, y1, z1, w, color, t: 0, life });
   }
+  // a weapon's swoosh: a glowing arc swept in front of it (yaw: the way it faces), r
+  // across, brightest at the leading edge
+  slash(x, y, z, yaw, r = 1.6, color = 0xfff2c8, life = 0.24) {
+    const fx = Math.sin(yaw), fz = Math.cos(yaw), n = 9;
+    let px = 0, py = 0, pz = 0;
+    for (let i = 0; i <= n; i++) {
+      const th = -1.1 + (i / n) * 2.5;   // from over the shoulder, over the top, down in front
+      const qx = x + fx * Math.sin(th) * r, qy = y + Math.cos(th) * r, qz = z + fz * Math.sin(th) * r;
+      if (i) this.beam(px, py, pz, qx, qy, qz, 0.08 + 0.22 * (i / n), color, life * (0.6 + 0.4 * i / n));
+      px = qx; py = qy; pz = qz;
+    }
+  }
+  // a slam cracks the ground: a dark scorch with dirt thrown up and a shock ring
+  crack(x, z, r = 1.5, color = 0x8a6a48) {
+    this.smudge(x, 0, z, r * 0.9, 0x5a4030, 3);
+    this.dirt(x, z, r * 0.8);
+    this.shockRing(x, z, r * 1.6, color);
+  }
   // a crackling lightning bolt along pts ([x,y,z,...] flat list), jagged between each pair
   lightning(pts, color = 0x8fd8ff, w = 0.14, life = 0.16) {
     for (let i = 0; i + 5 < pts.length; i += 3) {

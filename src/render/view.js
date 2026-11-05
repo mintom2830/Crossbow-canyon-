@@ -14,6 +14,8 @@ import { applySkin, skinColor } from './skins.js';
 import { ArsenalView } from './arsenal-view.js';
 import { TowerModels, modelTier, modelShipped, MODEL_EXT } from './tower-models.js';
 import { ratGeometry, clusterGeometry, giantModelParts } from './rat-models.js';
+import { AnimModel, ANIM_FIT } from './skeletal.js';
+import { bakeCrowd, crowdMaterial, crowdInkPose, crowdRow } from './crowdanim.js';
 import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
 import { turn } from '../town.js';
@@ -206,6 +208,11 @@ export class View {
       const anim = new THREE.InstancedBufferAttribute(new Float32Array(1400 * 4), 4);
       anim.setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute('iAnim', anim);
+      // tail, head and squash springs (see iPhys in ratanim.js)
+      const phys = new THREE.InstancedBufferAttribute(new Float32Array(1400 * 4), 4);
+      phys.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('iPhys', phys);
+      (this.ratPhys || (this.ratPhys = [])).push(phys);
       const mesh = new THREE.InstancedMesh(geo, ratMat, 1400);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
@@ -215,6 +222,7 @@ export class View {
       // ink outline: a cheaper hull that shares the instances and the animation state
       const inkGeo = inkNormals(gruntInkGeometry(v));
       inkGeo.setAttribute('iAnim', anim);
+      inkGeo.setAttribute('iPhys', phys);
       inkInstanced(mesh, INK_PX.rat, { geo: inkGeo, rat: this.ratUniforms });
       this.ratMeshes.push(mesh); this.ratAnims.push(anim);
     }
@@ -542,6 +550,7 @@ export class View {
   _getGiant(style) {
     const boss = style || false;   // false = plain giant rat, otherwise the boss style
     let v = this.giantPool.find((g) => !g.inUse && g.boss === boss);
+    if (!v && this.animGiant && this.animGiant[boss || 'normal']) v = this._newAnimGiant(boss);
     if (!v) {
       const geo = this.giantGeo[boss || 'normal'];
       const piv = geo.pivots || { armL: [-1.12, 2.05, 0.05], armR: [1.12, 2.05, 0.05], legL: [-0.45, 0.95, 0], legR: [0.45, 0.95, 0] };
@@ -593,6 +602,7 @@ export class View {
     }
     v.inUse = true;
     v.group.visible = true;
+    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; }
     v.group.rotation.set(0, 0, 0, 'YXZ');   // yaw, then local pitch for falling over
     v.group.position.y = 0;
     v.body.rotation.set(0, 0, 0); v.body.position.set(0, 0, 0); v.body.scale.set(1, 1, 1);
@@ -601,6 +611,55 @@ export class View {
     v.dying = undefined; v.downed = false; v.vanished = false;
     v.label.style.display = '';
     return v;
+  }
+
+  // A giant or boss on a Meshy skeleton: its mixer plays the clips (see skeletal.js).
+  // The joints the hand-posed giants use (body, arms, legs) are kept as empty
+  // stand-ins, so every pose that moves the whole body still works.
+  _newAnimGiant(boss) {
+    const model = this.animGiant[boss || 'normal'];
+    const inst = model.instance(boss ? INK_PX.big : INK_PX.unit);
+    const group = new THREE.Group();
+    const body = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group(), legL = new THREE.Group(), legR = new THREE.Group();
+    body.add(inst.holder, armL, armR);
+    group.add(body, legL, legR);
+    this.scene.add(group);
+    const label = document.createElement('div');
+    label.className = 'hp-num';
+    this.labels.appendChild(label);
+    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, model };
+    this.giantPool.push(v);
+    return v;
+  }
+
+  // Drives an animated giant's clips from what it is doing: walking or running at its
+  // real ground speed (so its feet don't slide), its weapon blow landing on the frame
+  // the gate is hit, a hit reaction when a big hit lands, a roar now and then, and
+  // frozen mid-move while stunned.
+  _driveRig(v, e, dt, fighting, sc, style) {
+    const R = v.rig;
+    if (e.stun > 0 || e.frozen > 0 || e.held > 0) { R.hold(true); return; }
+    R.hold(false);
+    if (e.atGate) {
+      if (fighting) R.attackAt(attackPhase(e.attackT, CFG.giant.gateRate)); else R.go('idle', 0.3);
+      return;
+    }
+    // a hard hit (a flinch that starts strong) makes it stagger, now and then
+    v.hitCd = (v.hitCd || 0) - dt;
+    if (e.hitT > CFG.hitFlinch * 0.8 && v.hitCd <= 0 && !R.busy()) { R.play('hit', 0.1, 1.5); v.hitCd = 2.5; }
+    // now and then a boss stops to roar (the clip; the ring goes out at its peak)
+    if (e.type === T_BOSS && style !== 'mole' && R.has('roar')) {
+      v.roarT = (v.roarT ?? 4 + Math.random() * 5) - dt;
+      if (v.roarT < 0 && !R.busy()) {
+        R.play('roar', 0.25, 1.6); v.roarT = 9 + Math.random() * 6; v.roared = false;
+      }
+      if (R.oneShot === 'roar' && !v.roared && R.actions.roar.time > R.actions.roar.getClip().duration * 0.3) {
+        v.roared = true;
+        this._lift(e.x, e.z).ring(e.x, 0, e.z, 2.4 * sc, BOSS_AURA[style] || 0xffffff, 0.7); this.fx.lift = 0;
+      }
+    }
+    if (R.busy()) return;
+    R.move(e.vs || 0, sc);
   }
 
   // -------------------------------------------------------------- pads
@@ -810,18 +869,78 @@ export class View {
     if (this.models.disabled) return;
     this._loadGiantModels();
     for (let v = 0; v < SHIELDLESS; v++) {
+      // the upright rats Meshy could rig (healer, ratling) play its skeletal clips, baked
+      // for the crowd (crowdanim.js); the rest bend their soft-skinned bodies (ratanim.js)
+      const animName = 'anim-rat-' + v;
+      if (modelShipped(animName)) {
+        this.models._load(this.models.base + animName + MODEL_EXT).then((gltf) => this._setCrowdModel(v, bakeCrowd(new AnimModel(gltf, 'rat-' + v)))).catch(() => { this.models.misses++; });
+        continue;
+      }
       const name = 'rat-' + v;
       if (!modelShipped(name)) continue;
       this.models._load(this.models.base + name + MODEL_EXT).then((gltf) => this._setRatModel(v, ratGeometry(gltf, v))).catch(() => { this.models.misses++; });
     }
   }
+  // a crowd rat on a baked skeleton: its mesh and outline skin from the bone texture
+  _setCrowdModel(v, bake) {
+    if (!bake) return;
+    const mesh = this.ratMeshes[v], anim = this.ratAnims[v];
+    const geo = bake.geo;
+    geo.setAttribute('iAnim', anim);
+    const clip = new THREE.InstancedBufferAttribute(new Float32Array(anim.count * 4), 4);
+    clip.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('iClip', clip);
+    mesh.geometry = geo;
+    mesh.material = crowdMaterial(bake);
+    const ink = mesh.userData.ink;
+    if (ink) { inkNormals(geo); ink.geometry = geo; ink.material = inkMaterial(INK_PX.rat, { pose: crowdInkPose(bake) }); }
+    (this.crowd || (this.crowd = {}))[v] = { bake, clip, fit: ANIM_FIT['rat-' + v], loop: bake.model.loop };
+    (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
+  }
+  // Which frame of its clips a crowd rat shows: walking or running with its feet on the
+  // ground (the stride follows the distance walked), its bite or staff blow landing on
+  // the gate's hit, a spell when a healer heals, held still while stunned; switching
+  // clips blends over a fifth of a second.
+  _crowdPose(C, e, sc, dt, fighting, out, o) {
+    const B = C.bake;
+    let clip, row;
+    const held = e.stun > 0 || e.frozen > 0 || e.held > 0 || e.fall > 0;
+    if (held && e._row !== undefined) { row = e._row; clip = e._clip; }
+    else if (e.atGate && fighting) {
+      const u = attackPhase(e.attackT, CFG.grunt.gateRate), imp = C.fit.impact;
+      const k = u < 0.65 ? (u / 0.65) * imp : imp + ((u - 0.65) / 0.35) * (1 - imp);
+      clip = 'attack'; row = crowdRow(B, 'attack', k * B.clips.attack.duration, false);
+    } else if (B.clips.cast && e._castT !== undefined && this.time - e._castT < B.clips.cast.duration * 0.55) {
+      // a healer heals: it raises its staff (the first part of the spell, brisk)
+      clip = 'cast'; row = crowdRow(B, 'cast', (this.time - e._castT) * 1.4, false);
+    } else if (B.clips.hit && e._hitT !== undefined && this.time - e._hitT < 0.6) {
+      clip = 'hit'; row = crowdRow(B, 'hit', (this.time - e._hitT) * 1.6, false);
+    } else {
+      const v = e.vs || 0, run = v > C.fit.run * sc && B.clips.run;
+      clip = e.atGate || v < 0.15 ? 'idle' : run ? 'run' : 'walk';
+      if (clip === 'idle') row = crowdRow(B, 'idle', this.time + e.phase, true);
+      else { const c = B.clips[clip], loop = C.loop[clip] * sc; row = crowdRow(B, clip, ((e.walk || 0) / loop) * c.duration + e.phase, true); }
+    }
+    // a big hit makes it stagger now and then
+    if (e.hitT > CFG.hitFlinch * 0.85 && !(this.time - (e._hitT ?? -9) < 1.6)) e._hitT = this.time;
+    if (clip !== e._clip) { e._from = e._row ?? row; e._blend = 1; e._clip = clip; }
+    e._blend = Math.max(0, (e._blend || 0) - dt / 0.2);
+    e._row = row;
+    out[o] = row; out[o + 1] = e._from ?? row; out[o + 2] = e._blend; out[o + 3] = 0;
+  }
   _loadGiantModels() {
+    this.animGiant = this.animGiant || {};
     for (const style of ['giant', ...Object.keys(CFG.bosses)]) {
-      const name = style === 'giant' ? 'giant' : 'boss-' + style;
+      // Meshy-rigged and animated (a skeleton and Meshy's walk, attack, hit, death clips)
+      // when there is one; otherwise the static model, posed in pieces
+      const animName = 'anim-' + style;
+      const animated = modelShipped(animName);
+      const name = animated ? animName : style === 'giant' ? 'giant' : 'boss-' + style;
       if (!modelShipped(name)) continue;
       this.models._load(this.models.base + name + MODEL_EXT).then((gltf) => {
         const key = style === 'giant' ? 'normal' : style;
-        this.giantGeo[key] = giantModelParts(gltf, style);
+        if (animated) this.animGiant[key] = new AnimModel(gltf, style);
+        else this.giantGeo[key] = giantModelParts(gltf, style);
         // pooled giants of that style not in use are dropped, so new ones are built from the model
         const boss = style === 'giant' ? false : style;
         this.giantPool = this.giantPool.filter((g) => { if (g.inUse || g.boss !== boss) return true; this.scene.remove(g.group); g.label.remove(); return false; });
@@ -832,6 +951,7 @@ export class View {
   _setRatModel(v, { geo, map }) {
     const mesh = this.ratMeshes[v], anim = this.ratAnims[v];
     geo.setAttribute('iAnim', anim);
+    geo.setAttribute('iPhys', this.ratPhys[v]);
     mesh.geometry = geo;
     mesh.material = ratMaterial(this.ratUniforms, toonGradient(), map);
     const ink = mesh.userData.ink;
@@ -840,6 +960,7 @@ export class View {
       const ig = clusterGeometry(geo, 0.045);
       inkNormals(ig);
       ig.setAttribute('iAnim', anim);
+      ig.setAttribute('iPhys', this.ratPhys[v]);
       ink.geometry = ig;
     }
     (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
@@ -880,7 +1001,7 @@ export class View {
   _giantDies(e, spent) {
     const v = this.giantViews.get(e.id);
     if (!v) return;
-    v.dying = 0; v.spent = spent; v.dieDir = e.dir || 1;
+    v.dying = 0; v.spent = spent; v.dieDir = e.dir || 1; v.dieStarted = false;
     v.gy = this._gy(v.group.position.x, v.group.position.z);
     v.dieDur = spent ? 0.6 : v.boss === 'slime' ? 0.5 : v.boss === 'buzzard' && v.group.position.y - v.gy > 0.5 ? 2.0 : v.boss ? 1.8 : 1.2;
     v.downed = spent; v.vanished = false;
@@ -917,6 +1038,21 @@ export class View {
       v.body.position.z = 0;
       if (k >= 0.6 && !v.vanished) { v.vanished = true; this.fx.splat(g.position.x, g.position.z, sc * 0.9); }
       g.scale.setScalar(sc * (k < 0.6 ? 1 : Math.max(0.01, 1 - (k - 0.6) / 0.4)));
+      return;
+    }
+    if (v.rig) {
+      // a Meshy skeleton plays its death clip; it lands, lies still and sinks in a puff
+      if (!v.dieStarted) { v.dieStarted = true; v.rig.hold(false); v.rig.die(v.dieDur * 0.6); }
+      if (!v.downed && k >= 0.42) {
+        v.downed = true;
+        this.fx.puff(g.position.x, 0, g.position.z, 0xd9c7a8, 2.4);
+        this.fx.ring(g.position.x, 0, g.position.z, 1.6 * sc, 0xf2deb8, 0.5);
+        this.shake = Math.max(this.shake, v.boss ? 0.8 : 0.3);
+      }
+      const sink = Math.max(0, (k - 0.75) / 0.25);
+      if (sink > 0 && !v.vanished) { v.vanished = true; this.fx.puff(g.position.x, 0.2, g.position.z, 0xffffff, v.boss ? 3.4 : 2.4); }
+      g.position.y = -sink * sink * 1.1 * sc;
+      g.scale.setScalar(sc * (1 - 0.85 * sink));
       return;
     }
     // a flier shot down: it drops out of the sky as it topples, wings flailing
@@ -1178,6 +1314,7 @@ export class View {
       case 'drop': fx.glow(e.x, e.y + 0.4, e.z, 1.8, 0xffe2b0, 0.2); break;
       case 'heal': {
         fx.heal(e.x, e.z, e.r);
+        { const h = sim.enemies.find((q) => q.id === e.id); if (h) h._castT = this.time; }
         // plus signs over a few of the rats it mended
         let k = 0;
         for (const r of sim.enemies) {
@@ -1259,7 +1396,9 @@ export class View {
       }
       case 'padAppear': fx.ring(e.x, groundHeight(e.x, e.z), e.z, 1.5, 0xffffff, 0.5); break;
       case 'fortressHit': this.fortHitFlash = 0.25; break;
-      case 'land':   // a rat thrown by a blast thumps back down
+      case 'land': {  // a rat thrown by a blast thumps back down and squashes
+        const r = sim.enemies.find((q) => q.id === e.id); if (r) r._sq = Math.min(0.4, 0.12 + e.v * 0.03);
+      }
         if (this.dustBudget >= 1) { this.dustBudget--; this._lift(e.x, e.z).puff(e.x, 0, e.z, 0xd9c7a8, Math.min(0.9, 0.3 + e.v * 0.06)); this.fx.lift = 0; }
         break;
       case 'loaded': this.reset(sim); break;
@@ -1352,6 +1491,20 @@ export class View {
         ra[o + 1] = e.stun > 0 ? -1 : Math.max(0, e.hitT / CFG.hitFlinch);
         ra[o + 2] = e.atGate && fighting ? attackPhase(e.attackT, CFG.grunt.gateRate) : -1;
         ra[o + 3] = 0;
+        // secondary motion: the tail lags out of a turn on a spring and whips back, the
+        // head looks into the turn, and a rat thumping down from a throw squashes
+        const bank = e.bank || 0;
+        if (dt > 0 && (bank !== 0 || e._ta || e._tv || e._sq)) {
+          const k = Math.min(dt, 0.05);
+          const ta = e._ta || 0, tv = (e._tv || 0) + ((-bank * 0.32 - ta) * 90 - (e._tv || 0) * 10) * k;
+          e._tv = Math.abs(tv) < 1e-4 && Math.abs(ta) < 1e-4 ? 0 : tv;
+          e._ta = clampN(ta + e._tv * k, -0.9, 0.9);
+          if (e._sq) e._sq = e._sq < 0.005 ? 0 : e._sq * (1 - 9 * k);
+        }
+        const pa = this.ratPhys[vt].array;
+        pa[o] = e._ta || 0; pa[o + 1] = clampN(bank * 0.12, -0.45, 0.45); pa[o + 2] = e._sq || 0; pa[o + 3] = 0;
+        const CR = this.crowd && this.crowd[vt];
+        if (CR) this._crowdPose(CR, e, sc, dt, fighting, CR.clip.array, o);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
         const k = sc / 1.1;
         if (e.frozen > 0 && icn < 600) {
@@ -1401,7 +1554,36 @@ export class View {
         if (em < 0.2 && Math.random() < 0.3) this.fx.puff(e.x + (Math.random() - 0.5) * 2, 0, e.z + (Math.random() - 0.5) * 2, 0x9b7650, 1.2);
         const fl = e.hitT > 0 ? Math.sin(e.hitT / CFG.hitFlinch * Math.PI) : 0;  // flinch from a hit
         let lean = -0.16 * fl;
-        if (style === 'slime') this._poseSlime(v, e, sc, fighting);
+        if (v.rig) {
+          // a Meshy skeleton: its clips do the walking, the blows and the roars
+          this._driveRig(v, e, dt, fighting, sc, style);
+          v.body.rotation.set(-0.06 * fl, 0, 0);
+          if (style === 'mole') this._poseMole(v, e, sc, t);
+          // footfalls still kick up dust
+          if (!e.atGate && em > 0.5 && this.dustBudget >= 1 && v.rig.state !== 'idle' && !(e.stun > 0)) {
+            const a = v.rig.actions[v.rig.state], d = a.getClip().duration, half = Math.floor((a.time / d) * 4) & 1;
+            if (v.stepSide !== half) {
+              v.stepSide = half; this.dustBudget--;
+              const side = half ? 1 : -1, cx = Math.cos(gyaw), sx2 = -Math.sin(gyaw);
+              this._lift(gx, gz).puff(gx + cx * 0.5 * side * sc, 0, gz + sx2 * 0.5 * side * sc, 0xd9c7a8, 0.6 + 0.3 * sc); this.fx.lift = 0;
+              if (e.type === T_BOSS) this.shake = Math.max(this.shake, 0.12);
+            }
+          }
+          if (e.atGate && fighting) {
+            const a = attackPhase(e.attackT, CFG.giant.gateRate);
+            if (a > 0.64 && !v.smashed) {
+              v.smashed = true;
+              const hx = gx + Math.sin(gyaw) * 2 * sc, hz = gz + Math.cos(gyaw) * 2 * sc, f = this._lift(gx, gz);
+              f.puff(hx, 0, hz, 0xd9c7a8, 1.3);
+              f.slash(gx + Math.sin(gyaw) * 0.9 * sc, 1.3 * sc, gz + Math.cos(gyaw) * 0.9 * sc, gyaw, 1.25 * sc, style === 'king' ? 0xffe27a : 0xfff2c8);
+              if (style !== 'king') f.crack(hx, hz, 1.1 * sc);
+              if (style === 'baron' || style === 'warlord') { f.shockRing(hx, hz, 3 * sc, style === 'baron' ? 0x9fc8ff : 0xff8a6a); this.shake = Math.max(this.shake, 0.4); }
+              else if (style === 'king') { f.glow(hx, 1.2, hz, 3.2 * sc, 0xffd23a, 0.35); for (let i = 0; i < 8; i++) f.twinkle(hx + (Math.random() - 0.5) * 2.2, 0.5 + Math.random() * 2, hz + (Math.random() - 0.5) * 2.2, 0.5, 0xfff1a0); }
+              this.fx.lift = 0;
+            }
+            if (a < 0.3) v.smashed = false;
+          }
+        } else if (style === 'slime') this._poseSlime(v, e, sc, fighting);
         else if (style === 'buzzard') this._poseBuzzard(v, e, sc, t, fighting);
         else if (e.stun > 0) {
           // stunned or frozen: hold the pose
@@ -1485,7 +1667,7 @@ export class View {
           }
           if (a < 0.3) v.smashed = false;
         }
-        if (style !== 'slime' && style !== 'buzzard') {
+        if (!v.rig && style !== 'slime' && style !== 'buzzard') {
           v.body.rotation.x = lean;
           v.body.position.z = -0.14 * fl;
           v.body.scale.set(1 + 0.08 * fl, 1 - 0.1 * fl, 1 + 0.08 * fl);   // squashed by the hit
@@ -1554,10 +1736,18 @@ export class View {
         const vt = d.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
         if (gn >= 1400) continue;
         const sc = CFG.ratTypes[vt === SHIELDLESS ? SHIELD : vt].scale;
-        _p.set(d.x, (d.gy || 0) + (d.hy || 0), d.z); _q.setFromAxisAngle(UP, d.yaw); _s.set(sc, sc, sc); _m.compose(_p, _q, _s);
+        const CR = this.crowd && this.crowd[vt];
+        let ss = sc, yw = d.yaw;
+        if (CR) {
+          const B = CR.bake, o4 = gn * 4;
+          if (d.spent) { ss = sc * Math.max(0.01, 1 - d.k); yw += d.k * 10; CR.clip.array.set([crowdRow(B, 'idle', 0, true), 0, 0, 0], o4); }
+          else { ss = sc * (d.k < 0.62 ? 1 : Math.max(0.01, 1 - (d.k - 0.62) / 0.33)); CR.clip.array.set([crowdRow(B, 'die', Math.min(1, d.k / 0.6) * B.clips.die.duration, false), 0, 0, 0], o4); }
+        }
+        _p.set(d.x, (d.gy || 0) + (d.hy || 0), d.z); _q.setFromAxisAngle(UP, yw); _s.set(ss, ss, ss); _m.compose(_p, _q, _s);
         gm.setColorAt(gn, this.tint.normal);
         const o = gn * 4;
         ra[o] = d.dir; ra[o + 1] = 0; ra[o + 2] = -1; ra[o + 3] = d.spent ? -Math.max(d.k, 0.001) : Math.max(d.k, 0.001);
+        this.ratPhys[vt].array.fill(0, o, o + 4);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
         const b = (1 - d.k) * sc / 1.1;
         _p.set(d.x, (d.gy || 0) + 0.06, d.z); _s.set(0.85 * b, 1, 1.6 * b); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m);
@@ -1593,6 +1783,7 @@ export class View {
         this.exitMat.opacity = 0.45 + pulse * 0.45;
       }
     }
+    for (const g of this.giantPool) if (g.inUse && g.rig) g.rig.update(dt);
     for (const [id, v] of this.giantViews) {
       if (seen.has(id)) continue;
       if (v.dying !== undefined && v.dying < 1) { this._animateGiantDeath(v, dt, t); continue; }
@@ -1603,6 +1794,8 @@ export class View {
       gm.count = rn[i]; gm.instanceMatrix.needsUpdate = true;
       if (gm.instanceColor) gm.instanceColor.needsUpdate = true;
       RA[i].needsUpdate = true;
+      this.ratPhys[i].needsUpdate = true;
+      if (this.crowd && this.crowd[i]) this.crowd[i].clip.needsUpdate = true;
     }
     im.count = icn; im.instanceMatrix.needsUpdate = true;
     am.count = an; am.instanceMatrix.needsUpdate = true; if (am.instanceColor) am.instanceColor.needsUpdate = true;

@@ -12,6 +12,9 @@
 //   The hand-built rats have separate legs, tail and head (0: they swing whole);
 //   a Meshy rat is one skin, so its legs, tail and head bend smoothly out of the
 //   body (1 at the joint, falling to 0 at the foot, the tail tip, the snout).
+// iPhys (optional, per instance): secondary motion simulated on springs in the view:
+//   x  the tail swung out of a turn (it lags, then whips back)   y  the head turned into the turn
+//   z  a squash when it lands or skids                           w  unused
 // aGait (per model, see RAT_GAIT in models.js): how that kind of rat moves:
 //   0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop
 import * as THREE from 'three';
@@ -22,6 +25,7 @@ export const RAT_POSE_GLSL = [
   "attribute vec4 iAnim;",
   "attribute float aGait;",
   "attribute float aStiff;",
+  "attribute vec4 iPhys;",
   "uniform float uTime;",
   "varying float vFlash;",
   "mat3 rX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }",
@@ -72,7 +76,7 @@ export const RAT_POSE_GLSL = [
   "if (G == 4) wag *= 0.3;",
   "if (G == 3) wag += sin(ph) * 0.25;",
   "wag += sin(hit * 18.0) * 0.5 * hit;",
-  "R = rY(wag * bw) * rX(lift * bw);",
+  "R = rY((wag + iPhys.x) * bw) * rX(lift * bw);",
   "} else if (part == 6) {",
   "float pitch = sin(ph * 2.0) * 0.07 - 0.04 * foot;",
   "float look = still ? 0.0 : sin(uTime * 1.3 + jit * 40.0) * 0.16 * smoothstep(0.4, 1.0, sin(uTime * 0.7 + jit * 23.0));",
@@ -81,7 +85,7 @@ export const RAT_POSE_GLSL = [
   "if (attacking) pitch += -0.35 * smoothstep(0.1, 0.55, atk) * (1.0 - smoothstep(0.58, 0.64, atk)) + 0.55 * smoothstep(0.58, 0.64, atk) * (1.0 - smoothstep(0.72, 0.9, atk));",
   "pitch -= 0.5 * sin(hit * 3.14159);",
   "if (attacking) look = 0.0;",
-  "R = rY(look * bw) * rX(pitch * bw);",
+  "R = rY((look + iPhys.y) * bw) * rX(pitch * bw);",
   "}",
   "vec3 q = R * (p - aPivot) + aPivot;",
   "float bob = abs(sin(ph)) * 0.05;",
@@ -96,6 +100,7 @@ export const RAT_POSE_GLSL = [
   "else if (G == 5) { bob = abs(sin(ph)) * 0.16; pitchB = -sin(ph) * 0.12; sc = vec3(1.0 + 0.08 * foot, 0.86 + 0.24 * abs(sin(ph)), 1.0 - 0.05 * foot); }",
   "if (still) { bob = 0.0; pitchB = 0.0; rollB = 0.0; sc = vec3(1.0); off.y = 0.0; }",
   "off.y += bob;",
+  "sc *= vec3(1.0 + 0.5 * iPhys.z, 1.0 - iPhys.z, 1.0 + 0.5 * iPhys.z);",
   "float fl = sin(hit * 3.14159);",
   "pitchB -= 0.4 * fl;",
   "off.z -= 0.16 * fl;",
