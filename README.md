@@ -308,7 +308,7 @@ Meshy's rig stops at the head, hands and toes: ears, jaws, tails, capes, fingers
 - His hat wobbles on a spring, and the pitchfork rides in a sprung socket on his upper back.
 - On a horse or cow he sits astride, thighs spread round the saddle and hands forward on the reins.
 - He cheers when the level is won.
-- He is drawn with the stylized PBR toon material.
+- He is drawn with the stylized PBR toon material (`toonpbr.js`): toon light bands, normal-map relief, a crisp sun highlight sized by roughness, and a two-tone sky reflection on metal.
 
 **Offline (and until the model loads)** the farmer is built properly in code (`src/render/farmer.js`), not out of loose cylinders: a 31-bone skeleton (hips, spine, chest, neck, head, shoulders, arms, hands, legs, feet, toes, plus bones for the hat, the pitchfork and the belly) and **every garment its own skinned mesh with real thickness**:
 
@@ -337,9 +337,7 @@ Clothes are shells offset from the body and skinned to the same bones by the sam
 
 ### The Meshy bosses
 
-- **Upper and lower body layers** (`skeletal.js`). Every clip is split into the hips and legs, and the spine, arms and head. Standing, both play the same clip. Walking or running, a hit reaction or a roar plays on the upper body only while the legs keep stepping at ground speed, so a boss no longer slides along frozen when it staggers or roars. The upper body falls back into step afterwards.
-- **A motion layer over the clips** adds breathing when standing, and a spring lean into acceleration, braking and turns. On Lonetree Hill it puts each foot on the ground under it by two-bone IK, with the body lowered when a foot has further to reach, instead of tilting the whole boss with the slope.
-- **Materials**: `tools/pbr-maps.mjs` gives every Meshy model a normal map and an occlusion/roughness/metal map derived from its colour texture. The relief comes from the fine detail of the texture (fur, cloth, rivets, panel lines, scratches). Metal is picked out by colour per model: the Baron's and the Warlord's steel, the King's gold crown, the giant's armbands. The **stylized PBR toon material** keeps the three flat light bands, then adds a crisp sun highlight sized by roughness (small and sharp on polished metal, broad and faint on leather, none on cloth or fur), and gives metal a two-tone sky-and-ground reflection that brightens at grazing angles. It is all one cheap pass, with no environment maps.
+The bosses play Meshy's clips as they are: walk and run at ground speed, the attack held so the blow lands with the hit on the gate, a full-body stagger or roar, and their moving ears, jaws, tails, capes and fingers. A layered upper/lower body, extra breathing and leaning, feet finding the hill, and derived metal materials were tried for them and taken out again at your request. The farmer keeps his.
 
 ### What could not be done (yet)
 

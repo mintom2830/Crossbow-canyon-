@@ -13,7 +13,7 @@
 // bone matrices and played on the graphics card (see bakeCrowd in crowdanim.js).
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { inkMaterial, inkNormals, INK_PX } from './toon.js';
+import { toon, inkMaterial, inkNormals, INK_PX } from './toon.js';
 import { toonPBR } from './toonpbr.js';
 import { articulate, PartMover } from './articulate.js';
 import { twoBoneIK, Spring } from './ik.js';
@@ -30,7 +30,7 @@ export const ANIM_FIT = {
   'rat-4': { top: 1.45, impact: 0.5, run: 3.4 },
   'rat-6': { top: 0.95, impact: 0.5, run: 3.4 },
   // the farmer: in his own group's units (the view scales him like the code-built farmer)
-  farmer: { top: 1.47, impact: 0.5, run: 1.9 },
+  farmer: { top: 1.47, impact: 0.5, run: 1.9, pbr: true },
 };
 
 // A loaded model: its clips, how to fit it, how far it travels per walk/run loop.
@@ -94,7 +94,10 @@ export class AnimModel {
   // extra parts.
   instance(px = INK_PX.big) {
     const root = cloneSkinned(this.scene);
-    const mat = toonPBR({ map: this.map, emissive: 0x000000, side: THREE.DoubleSide, ...(this.normalMap ? { normalMap: this.normalMap, normalScale: this.normalScale } : {}), ormMap: this.ormMap || null, aoStrength: this.aoStrength });
+    // the farmer is drawn with his Meshy PBR maps (toonpbr.js); the enemies in the plain toon look
+    const mat = this.fit.pbr
+      ? toonPBR({ map: this.map, emissive: 0x000000, side: THREE.DoubleSide, ...(this.normalMap ? { normalMap: this.normalMap, normalScale: this.normalScale } : {}), ormMap: this.ormMap || null, aoStrength: this.aoStrength })
+      : toon({ vertexColors: false, map: this.map, emissive: 0x000000, side: THREE.DoubleSide });
     const skins = [];
     root.traverse((o) => {
       if (!o.isMesh) return;
@@ -118,65 +121,37 @@ export class AnimModel {
 }
 
 // One animated character's state machine: which clip plays, crossfades between
-// them, and playback speed matched to its ground speed. Every clip is split in two
-// layers: the lower body (hips and legs) and the upper body (spine, arms, head).
-// Standing, both play the same clip. Walking or running, a hit reaction or a roar
-// plays on the upper body only while the legs keep stepping at the speed the
-// ground goes by, so a boss staggers or roars without sliding to a halt.
-const LOWER = /^(Hips|(Left|Right)(UpLeg|Leg|Foot|ToeBase))\./;
-const LAYERED = new Set(['hit', 'roar', 'cast']);
-function splitClip(clip) {
-  const lo = clip.tracks.filter((t) => LOWER.test(t.name)), up = clip.tracks.filter((t) => !LOWER.test(t.name));
-  return [new THREE.AnimationClip(clip.name + ':lower', clip.duration, lo), new THREE.AnimationClip(clip.name + ':upper', clip.duration, up)];
-}
+// them, and playback speed matched to its ground speed.
 export class SkeletalRig {
   constructor(model, root) {
     this.model = model;
     this.mixer = new THREE.AnimationMixer(root);
-    // split once per model, shared by every copy
-    if (!model.layers) { model.layers = {}; for (const [k, c] of Object.entries(model.clips)) model.layers[k] = splitClip(c); }
-    this.L = {}; this.actions = {};   // actions: the upper layer (what the view reads for timing)
-    for (const [k, [lo, up]] of Object.entries(model.layers)) {
-      const a = this.mixer.clipAction(lo), b = this.mixer.clipAction(up);
-      for (const x of [a, b]) if (k === 'die' || LAYERED.has(k)) { x.setLoop(THREE.LoopOnce, 1); x.clampWhenFinished = true; }
-      this.L[k] = a; this.actions[k] = b;
+    this.actions = {};
+    for (const [k, c] of Object.entries(model.clips)) {
+      const a = this.mixer.clipAction(c);
+      if (k === 'die' || k === 'hit' || k === 'roar' || k === 'cast') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      this.actions[k] = a;
     }
-    this.lower = null; this.upper = null;
+    this.state = null;
     this.oneShot = null;     // a clip that plays through once before going back (hit, roar, cast)
-    this.layered = false;    // that one-shot is on the upper body only
     this.go('idle', 0);
   }
-  // what it is doing, as the view sees it: a one-shot, or what the legs do
-  get state() { return this.oneShot && this.busy() ? this.oneShot : this.lower; }
-  has(k) { return !!this.L[k]; }
-  _fade(set, cur, k, fade) {
-    const next = set[k], prev = set[cur];
-    if (k === cur) return next;
+  has(k) { return !!this.actions[k]; }
+  // switch to a state, crossfading over fade seconds
+  go(k, fade = 0.25) {
+    if (!this.actions[k] || k === this.state) return this.actions[this.state];
+    const next = this.actions[k], prev = this.actions[this.state];
     next.reset(); next.enabled = true; next.setEffectiveTimeScale(1); next.setEffectiveWeight(1); next.paused = false;
     next.play();
     if (prev && fade > 0) next.crossFadeFrom(prev, fade, false);
     else if (prev) prev.stop();
+    this.state = k;
     return next;
   }
-  // switch the whole body to a state, crossfading over fade seconds
-  go(k, fade = 0.25) {
-    if (!this.L[k]) return this.L[this.lower];
-    const a = this._fade(this.L, this.lower, k, fade); this.lower = k;
-    const b = this._fade(this.actions, this.upper, k, fade); this.upper = k;
-    b.time = a.time;
-    return a;
-  }
-  _both(k, f) { f(this.L[k]); f(this.actions[k]); }
-  // play a one-shot (hit reaction, roar, spell cast) over whatever it was doing:
-  // on the upper body if the legs are walking or running, else the whole body
+  // play a one-shot (hit reaction, roar, spell cast) over whatever it was doing
   play(k, fade = 0.15, speed = 1) {
-    if (!this.L[k]) return;
-    if (LAYERED.has(k) && (this.lower === 'walk' || this.lower === 'run')) {
-      this._fade(this.actions, this.upper, k, fade).setEffectiveTimeScale(speed);
-      this.upper = k; this.layered = true;
-    } else {
-      this.go(k, fade); this._both(k, (x) => x.setEffectiveTimeScale(speed)); this.layered = false;
-    }
+    if (!this.actions[k]) return;
+    this.go(k, fade).setEffectiveTimeScale(speed);
     this.oneShot = k;
   }
   // a one-shot still playing?
@@ -184,48 +159,43 @@ export class SkeletalRig {
     if (!this.oneShot) return false;
     const a = this.actions[this.oneShot];
     if (a.isRunning() && a.time < a.getClip().duration * 0.92) return true;
-    this.oneShot = null; this.layered = false;
+    this.oneShot = null;
     return false;
   }
-  // walking/running at ground speed v (m/s, after the character's own scale s);
-  // during an upper-body one-shot only the legs follow
+  // walking/running at ground speed v (m/s, after the character's own scale s)
   move(v, s) {
-    const busy = this.busy();
-    if (busy && !this.layered) return;
     const run = v > this.model.fit.run * s && this.has('run');
-    let k = v < 0.15 ? 'idle' : run ? 'run' : 'walk';
-    if (busy && k === 'idle') k = this.lower;   // the legs finish their step under the one-shot
-    const a = this._fade(this.L, this.lower, k, 0.3); this.lower = k;
-    // the upper body rejoins the legs, in step, once the one-shot is over
-    if (!busy && this.upper !== k) { const b = this._fade(this.actions, this.upper, k, 0.3); this.upper = k; b.time = a.time; }
-    const scale = k !== 'idle' ? Math.min(3, Math.max(0.3, (v * a.getClip().duration) / (this.model.loop[k] * s))) : 1;
-    a.setEffectiveTimeScale(scale);
-    if (!busy) this.actions[k].setEffectiveTimeScale(scale);
+    const k = v < 0.15 ? 'idle' : run ? 'run' : 'walk';
+    const a = this.go(k, 0.3);
+    if (k !== 'idle' && a) {
+      const loop = this.model.loop[k] * s, dur = a.getClip().duration;
+      a.setEffectiveTimeScale(Math.min(3, Math.max(0.3, (v * dur) / loop)));
+    } else if (a) a.setEffectiveTimeScale(1);
   }
   // the attack clip held at phase u (0..1 of the swing; the sim lands the blow at 0.65)
   attackAt(u) {
-    this.oneShot = null; this.layered = false;
     const a = this.go('attack', 0.2);
     if (!a) return;
     const imp = this.model.fit.impact, d = a.getClip().duration;
     // piecewise: the wind-up fills the time before the blow, the follow-through the rest
     const t = u < 0.65 ? (u / 0.65) * imp : imp + ((u - 0.65) / 0.35) * (1 - imp);
-    this._both('attack', (x) => { x.paused = true; x.time = Math.min(d - 1e-3, t * d); });
+    a.paused = true; a.time = Math.min(d - 1e-3, t * d);
   }
-  // the death clip played so it has fallen in about dur seconds
+  // the death clip played so it has fallen by fraction `fallAt` of dur seconds
   die(dur) {
-    this.oneShot = null; this.layered = false;
-    this.go('die', 0.15);
-    this._both('die', (x) => x.setEffectiveTimeScale(Math.max(0.5, x.getClip().duration / Math.max(0.3, dur))));
+    const a = this.go('die', 0.15);
+    if (a) a.setEffectiveTimeScale(Math.max(0.5, a.getClip().duration / Math.max(0.3, dur)));
+    this.oneShot = null;
   }
   hold(on) { this.mixer.timeScale = on ? 0 : 1; }
   update(dt) { this.mixer.update(dt); }
 }
 
-// Motion layered over the clips every frame: breathing when standing, a lean into
-// acceleration (and back when braking) and into turns, and the feet on the ground
-// on a hillside (each leg reaches by inverse kinematics for the ground under its
-// foot; the body comes down when a foot has further to go).
+// Motion layered over the farmer's clips every frame (the bosses play their clips
+// as they are): breathing when standing, a lean into acceleration (and back when
+// braking) and into turns, and the feet on the ground on a hillside (each leg
+// reaches by inverse kinematics for the ground under its foot; the body comes down
+// when a foot has further to go).
 export class BodyMotion {
   constructor(root) {
     const by = (n) => root.getObjectByName(n);

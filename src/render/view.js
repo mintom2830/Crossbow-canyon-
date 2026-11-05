@@ -156,7 +156,6 @@ export class View {
     // zoom out: 0 follows the farmer, 1 shows the whole map (button, M, wheel or pinch)
     this.overview = 0; this.overviewWant = 0;
     this.shake = 0;
-    this._gyFn = (x, z) => this._gy(x, z);   // the ground height, for feet finding it (BodyMotion)
     // players who ask their system for reduced motion get only a faint screen shake
     this.calmMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
     this.pitch = THREE.MathUtils.degToRad(54);
@@ -629,7 +628,7 @@ export class View {
     const label = document.createElement('div');
     label.className = 'hp-num';
     this.labels.appendChild(label);
-    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, mover: inst.mover, motion: inst.body, holder: inst.holder, model, ps: { speed: 0, turn: 0, step: 0, jaw: 0, grip: 0, t: 0, accel: 0, lastSpeed: 0 } };
+    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, mover: inst.mover, model, ps: { speed: 0, turn: 0, step: 0, jaw: 0, grip: 0, t: 0 } };
     this.giantPool.push(v);
     return v;
   }
@@ -660,7 +659,7 @@ export class View {
         this._lift(e.x, e.z).ring(e.x, 0, e.z, 2.4 * sc, BOSS_AURA[style] || 0xffffff, 0.7); this.fx.lift = 0;
       }
     }
-    // (during a hit or roar on the upper body the legs keep walking; see SkeletalRig)
+    if (R.busy()) return;
     R.move(e.vs || 0, sc);
   }
 
@@ -673,7 +672,6 @@ export class View {
     let dy = yaw - (P.yaw ?? yaw); dy = Math.atan2(Math.sin(dy), Math.cos(dy)); P.yaw = yaw;
     P.turn += (dy / dt - P.turn) * Math.min(1, dt * 8);
     P.speed = e.stun > 0 || e.frozen > 0 || e.held > 0 ? 0 : (e.vs || 0) / Math.max(0.5, sc);
-    P.accel += ((P.speed - P.lastSpeed) / dt - P.accel) * Math.min(1, dt * 8); P.lastSpeed = P.speed;
     P.t = this.time;
     const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
     P.step = R.state === 'walk' || R.state === 'run' ? u : 0;
@@ -993,8 +991,8 @@ export class View {
   // seated on a ride, cheering a win
   _driveMeshyHero(hv, h, dt, t, speed, yawRate, sim) {
     const M = hv.meshy, R = M.rig, sp = hv.mount ? 0 : (h.moving ? speed : 0) / 1.35;
-    if (hv.mount) { if (R.lower !== 'sit' && R.has('sit')) R.go('sit', 0.3); }
-    else if (sim.state === 'victory' && R.has('cheer')) { if (R.lower !== 'cheer') R.go('cheer', 0.3); }
+    if (hv.mount) { if (R.state !== 'sit' && R.has('sit')) R.go('sit', 0.3); }
+    else if (sim.state === 'victory' && R.has('cheer')) { if (R.state !== 'cheer') R.go('cheer', 0.3); }
     else R.move(sp, 1);
     R.update(dt);
     const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
@@ -1654,10 +1652,7 @@ export class View {
         const ggy = this._gy(gx, gz);   // the ground under it (a hill on Level 2), added once the pose is set
         v.group.rotation.y = gyaw;
         v.group.rotation.x = -u * 0.5;
-        // on a hillside: a body leans with the slope; a rigged one stays upright and its
-        // feet find the ground (BodyMotion), with only a slight lean
-        if (hills && !(e.fly > 0)) { const hx = Math.sin(gyaw) * sc, hz = Math.cos(gyaw) * sc; v.group.rotation.x -= Math.atan2(this._gy(gx + hx, gz + hz) - this._gy(gx - hx, gz - hz), 2 * sc) * (v.rig ? 0.25 : 0.8); }
-        v.baseY = ggy; v.scaleNow = sc;
+        if (hills && !(e.fly > 0)) { const hx = Math.sin(gyaw) * sc, hz = Math.cos(gyaw) * sc; v.group.rotation.x -= Math.atan2(this._gy(gx + hx, gz + hz) - this._gy(gx - hx, gz - hz), 2 * sc) * 0.8; }
         v.group.rotation.z = clampN(-e.bank * 0.06, -0.12, 0.12);   // a heavy lean into its turns
         v.group.scale.setScalar(sc);
         if (em < 0.2 && Math.random() < 0.3) this.fx.puff(e.x + (Math.random() - 0.5) * 2, 0, e.z + (Math.random() - 0.5) * 2, 0x9b7650, 1.2);
@@ -1893,7 +1888,7 @@ export class View {
         this.exitMat.opacity = 0.45 + pulse * 0.45;
       }
     }
-    for (const g of this.giantPool) if (g.inUse && g.rig) { g.rig.update(dt); const live = g.rig.mixer.timeScale ? dt : 0; if (g.mover) g.mover.update(live, g.ps); if (g.motion && g.dying === undefined) g.motion.update(live, g.ps, hills ? this._gyFn : null, g.baseY ?? 0, g.holder, g.scaleNow || 1); }
+    for (const g of this.giantPool) if (g.inUse && g.rig) { g.rig.update(dt); if (g.mover) g.mover.update(g.rig.mixer.timeScale ? dt : 0, g.ps); }
     for (const [id, v] of this.giantViews) {
       if (seen.has(id)) continue;
       if (v.dying !== undefined && v.dying < 1) { this._animateGiantDeath(v, dt, t); continue; }
