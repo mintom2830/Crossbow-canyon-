@@ -39,6 +39,7 @@ export const ARTIC = {
   mole: { fingers: ['Left', 'Right'], handR: 1.2 },
   'rat-4': { ears: 1, cape: true, capeBehind: [0.025, 0.07], capeAll: true, hat: 1 },
   'rat-6': { ears: 1.2, earSide: [0.6, 0.85], tail: true, tailUp: 0.12, tailX: 0.3, tailBehind: 0.1, tailBone: 'LeftHand' },
+  farmer: { hat: 1 },
 };
 
 const sm = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };

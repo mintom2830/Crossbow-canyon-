@@ -1425,7 +1425,14 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
     if (q.animated) assert(q.parts.length >= 2, 'boss has no extra moving parts: ' + JSON.stringify(q));
     else assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
   }
-  for (const a of animated) assert(r.big.some((q) => q.animated && (q.k === a || (a === 'giant' && q.k === 'giant'))) || r.small.some((q) => q.crowd && 'rat-' + q.i === a), 'animated model not used: ' + a);
+  for (const a of animated) assert(a === 'farmer' || r.big.some((q) => q.animated && (q.k === a || (a === 'giant' && q.k === 'giant'))) || r.small.some((q) => q.crowd && 'rat-' + q.i === a), 'animated model not used: ' + a);
+  // the Meshy farmer (when shipped) takes over from the code-built one: his clips, the
+  // pitchfork in its socket on his back, the code-built farmer hidden
+  if (animated.includes('farmer')) {
+    await page.waitForFunction(() => !!window.__cc.view.hero.meshy, null, { timeout: 30000 });
+    const f = await g(page, () => { const hv = window.__cc.view.hero, M = hv.meshy; return { clips: Object.keys(M.model.clips), fork: hv.fork.parent === M.socket, hidden: !hv.farmer.root.visible, shown: M.inst.holder.parent === hv.fb, tex: !!M.model.map, normal: !!M.model.normalMap }; });
+    assert(['idle', 'walk', 'run', 'sit', 'cheer'].every((c) => f.clips.includes(c)) && f.fork && f.hidden && f.shown && f.tex, 'Meshy farmer not in use: ' + JSON.stringify(f));
+  }
   // a wave with a giant, a boss and every rat: they are built from the models and move
   const out = await g(page, () => {
     const s = window.__cc.sim; s.fortress.hp = s.fortress.maxHp = 1e6;

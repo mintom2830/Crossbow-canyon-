@@ -17,6 +17,7 @@ import { ratGeometry, clusterGeometry, giantModelParts } from './rat-models.js';
 import { AnimModel, ANIM_FIT } from './skeletal.js';
 import { buildFarmer, FARMER_JOINTS } from './farmer.js';
 import { FarmerRig } from './farmer-anim.js';
+import { Spring, setWorldQuaternion } from './ik.js';
 import { bakeCrowd, crowdMaterial, crowdInkPose, crowdRow } from './crowdanim.js';
 import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
@@ -28,7 +29,7 @@ import {
 } from './models.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
-const _v = new THREE.Vector3(), _dir = new THREE.Vector3();
+const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _w = new THREE.Vector3();
 const FWD = new THREE.Vector3(0, 0, 1), UP = new THREE.Vector3(0, 1, 0);
 const _aColor = new THREE.Color();
 const smooth = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
@@ -954,8 +955,80 @@ export class View {
     e._row = row;
     out[o] = row; out[o + 1] = e._from ?? row; out[o + 2] = e._blend; out[o + 3] = 0;
   }
+  // the farmer: Meshy-made, rigged and animated, when it is shipped; the code-built
+  // farmer (farmer.js) stays as the fallback (offline, or until it loads)
+  _loadHeroModel() {
+    if (this.hero.meshy || !modelShipped('anim-farmer')) return;
+    this.models._load(this.models.base + 'anim-farmer' + MODEL_EXT).then((gltf) => this._setHeroModel(new AnimModel(gltf, 'farmer'))).catch(() => { this.models.misses++; });
+  }
+  _setHeroModel(model) {
+    const hv = this.hero, inst = model.instance(INK_PX.unit);
+    inst.holder.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+    inst.holder.updateMatrixWorld(true);
+    // the pitchfork moves onto his back: a socket on the upper spine, on a spring.
+    // How far back his back is at chest height (from his skin as it stands):
+    let skin = null; inst.root.traverse((o) => { if (!skin && o.isSkinnedMesh && o.name !== 'ink') skin = o; });
+    let backZ = -0.17;
+    if (skin) {
+      const p = new THREE.Vector3(), n = skin.geometry.attributes.position.count; let zmin = Infinity;
+      for (let i = 0; i < n; i += 3) { skin.getVertexPosition(i, p); p.applyMatrix4(skin.matrixWorld); if (p.y > 0.72 && p.y < 0.95 && Math.abs(p.x) < 0.12) zmin = Math.min(zmin, p.z); }
+      if (zmin < 0) backZ = zmin;
+    }
+    const spine = inst.root.getObjectByName('Spine02') || inst.root.getObjectByName('Spine01') || inst.root;
+    const pivot = new THREE.Vector3(0, 0.84, backZ - 0.03);
+    const socket = new THREE.Object3D();
+    new THREE.Matrix4().copy(spine.matrixWorld).invert().multiply(new THREE.Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z)).decompose(socket.position, socket.quaternion, socket.scale);
+    spine.add(socket);
+    if (hv.fork.parent) hv.fork.parent.remove(hv.fork);
+    socket.add(hv.fork);
+    // the fork's geometry is drawn where the code-built farmer's back is; shift it to his
+    hv.fork.position.set(0, 0, backZ + 0.17).sub(pivot);
+    hv.fb.add(inst.holder);
+    hv.farmer.root.visible = false;
+    hv.meshy = { model, inst, rig: inst.rig, mover: inst.mover, motion: inst.body, socket, rest: socket.quaternion.clone(), spine,
+      fp: new Spring(45, 4.2), fr: new Spring(45, 4.2), last: null, vel: new THREE.Vector3(), ps: { speed: 0, turn: 0, step: 0, jaw: 0, grip: 0, t: 0 } };
+  }
+  // the Meshy farmer, every frame: his clips at the speed the ground goes by, layered
+  // motion (lean, breathing, feet on the ground), the hat and the pitchfork on springs,
+  // seated on a ride, cheering a win
+  _driveMeshyHero(hv, h, dt, t, speed, yawRate, sim) {
+    const M = hv.meshy, R = M.rig, sp = hv.mount ? 0 : (h.moving ? speed : 0) / 1.35;
+    if (hv.mount) { if (R.lower !== 'sit' && R.has('sit')) R.go('sit', 0.3); }
+    else if (sim.state === 'victory' && R.has('cheer')) { if (R.lower !== 'cheer') R.go('cheer', 0.3); }
+    else R.move(sp, 1);
+    R.update(dt);
+    const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
+    Object.assign(M.ps, { speed: sp, turn: yawRate, step: R.state === 'walk' || R.state === 'run' ? u : 0, t });
+    M.mover.update(dt, M.ps);
+    hv.group.updateMatrixWorld(true);
+    M.motion.update(dt, { speed: sp, accel: hv.accel / 1.35, turn: yawRate }, hv.mount ? null : groundHeight, h.y + hv.inner.position.y, M.inst.holder, 1.35);
+    const yaw = hv.inner.rotation.y, fwd = _v.set(Math.sin(yaw), 0, Math.cos(yaw)), sideAx = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    if (hv.mount) {
+      // legs round the saddle (each thigh out to its own side), hands forward on the reins
+      const hips = M.inst.root.getObjectByName('Hips'), hp = hips ? hips.getWorldPosition(new THREE.Vector3()) : null;
+      for (const nm of ['LeftUpLeg', 'RightUpLeg']) {
+        const b = M.inst.root.getObjectByName(nm); if (!b || !hp) continue;
+        const sd = Math.sign(b.getWorldPosition(new THREE.Vector3()).sub(hp).dot(sideAx)) || 1;
+        rotateWorld(b, fwd, sd * 0.5);
+      }
+      for (const nm of ['LeftArm', 'RightArm']) { const b = M.inst.root.getObjectByName(nm); if (b) rotateWorld(b, sideAx, -0.55); }
+    }
+    // the pitchfork on his back swings as he is thrown about
+    M.spine.getWorldPosition(_w);
+    let ax = 0, az = 0;
+    if (M.last && dt > 0) {
+      const vel = _w.clone().sub(M.last).divideScalar(dt), acc = vel.clone().sub(M.vel).divideScalar(dt);
+      M.vel.lerp(vel, Math.min(1, dt * 20));
+      az = acc.dot(fwd); ax = acc.dot(sideAx);
+    }
+    M.last = (M.last || new THREE.Vector3()).copy(_w);
+    const fp = M.fp.update(Math.max(-0.4, Math.min(0.4, az * 0.02)), dt), fr = M.fr.update(Math.max(-0.4, Math.min(0.4, -ax * 0.02)), dt);
+    M.socket.quaternion.copy(M.rest).multiply(_q.setFromEuler(_e.set(fp, 0, fr)));
+  }
+
   _loadGiantModels() {
     this.animGiant = this.animGiant || {};
+    this._loadHeroModel();
     for (const style of ['giant', ...Object.keys(CFG.bosses)]) {
       // Meshy-rigged and animated (a skeleton and Meshy's walk, attack, hit, death clips)
       // when there is one; otherwise the static model, posed in pieces
@@ -1884,7 +1957,8 @@ export class View {
       if (dt > 0) hv.accel += ((sp - hv.lastSpeed) / dt - hv.accel) * Math.min(1, dt * 12);
       hv.lastSpeed = sp;
       hv.group.updateMatrixWorld(true);
-      hv.rig.update({ dt, t, speed: sp, accel: hv.accel, yawRate, ground: groundHeight, rootY: h.y + hv.inner.position.y, scale: 1.35, ride: hv.mount ? { phase: hv.gallop, amount: h.moving ? Math.min(1, speed / 6) : 0 } : null });
+      if (hv.meshy) this._driveMeshyHero(hv, h, dt, t, speed, yawRate, sim);
+      else hv.rig.update({ dt, t, speed: sp, accel: hv.accel, yawRate, ground: groundHeight, rootY: h.y + hv.inner.position.y, scale: 1.35, ride: hv.mount ? { phase: hv.gallop, amount: h.moving ? Math.min(1, speed / 6) : 0 } : null });
     }
     hv.ring.material.opacity = 0.1 + (h.collect > 0 ? 0.25 : 0) + (sim.coins.length ? 0.06 : 0);
     hv.ring.position.y = groundHeight(h.x, h.z) - h.y + 0.09;
@@ -2320,4 +2394,12 @@ export class View {
     const i = this.renderer.info;
     return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures };
   }
+}
+
+// turns a bone about a world axis, on top of the pose it has
+const _rq = new THREE.Quaternion(), _rw = new THREE.Quaternion();
+function rotateWorld(bone, axis, angle) {
+  bone.getWorldQuaternion(_rw);
+  setWorldQuaternion(bone, _rq.setFromAxisAngle(axis, angle).multiply(_rw));
+  bone.updateMatrixWorld(true);
 }

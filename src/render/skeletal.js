@@ -29,6 +29,8 @@ export const ANIM_FIT = {
   mole: { top: 2.8, impact: 0.5, run: 4 },
   'rat-4': { top: 1.45, impact: 0.5, run: 3.4 },
   'rat-6': { top: 0.95, impact: 0.5, run: 3.4 },
+  // the farmer: in his own group's units (the view scales him like the code-built farmer)
+  farmer: { top: 1.47, impact: 0.5, run: 1.9 },
 };
 
 // A loaded model: its clips, how to fit it, how far it travels per walk/run loop.
@@ -46,6 +48,8 @@ export class AnimModel {
     // the rest of its PBR material (tools/pbr-maps.mjs): relief, and occlusion/roughness/metal in one map
     this.normalMap = src && src.normalMap; this.normalScale = src && src.normalScale ? src.normalScale.clone() : null;
     this.ormMap = src && (src.roughnessMap || src.metalnessMap || src.aoMap);
+    // occlusion only if the map really carries it (Meshy's own roughness/metal map leaves red unused)
+    this.aoStrength = src && src.aoMap && src.aoMap === src.roughnessMap ? 1 : 0;
     // more bones than Meshy's rig: ears, a jaw, a tail, a cape, each its own part (see articulate.js)
     this.added = articulate(this.scene, name);
     // fit: its rest pose (the first frame of idle) stands on the ground, centred, top tall
@@ -90,7 +94,7 @@ export class AnimModel {
   // extra parts.
   instance(px = INK_PX.big) {
     const root = cloneSkinned(this.scene);
-    const mat = toonPBR({ map: this.map, emissive: 0x000000, side: THREE.DoubleSide, ...(this.normalMap ? { normalMap: this.normalMap, normalScale: this.normalScale } : {}), ormMap: this.ormMap || null });
+    const mat = toonPBR({ map: this.map, emissive: 0x000000, side: THREE.DoubleSide, ...(this.normalMap ? { normalMap: this.normalMap, normalScale: this.normalScale } : {}), ormMap: this.ormMap || null, aoStrength: this.aoStrength });
     const skins = [];
     root.traverse((o) => {
       if (!o.isMesh) return;
