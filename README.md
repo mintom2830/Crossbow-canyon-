@@ -299,6 +299,47 @@ Meshy's rig stops at the head, hands and toes: ears, jaws, tails, capes, fingers
 - The parts are found from the rig's own landmarks: the head's top and front markers frame the ears, jaw and hat; the body's centre line (spine above the hips, legs below) tells a cape or tail behind the body from a heel; a tail is traced along the surface from the rump, so a curly one works. Hands holding a weapon keep their grip, and the healer's cloak and the ratling's tail, which Meshy hung on a hand, are re-hung from the back and hips so they no longer fly up with the arm.
 - **Giants and bosses** move their parts on springs every frame (they lag behind the body, overshoot and settle), driven by their real speed, turn rate, stride and clip. The **crowd rats** have their parts posed into the baked bone texture, still one draw call per kind.
 
+## Character quality: real garments, materials and motion
+
+### The farmer
+
+The farmer is built properly in code (`src/render/farmer.js`), not out of loose cylinders: a 31-bone skeleton (hips, spine, chest, neck, head, shoulders, arms, hands, legs, feet, toes, plus bones for the hat, the pitchfork and the belly) and **every garment its own skinned mesh with real thickness**:
+
+| Piece | Built as |
+|---|---|
+| Shirt | red buffalo plaid: torso and sleeves, a folded collar standing round the neck, sleeves rolled into thick cuffs |
+| Overalls | denim: the seat, both legs with thick rolled cuffs, a bib with real thickness and a pocket on it, straps over the shoulders that cross on the back, brass buttons |
+| Belt | grained leather round the waist, a brass buckle frame |
+| Boots | leather uppers and shafts up to the trouser cuffs, on dark soles with thickness |
+| Hat | woven straw: a dented crown, a brim with real thickness that curls up at the sides, a red cloth band |
+| Body | head with a painted face (it blinks), nose, ears, neck, forearms, mitt hands with thumbs; a short dark crop of hair |
+| Pitchfork | its own object in a socket on his back |
+
+Clothes are shells offset from the body and skinned to the same bones by the same rule (nearest bone segments), so body and clothes bend together and don't pass through each other.
+
+**His materials** (`farmer-maps.js`, `toonpbr.js`) are painted in code, each with a base colour, a normal map and an occlusion/roughness/metal map: woven plaid, twill denim with orange seam stitching, grained leather, woven straw, worn brass, skin with soft blotches, hair strands.
+
+**His motion** (`farmer-anim.js`) is built every frame:
+- **Feet are planted.** The gait runs on distance walked, so a foot on the ground stays put while the body passes over it, with no sliding. Each foot is placed by two-bone inverse kinematics on the ground under it, so it follows a hillside. It rolls heel to toe and lifts in an arc through the swing.
+- **Walking to running** blends with speed: the cadence rises, the stride lengthens, the time each foot is down shortens, and the hips bob the other way (highest mid-step when walking, lowest when running).
+- **The body:** the hips sway over the foot carrying the weight and twist with the stride. The torso counter-twists, and leans into speed, into acceleration (back when he stops) and into turns. The head is steadied and leads into turns.
+- **The arms** come down from the rig's A-pose and swing against the legs, with the elbows bending more as he runs.
+- **Idle:** he breathes, looks about now and then, and blinks.
+- **Riding:** he sits astride the horse or cow, legs round the saddle, hands forward on the reins, bouncing with the gallop.
+- **Secondary motion:** damped springs on the hat (it wobbles), the pitchfork (it swings on his back) and the belly (it bounces a beat behind each footfall). Each lags, overshoots a little and settles, and is clamped so nothing flaps about.
+
+### The Meshy bosses
+
+- **Upper and lower body layers** (`skeletal.js`). Every clip is split into the hips and legs, and the spine, arms and head. Standing, both play the same clip. Walking or running, a hit reaction or a roar plays on the upper body only while the legs keep stepping at ground speed, so a boss no longer slides along frozen when it staggers or roars. The upper body falls back into step afterwards.
+- **A motion layer over the clips** adds breathing when standing, and a spring lean into acceleration, braking and turns. On Lonetree Hill it puts each foot on the ground under it by two-bone IK, with the body lowered when a foot has further to reach, instead of tilting the whole boss with the slope.
+- **Materials**: `tools/pbr-maps.mjs` gives every Meshy model a normal map and an occlusion/roughness/metal map derived from its colour texture. The relief comes from the fine detail of the texture (fur, cloth, rivets, panel lines, scratches). Metal is picked out by colour per model: the Baron's and the Warlord's steel, the King's gold crown, the giant's armbands. The **stylized PBR toon material** keeps the three flat light bands, then adds a crisp sun highlight sized by roughness (small and sharp on polished metal, broad and faint on leather, none on cloth or fur), and gives metal a two-tone sky-and-ground reflection that brightens at grazing angles. It is all one cheap pass, with no environment maps.
+
+### What could not be done (yet)
+
+- **A Meshy farmer.** A clean A-pose front and back sheet of the farmer was made with Meshy (`art/meshy/farmer-ref.png` is the title art it started from), but every API key stopped at its credit limit before the 3D model, rig and animations. The farmer above is built in code instead, which is also the only way to get garments as separate meshes: Meshy always fuses a character into one surface.
+- **Weapons as separate objects.** The giant's club is fused to his hands in Meshy's one surface, and its middle is weighted to his body. Cutting it out automatically (by shape, by the hands' skin weights, by the wood's colour) did not separate it cleanly from his belly and thighs, so it was left as Meshy made it rather than shipped half cut. Meshy's own part splitter can do it once the key limits are raised.
+- **Jumping, dodging, dashing, sliding.** The farmer and the enemies have no such moves in the game, and adding them would change how it plays.
+
 ## Characters
 - **The farmer** (you): straw hat with a red band, red shirt, blue denim overalls and a pitchfork slung across the back.
 - **Rats**: ten kinds of small rat, and each needs a different plan. They march one kind per row of the crowd, and healers walk in the middle of some rows.

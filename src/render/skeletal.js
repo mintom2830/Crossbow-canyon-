@@ -13,7 +13,8 @@
 // bone matrices and played on the graphics card (see bakeCrowd in crowdanim.js).
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { toon, inkMaterial, inkNormals, INK_PX } from './toon.js';
+import { inkMaterial, inkNormals, INK_PX } from './toon.js';
+import { toonPBR } from './toonpbr.js';
 import { articulate, PartMover } from './articulate.js';
 import { twoBoneIK, Spring } from './ik.js';
 
@@ -38,10 +39,13 @@ export class AnimModel {
     this.scene = gltf.scene;
     this.clips = {};
     for (const c of gltf.animations) this.clips[c.name] = c;
-    let map = null;
-    this.scene.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; if (!map && o.material && o.material.map) map = o.material.map; } });
+    let map = null, src = null;
+    this.scene.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; if (!map && o.material && o.material.map) { map = o.material.map; src = o.material; } } });
     if (map) { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4; }
     this.map = map;
+    // the rest of its PBR material (tools/pbr-maps.mjs): relief, and occlusion/roughness/metal in one map
+    this.normalMap = src && src.normalMap; this.normalScale = src && src.normalScale ? src.normalScale.clone() : null;
+    this.ormMap = src && (src.roughnessMap || src.metalnessMap || src.aoMap);
     // more bones than Meshy's rig: ears, a jaw, a tail, a cape, each its own part (see articulate.js)
     this.added = articulate(this.scene, name);
     // fit: its rest pose (the first frame of idle) stands on the ground, centred, top tall
@@ -86,7 +90,7 @@ export class AnimModel {
   // extra parts.
   instance(px = INK_PX.big) {
     const root = cloneSkinned(this.scene);
-    const mat = toon({ vertexColors: false, map: this.map, emissive: 0x000000, side: THREE.DoubleSide });
+    const mat = toonPBR({ map: this.map, emissive: 0x000000, side: THREE.DoubleSide, ...(this.normalMap ? { normalMap: this.normalMap, normalScale: this.normalScale } : {}), ormMap: this.ormMap || null });
     const skins = [];
     root.traverse((o) => {
       if (!o.isMesh) return;

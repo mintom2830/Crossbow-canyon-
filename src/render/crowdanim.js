@@ -54,7 +54,7 @@ export function bakeCrowd(model) {
   for (const name of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) if (src.attributes[name]) geo.setAttribute(name, src.attributes[name]);
   if (src.index) geo.setIndex(src.index);
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, model.fit.top / 2, 0), model.fit.top * 1.5);
-  return { tex, clips, bones: B, geo, map: model.map, model };
+  return { tex, clips, bones: B, geo, map: model.map, normalMap: model.normalMap || null, normalScale: model.normalScale || null, model };
 }
 
 // GLSL: the skin matrix of this vertex, blended between frame rows (and the row it
@@ -86,7 +86,8 @@ mat4 crowdSkin() {
 // Toon-shaded crowd material: skinned from the bone texture, flashes white on a hit
 // (iAnim.y, as the other rats do).
 export function crowdMaterial(bake) {
-  const mat = new THREE.MeshToonMaterial({ map: bake.map, gradientMap: toonGradient(), side: THREE.DoubleSide });
+  // the relief from its PBR maps too (tools/pbr-maps.mjs)
+  const mat = new THREE.MeshToonMaterial({ map: bake.map, gradientMap: toonGradient(), side: THREE.DoubleSide, ...(bake.normalMap ? { normalMap: bake.normalMap, normalScale: bake.normalScale } : {}) });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uBones = { value: bake.tex };
     sh.vertexShader = sh.vertexShader
