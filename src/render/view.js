@@ -15,6 +15,8 @@ import { ArsenalView } from './arsenal-view.js';
 import { TowerModels, modelTier, modelShipped, MODEL_EXT } from './tower-models.js';
 import { ratGeometry, clusterGeometry, giantModelParts } from './rat-models.js';
 import { AnimModel, ANIM_FIT } from './skeletal.js';
+import { buildFarmer, FARMER_JOINTS } from './farmer.js';
+import { FarmerRig } from './farmer-anim.js';
 import { bakeCrowd, crowdMaterial, crowdInkPose, crowdRow } from './crowdanim.js';
 import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
@@ -487,24 +489,22 @@ export class View {
 
   // --------------------------------------------------------------- hero
   _makeHero() {
-    const parts = heroParts();
-    const mat = toon();
+    // the farmer: a skinned skeleton, every garment its own mesh (farmer.js), moved
+    // by his own motion rig (farmer-anim.js)
+    const F = buildFarmer(), rig = new FarmerRig(F);
+    const mat = toon();   // vertex-coloured: the pitchfork (weapon skins recolour it) and the rides
     const group = new THREE.Group();
-    const body = new THREE.Mesh(parts.body, mat);
-    const legL = new THREE.Group(), legR = new THREE.Group();
-    legL.add(new THREE.Mesh(parts.leg, mat)); legR.add(new THREE.Mesh(parts.leg, mat));
-    legL.position.set(-0.12, 0.38, 0); legR.position.set(0.12, 0.38, 0);
-    const armL = new THREE.Group(), armR = new THREE.Group();
-    armL.add(new THREE.Mesh(parts.arm, mat)); armR.add(new THREE.Mesh(parts.arm, mat));
-    armL.position.set(-0.33, 0.86, 0); armR.position.set(0.33, 0.86, 0);
-    const fork = new THREE.Mesh(parts.fork, mat);
+    // the pitchfork: its own object in the socket on his back
+    const fork = new THREE.Mesh(heroParts().fork, mat);
+    fork.position.copy(FARMER_JOINTS.fork).negate();
+    F.bones.fork.add(fork);
+    addInk(fork, INK_PX.unit);
     // fb: the farmer; inner also carries the ride (horse or cow) when there is one
     const fb = new THREE.Group();
-    fb.add(body, fork, legL, legR, armL, armR);
+    fb.add(F.root);
     const inner = new THREE.Group();
     inner.add(fb);
     inner.scale.setScalar(1.35);
-    for (const m of [body, fork, legL.children[0], legR.children[0], armL.children[0], armR.children[0]]) addInk(m, INK_PX.unit);
     group.add(inner);
     group.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     // magnet ring hint on the ground
@@ -512,7 +512,7 @@ export class View {
     const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, depthWrite: false }));
     ring.position.y = 0.09;
     group.add(ring);
-    return { group, inner, fb, fork, mat, legL, legR, armL, armR, ring, phase: 0, gallop: 0, rideKind: null, mounts: {}, mount: null };
+    return { group, inner, fb, fork, mat, farmer: F, rig, ring, gallop: 0, rideKind: null, mounts: {}, mount: null, lastSpeed: 0, lastYaw: null, accel: 0 };
   }
   // the horse or cow under the farmer, built the first time it is needed
   _mount(kind) {
@@ -1861,20 +1861,25 @@ export class View {
       M.head.rotation.x = Math.sin(p + 0.8) * 0.14 * a + (h.moving ? 0 : Math.sin(t * 1.3) * 0.06);
       M.tail.rotation.x = 0.2 + Math.sin(p * 0.5) * 0.3 * a + Math.sin(t * 2.1) * 0.08;
       M.tail.rotation.z = Math.sin(t * 1.7) * 0.25;
-      // the farmer sits astride, holding the reins, leaning in at a gallop
-      hv.legL.rotation.set(-0.35, 0, -0.55); hv.legR.rotation.set(-0.35, 0, 0.55);
-      hv.armL.rotation.set(-0.95 + Math.sin(p) * 0.08 * a, 0, 0.15); hv.armR.rotation.set(-0.95 + Math.sin(p) * 0.08 * a, 0, -0.15);
       hv.fb.rotation.x = 0.12 * a;
       hv.inner.position.y = h.moving ? Math.abs(Math.sin(p)) * 0.14 * a : Math.sin(t * 2) * 0.012;
       // dust kicked up by the hooves
       if (h.moving && speed > 4 && this.dustBudget >= 1 && Math.random() < dt * 6) { this.dustBudget--; this.fx.puff(h.x - Math.sin(h.facing) * 0.9, h.y + 0.15, h.z - Math.cos(h.facing) * 0.9, 0xeadbb8, 0.4); }
     } else {
-      hv.phase += dt * (6 + speed * 1.6);
-      const sw = h.moving ? Math.sin(hv.phase) : 0;
-      hv.legL.rotation.set(sw * 0.7, 0, 0); hv.legR.rotation.set(-sw * 0.7, 0, 0);
-      hv.armL.rotation.set(-sw * 0.6, 0, 0); hv.armR.rotation.set(sw * 0.6, 0, 0);
       hv.fb.rotation.x = 0;
-      hv.inner.position.y = h.moving ? Math.abs(Math.cos(hv.phase)) * 0.1 : Math.sin(t * 2) * 0.02;
+      hv.inner.position.y = 0;
+    }
+    // the farmer's own motion: planted feet, swinging arms, leaning, springs (farmer-anim.js)
+    {
+      const yaw = hv.inner.rotation.y;
+      let yawRate = 0;
+      if (hv.lastYaw !== null && dt > 0) { let d = yaw - hv.lastYaw; d = Math.atan2(Math.sin(d), Math.cos(d)); yawRate = d / dt; }
+      hv.lastYaw = yaw;
+      const sp = hv.mount ? 0 : (h.moving ? speed : 0);
+      if (dt > 0) hv.accel += ((sp - hv.lastSpeed) / dt - hv.accel) * Math.min(1, dt * 12);
+      hv.lastSpeed = sp;
+      hv.group.updateMatrixWorld(true);
+      hv.rig.update({ dt, t, speed: sp, accel: hv.accel, yawRate, ground: groundHeight, rootY: h.y + hv.inner.position.y, scale: 1.35, ride: hv.mount ? { phase: hv.gallop, amount: h.moving ? Math.min(1, speed / 6) : 0 } : null });
     }
     hv.ring.material.opacity = 0.1 + (h.collect > 0 ? 0.25 : 0) + (sim.coins.length ? 0.06 : 0);
     hv.ring.position.y = groundHeight(h.x, h.z) - h.y + 0.09;
