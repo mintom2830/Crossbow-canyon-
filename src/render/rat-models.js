@@ -133,15 +133,36 @@ export function clusterGeometry(geo, cell) {
 // The giant rat and the bosses are posed by joints (body, two arms, two legs; see
 // giantParts in models.js). A Meshy model becomes one skinned mesh on bones at
 // those joints. top: the height the game draws them at.
+//
+// weapon: boxes [x0, x1, y0, y1, z0, z1] (in the fitted model, before any mirror)
+// round the weapon it carries. The weapon is fixed to the hand that swings it (the
+// right arm, which every gate attack swings), so it swings, smashes and pounds with
+// the arm instead of staying stuck to the body. mirror: the model holds its weapon
+// in its left hand, so it is mirrored to put it in the right one.
 export const GIANT_FIT = {
-  giant: { yaw: 0, top: 3.55, maxW: 3.8 },
-  warlord: { yaw: 0, top: 3.55 },
-  baron: { yaw: 0, top: 3.55 },
+  // the club across his front (not the other fist, which rests on its head)
+  giant: { yaw: 0, top: 3.55, maxW: 3.8, mirror: true, weapon: [[-1.95, 0.85, 0.08, 0.98, 0.42, 1.4], [0.85, 1.95, 0.05, 0.52, 0.3, 1.4]] },
+  // the spiked axe in his raised fist
+  warlord: { yaw: 0, top: 3.55, mirror: true, weapon: [[-1.85, -1.02, 1.95, 2.9, -0.7, 0.7]] },
+  // the spiked mace: its ball out in front, its handle through his fist and the end behind it
+  baron: { yaw: 0, top: 3.55, mirror: true, weapon: [[-1.3, 0.1, 0.35, 1.9, 0.38, 1.8], [-1.35, -0.6, 0.6, 1.3, 0.05, 0.5], [-1.8, -1.35, 0, 1.3, -1.4, -0.7]] },
   king: { yaw: 0, top: 3.75, noArms: true },   // the robe hides his arms: it stays in one piece
   slime: { yaw: 0, top: 1.85, whole: true },
-  mole: { yaw: 0, top: 3.4, maxW: 4.4 },
+  mole: { yaw: 0, top: 3.4, maxW: 4.4, noLegs: true, armsDown: true },   // its digging claws reach the ground: they go with its arms
   buzzard: { yaw: 0, top: 3.15, wings: true, noLegs: true },   // its wings flap; the net of rats hangs from the body
 };
+
+// Mirrors a (non-indexed) geometry left to right, keeping its faces facing out.
+function mirrorX(geo) {
+  for (const name of Object.keys(geo.attributes)) {
+    const a = geo.attributes[name], k = a.itemSize, arr = a.array;
+    for (let t = 0; t < a.count; t += 3) for (let c = 0; c < k; c++) {
+      const i1 = (t + 1) * k + c, i2 = (t + 2) * k + c, tmp = arr[i1]; arr[i1] = arr[i2]; arr[i2] = tmp;
+    }
+    if (name === 'position' || name === 'normal') for (let i = 0; i < a.count; i++) arr[i * k] = -arr[i * k];
+    a.needsUpdate = true;
+  }
+}
 export function giantModelParts(gltf, style) {
   const fit = GIANT_FIT[style] || GIANT_FIT.giant;
   const { geo, map } = gltfGeometry(gltf);
@@ -156,6 +177,7 @@ export function giantModelParts(gltf, style) {
   b = geo.boundingBox;
   const top = b.max.y + 0.15;
   if (fit.whole) return { torso: geo, top, map };
+  if (fit.mirror) mirrorX(geo);
   const H = b.max.y, W = b.max.x - b.min.x;
   const sh = fit.wings ? 0.22 : 0.27;
   const pivots = {
@@ -169,15 +191,32 @@ export function giantModelParts(gltf, style) {
   const sm = (a, c, x) => { const k = Math.min(1, Math.max(0, (x - a) / (c - a))); return k * k * (3 - 2 * k); };
   const pos = geo.attributes.position, nv = pos.count;
   const idx = new Uint16Array(nv * 4), wts = new Float32Array(nv * 4);
-  const hipY = 0.27 * H, armLo = (fit.wings ? 0.35 : 0.3) * H;
+  const hipY = 0.27 * H, armLo = fit.armsDown ? -1 : (fit.wings ? 0.35 : 0.3) * H;
+  // how far inside its weapon boxes a point is (0 outside, 1 a few cm in)
+  const M = 0.04, weapon = fit.weapon || [];
+  const inWeapon = (x, y, z) => {
+    let w = 0;
+    for (const B of weapon) {
+      const k = sm(B[0], B[0] + M, x) * sm(B[1], B[1] - M, x) * sm(B[2], B[2] + M, y) * sm(B[3], B[3] - M, y) * sm(B[4], B[4] + M, z) * sm(B[5], B[5] - M, z);
+      if (k > w) w = k;
+    }
+    return w;
+  };
   for (let i = 0; i < nv; i++) {
-    const x = pos.getX(i), y = pos.getY(i), ax = Math.abs(x);
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ax = Math.abs(x);
     let wl = fit.noLegs ? 0 : sm(hipY + 0.04 * H, hipY - 0.1 * H, y) * sm(0.02 * W, 0.09 * W, ax);
     let wa = fit.noArms ? 0 : sm((sh - 0.05) * W, (sh + 0.05) * W, ax) * sm(armLo, armLo + 0.08 * H, y) * (1 - sm(0.86 * H, 0.92 * H, y));
     if (wl + wa > 1) { const k = 1 / (wl + wa); wl *= k; wa *= k; }
     const rest = 1 - wl - wa, kb = sm(hipY - 0.02 * H, hipY + 0.12 * H, y);
     idx[i * 4] = 0; idx[i * 4 + 1] = 1; idx[i * 4 + 2] = x < 0 ? 2 : 3; idx[i * 4 + 3] = x < 0 ? 4 : 5;
-    wts[i * 4] = rest * (1 - kb); wts[i * 4 + 1] = rest * kb; wts[i * 4 + 2] = wa; wts[i * 4 + 3] = wl;
+    let w0 = rest * (1 - kb), w1 = rest * kb, w2 = wa, w3 = wl;
+    // the weapon goes wholly with the right hand (blended over a few cm at its edges)
+    const ww = weapon.length ? inWeapon(fit.mirror ? -x : x, y, z) : 0;
+    if (ww > 0) {
+      if (x < 0) { w1 += w2; w2 = 0; idx[i * 4 + 2] = 3; }   // a part of it reaching across to the left side
+      w0 *= 1 - ww; w1 *= 1 - ww; w2 = w2 * (1 - ww) + ww; w3 *= 1 - ww;
+    }
+    wts[i * 4] = w0; wts[i * 4 + 1] = w1; wts[i * 4 + 2] = w2; wts[i * 4 + 3] = w3;
   }
   geo.setAttribute('skinIndex', new THREE.BufferAttribute(idx, 4));
   geo.setAttribute('skinWeight', new THREE.BufferAttribute(wts, 4));

@@ -1379,11 +1379,20 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
     const v = window.__cc.view;
     const small = rats.map((i) => { const m = v.ratMeshes[i]; m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; return { i, tex: !!(m.material.map && m.material.map.image), part: !!m.geometry.attributes.aPart, legs: [...m.geometry.attributes.aPart.array].some((p) => p >= 1 && p <= 4), y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) }; });
     const big = bigs.map((k) => { const g = v.giantGeo[k === 'giant' ? 'normal' : k], geo = g.skinned || g.torso; return { k, tex: !!g.map, top: g.top, torso: geo.attributes.position.count, skinned: !!g.skinned || k === 'slime' }; });
-    return { small, big, misses: v.models.misses };
+    // the weapon a giant carries goes with the hand that swings it (bone 3, the right arm): the
+    // giant rat's club and the Iron Baron's mace reach low, well below where an arm's own skin starts
+    const weapon = ['normal', 'baron'].filter((k) => v.giantGeo[k] && v.giantGeo[k].skinned).map((k) => {
+      const G = v.giantGeo[k], g = G.skinned, P = g.attributes.position, I = g.attributes.skinIndex.array, Wt = g.attributes.skinWeight.array, H = G.top - 0.15;
+      let n = 0;
+      for (let i = 0; i < P.count; i++) for (let c = 0; c < 4; c++) if (I[i * 4 + c] === 3 && Wt[i * 4 + c] > 0.95 && P.getY(i) < 0.25 * H) n++;
+      return { k, n };
+    });
+    return { small, big, weapon, misses: v.models.misses };
   }, [rats, bigs]);
   assert(r.misses === 0, 'a model failed to load');
   for (const q of r.small) assert(q.tex && q.part && q.legs && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
   for (const q of r.big) assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
+  for (const q of r.weapon) assert(q.n > 300, 'weapon not held in the right hand: ' + JSON.stringify(r.weapon));
   // a wave with a giant and a boss: they are built from the models and walk
   const out = await g(page, () => {
     const s = window.__cc.sim; s.fortress.hp = s.fortress.maxHp = 1e6;
