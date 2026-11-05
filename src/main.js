@@ -1216,6 +1216,9 @@ function frame(now) {
     sim.step(dt);
     sim.events.length = 0;
   }
+  // how far into the next simulation step this frame falls: the view draws moving
+  // enemies that far between their last two steps, so they glide at any frame rate
+  view.alpha = mode === 'play' || mode === 'title' ? Math.min(1, acc / FIXED) : 1;
   view.sync(sim, mode === 'pause' ? 0 : dt * speed);
   // townsfolk sounds: startled squeaks, relieved sighs, cheering
   const ts = view.town.sounds;

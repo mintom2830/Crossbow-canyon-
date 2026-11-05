@@ -6,7 +6,7 @@ import { T_GRUNT, T_BOSS, SHIELD, BOMB, NINJA, JET } from '../sim.js';
 import { buildEnvironment } from './env.js';
 import { FX } from './fx.js';
 import { radialTexture, GB, P } from './geo.js';
-import { toon, toonGradient, INK_PX, inkUniforms, addInk, inkInstanced, inkGeometry, inkNormals, setInkedGeometry } from './toon.js';
+import { toon, toonGradient, INK_PX, inkUniforms, addInk, inkInstanced, inkGeometry, inkNormals, setInkedGeometry, inkMaterial } from './toon.js';
 import { ratMaterial, attackPhase } from './ratanim.js';
 import { TownView } from './town.js';
 import { Portraits } from './portraits.js';
@@ -44,6 +44,24 @@ const RAT_SPLAT = [0xb08fcc, 0xd2a8de, 0x9d93b5, 0xbfa2cf, 0x9fdcae, 0xd49ac6, 0
 const BOSS_SPLAT = { warlord: 0xd8907c, baron: 0x9fb6d8, king: 0xbd8ade, slime: 0x8ad85a, mole: 0xb8916c, buzzard: 0xc2a07e };
 const splatOf = (e) => (e.kind === T_GRUNT ? RAT_SPLAT[e.v] || RAT_SPLAT[0] : BOSS_SPLAT[e.boss] || 0xa98ac2);
 const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);
+// An enemy's pose between the last two simulation steps (a: how far into the
+// next step this frame is), so the crowd glides smoothly at any frame rate.
+// A jump of more than 2 m in one step (a Time Warp rewind) is not blended.
+const _pose = { x: 0, z: 0, yaw: 0, walk: 0, hy: 0 };
+function lerpPose(e, a) {
+  if (e.px === undefined || (e.x - e.px) ** 2 + (e.z - e.pz) ** 2 > 4) {
+    _pose.x = e.x; _pose.z = e.z; _pose.yaw = e.yaw; _pose.walk = e.walk || 0; _pose.hy = e.hy || 0;
+    return _pose;
+  }
+  _pose.x = e.px + (e.x - e.px) * a; _pose.z = e.pz + (e.z - e.pz) * a;
+  let d = e.yaw - e.pyaw;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  _pose.yaw = e.pyaw + d * a;
+  _pose.walk = e.pwalk + (e.walk - e.pwalk) * a;
+  _pose.hy = e.phy + (e.hy - e.phy) * a;
+  return _pose;
+}
 const _zq = new THREE.Quaternion(), _ZAX = new THREE.Vector3(0, 0, 1);
 const _e2q = (a) => _zq.setFromAxisAngle(_ZAX, a);   // a spin in the picture plane
 // toon lighting: a clean, near-white key light so the flat colours read true;
@@ -530,21 +548,42 @@ export class View {
       // a Meshy model is drawn from both sides: its open edges (a robe's hem) would show the outline behind
       const mat = geo.map ? toon({ vertexColors: false, map: geo.map, emissive: 0x000000, side: THREE.DoubleSide }) : toon({ emissive: 0x000000 });
       const group = new THREE.Group();
-      const torso = new THREE.Mesh(geo.torso, mat);
-      const armL = new THREE.Group(), armR = new THREE.Group(), legL = new THREE.Group(), legR = new THREE.Group();
-      // the slime has no limbs (empty joints keep every animation simple)
-      if (geo.armL) armL.add(new THREE.Mesh(geo.armL, mat));
-      if (geo.armR) armR.add(new THREE.Mesh(geo.armR, mat));
-      if (geo.leg) { legL.add(new THREE.Mesh(geo.leg, mat)); legR.add(new THREE.Mesh(geo.leg, mat)); }
-      else if (geo.legL) { legL.add(new THREE.Mesh(geo.legL, mat)); legR.add(new THREE.Mesh(geo.legR, mat)); }   // a Meshy model: its own left and right leg
+      const px = boss ? INK_PX.big : INK_PX.unit;
+      // a Meshy model is one skin on bones: the joints the animation turns are the bones
+      const skinned = !!geo.skinned;
+      const J = () => (skinned ? new THREE.Bone() : new THREE.Group());
+      const armL = J(), armR = J(), legL = J(), legR = J(), body = J();
       armL.position.set(...piv.armL); armR.position.set(...piv.armR);
       legL.position.set(...piv.legL); legR.position.set(...piv.legR);
-      const body = new THREE.Group();
-      body.add(torso, armL, armR);
-      group.add(body, legL, legR);
-      group.traverse((o) => { if (o.isMesh) o.castShadow = false; });
-      const px = boss ? INK_PX.big : INK_PX.unit;
-      for (const m of [torso, ...armL.children, ...armR.children, ...legL.children, ...legR.children]) addInk(m, px);
+      if (skinned) {
+        body.add(armL, armR);
+        const root = new THREE.Bone();
+        root.add(body, legL, legR);
+        group.add(root);
+        const skin = new THREE.SkinnedMesh(geo.skinned, mat);
+        skin.frustumCulled = false; skin.castShadow = false;
+        group.add(skin);
+        group.updateMatrixWorld(true);
+        const skeleton = new THREE.Skeleton([root, body, armL, armR, legL, legR]);
+        skin.bind(skeleton);
+        // its outline is skinned on the same bones, so it bends with it
+        inkNormals(geo.skinned);
+        const ink = new THREE.SkinnedMesh(geo.skinned, inkMaterial(px));
+        ink.frustumCulled = false; ink.castShadow = ink.receiveShadow = false; ink.raycast = () => {}; ink.name = 'ink';
+        skin.add(ink);
+        ink.bind(skeleton, skin.bindMatrix);
+        skin.userData.ink = ink;
+      } else {
+        const torso = new THREE.Mesh(geo.torso, mat);
+        // the slime has no limbs (empty joints keep every animation simple)
+        if (geo.armL) armL.add(new THREE.Mesh(geo.armL, mat));
+        if (geo.armR) armR.add(new THREE.Mesh(geo.armR, mat));
+        if (geo.leg) { legL.add(new THREE.Mesh(geo.leg, mat)); legR.add(new THREE.Mesh(geo.leg, mat)); }
+        body.add(torso, armL, armR);
+        group.add(body, legL, legR);
+        group.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+        for (const m of [torso, ...armL.children, ...armR.children, ...legL.children, ...legR.children]) addInk(m, px);
+      }
       this.scene.add(group);
       const label = document.createElement('div');
       label.className = 'hp-num';
@@ -835,7 +874,8 @@ export class View {
   _ratDies(e, spent) {
     if (this.ratDying.length >= 400) return;
     const v = e.v === SHIELD && !e.sh ? SHIELDLESS : e.v || 0;
-    this.ratDying.push({ x: e.x, z: e.z, gy: this._gy(e.x, e.z), yaw: e.yaw || 0, dir: e.dir || 1, v, k: 0, dur: spent ? 0.45 : 0.72, spent, puffed: spent });
+    this.ratDying.push({ x: e.x, z: e.z, gy: this._gy(e.x, e.z), yaw: e.yaw || 0, dir: e.dir || 1, v, k: 0, dur: spent ? 0.45 : 0.72, spent, puffed: spent,
+      vx: e.vx || 0, vz: e.vz || 0, vy: e.vy || 0, hy: e.hy || 0 });
   }
   _giantDies(e, spent) {
     const v = this.giantViews.get(e.id);
@@ -1219,6 +1259,9 @@ export class View {
       }
       case 'padAppear': fx.ring(e.x, groundHeight(e.x, e.z), e.z, 1.5, 0xffffff, 0.5); break;
       case 'fortressHit': this.fortHitFlash = 0.25; break;
+      case 'land':   // a rat thrown by a blast thumps back down
+        if (this.dustBudget >= 1) { this.dustBudget--; this._lift(e.x, e.z).puff(e.x, 0, e.z, 0xd9c7a8, Math.min(0.9, 0.3 + e.v * 0.06)); this.fx.lift = 0; }
+        break;
       case 'loaded': this.reset(sim); break;
       default: break;
     }
@@ -1248,6 +1291,7 @@ export class View {
     this.ratUniforms.uTime.value = t;
     const fighting = sim.state === 'wave';
     const spawnS = CFG.spawnS;
+    const A = this.alpha ?? 1, hills = CFG.hills.length > 0;
     for (const e of sim.enemies) {
       if (e.type === T_GRUNT) {
         const vt = e.v === SHIELD && !(e.shield > 0) ? SHIELDLESS : e.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
@@ -1278,36 +1322,33 @@ export class View {
           y += Math.sin(k * Math.PI) * 0.55; pitch += 0.28 * Math.sin(k * Math.PI);
           trick = 1;
         } else if (e.v === BOMB && this.sparkBudget >= 1 && Math.random() < 0.05) trick = 2;
-        // thrown back by a blast: the simulation moves the rat at once; it is drawn flying
-        // back along the road in a hop (a big blast flips it head over heels)
-        let ex = e.x, ez = e.z;
-        if (e._vs === undefined || e.s >= e._vs - 0.02 || dt === 0) { e._vs = e.s; e._kb = 0; }
-        else {
-          e._kb = Math.max(e._kb || 0, e._vs - e.s);
-          e._vs = Math.max(e.s, e._vs - 10 * dt);
-          const prog = 1 - (e._vs - e.s) / e._kb;
-          y += Math.sin(prog * Math.PI) * Math.min(0.9, 0.3 + e._kb * 0.3);
-          pitch -= e._kb > 1.1 ? prog * Math.PI * 2 : Math.sin(prog * Math.PI) * 0.7;
-          road.sample(e._vs, _road); ex = _road.x + _road.nx * e.lat; ez = _road.z + _road.nz * e.lat;
-        }
+        // drawn in between simulation steps, so the crowd glides at any frame rate
+        const P = lerpPose(e, A);
+        const ex = P.x, ez = P.z, yaw = P.yaw, walk = P.walk, hy = P.hy;
+        // thrown by a blast (the simulation flies it back under gravity): nose up on the
+        // way up, nose down on the way down; a big kick turns it head over heels
+        if (hy > 0) { y += hy; pitch += e.spinV ? e.spin : clampN(-e.vy * 0.07, -0.6, 0.6); }
         const gy = this._gy(ex, ez);
         y += gy;
+        // it leans into its turns, and on a hill it tilts with the slope
+        const roll = clampN(-e.bank * 0.1, -0.3, 0.3);
+        if (hills) { const hx = Math.sin(yaw) * 0.45, hz = Math.cos(yaw) * 0.45; pitch -= Math.atan2(this._gy(ex + hx, ez + hz) - this._gy(ex - hx, ez - hz), 0.9); }
         if (trick === 1 && this.jetBudget >= 1) {   // flames and smoke out of the jetpack
           this.jetBudget--;
-          const bx = ex - Math.sin(e.yaw) * 0.45 * sc, bz = ez - Math.cos(e.yaw) * 0.45 * sc;
+          const bx = ex - Math.sin(yaw) * 0.45 * sc, bz = ez - Math.cos(yaw) * 0.45 * sc;
           this.fx.glow(bx, y + 0.35 * sc, bz, 0.9, 0xff8a24, 0.14);
           if (Math.random() < 0.5) this.fx.trail(bx, y + 0.3 * sc, bz, 0.26, 0xd9d0c8);
         } else if (trick === 2) {   // sparks fizzing off the bomb's fuse
           this.sparkBudget -= 0.5;
-          this.fx.glow(ex + Math.sin(e.yaw) * 0.1, y + 1.45 * sc, ez + Math.cos(e.yaw) * 0.1, 0.5, 0xffd23a, 0.12);
+          this.fx.glow(ex + Math.sin(yaw) * 0.1, y + 1.45 * sc, ez + Math.cos(yaw) * 0.1, 0.5, 0xffd23a, 0.12);
         }
         _p.set(ex, y, ez);
-        _e.set(pitch, e.yaw, 0, 'YXZ'); _q.setFromEuler(_e);
+        _e.set(pitch, yaw, roll, 'YXZ'); _q.setFromEuler(_e);
         _s.set(sc, sc, sc);
         _m.compose(_p, _q, _s);
         gm.setColorAt(gn, e.frozen > 0 ? this.tint.frozen : e.stun > 0 ? (e.slow > 0 ? this.tint.both : this.tint.stun) : e.slow > 0 ? this.tint.slow : e.healed > 0 ? this.tint.healed : this.tint.normal);
         const o = gn * 4;
-        ra[o] = e.s * 11 * (1.1 / sc) + e.phase;                               // walk cycle follows the ground covered
+        ra[o] = walk * 11 * (1.1 / sc) + e.phase;                              // walk cycle follows the ground covered
         ra[o + 1] = e.stun > 0 ? -1 : Math.max(0, e.hitT / CFG.hitFlinch);
         ra[o + 2] = e.atGate && fighting ? attackPhase(e.attackT, CFG.grunt.gateRate) : -1;
         ra[o + 3] = 0;
@@ -1324,7 +1365,7 @@ export class View {
             _s.set(k, k, k); _m.compose(_p, _q, _s); dzm.setMatrixAt(dzn++, _m);
           }
         }
-        if (em > 0.3) { _p.set(ex, gy + 0.06, ez); _s.set(0.85 * k, 1, 1.6 * k); _q.setFromAxisAngle(UP, e.yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
+        if (em > 0.3) { const sh = k / (1 + hy * 0.5); _p.set(ex, gy + 0.06, ez); _s.set(0.85 * sh, 1, 1.6 * sh); _q.setFromAxisAngle(UP, yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
         // its aura: a glowing ring that breathes (dim while frozen or stunned)
         const AU = vt === SHIELDLESS ? null : RAT_AURA[e.v || 0];
         if (AU && em > 0.5 && an < aMax) {
@@ -1346,13 +1387,16 @@ export class View {
         if (!v) { v = this._getGiant(style); this.giantViews.set(e.id, v); v.lastHp = -1; }
         const sc = giantScale(e);
         v.baseScale = sc;
-        const ph = e.s * 3.2 + e.phase;                                         // stride follows the ground covered
+        const GP = lerpPose(e, A), gx = GP.x, gz = GP.z, gyaw = GP.yaw;
+        const ph = GP.walk * 3.2 + e.phase;                                     // stride follows the ground covered
         const em = Math.min(1, (e.s - spawnS) / 2.2);
         const u = 1 - Math.max(0, em);
-        v.group.position.set(e.x, -u * u * 2.6 * sc, e.z);
-        const ggy = this._gy(e.x, e.z);   // the ground under it (a hill on Level 2), added once the pose is set
-        v.group.rotation.y = e.yaw;
+        v.group.position.set(gx, -u * u * 2.6 * sc, gz);
+        const ggy = this._gy(gx, gz);   // the ground under it (a hill on Level 2), added once the pose is set
+        v.group.rotation.y = gyaw;
         v.group.rotation.x = -u * 0.5;
+        if (hills && !(e.fly > 0)) { const hx = Math.sin(gyaw) * sc, hz = Math.cos(gyaw) * sc; v.group.rotation.x -= Math.atan2(this._gy(gx + hx, gz + hz) - this._gy(gx - hx, gz - hz), 2 * sc) * 0.8; }
+        v.group.rotation.z = clampN(-e.bank * 0.06, -0.12, 0.12);   // a heavy lean into its turns
         v.group.scale.setScalar(sc);
         if (em < 0.2 && Math.random() < 0.3) this.fx.puff(e.x + (Math.random() - 0.5) * 2, 0, e.z + (Math.random() - 0.5) * 2, 0x9b7650, 1.2);
         const fl = e.hitT > 0 ? Math.sin(e.hitT / CFG.hitFlinch * Math.PI) : 0;  // flinch from a hit
@@ -1488,7 +1532,7 @@ export class View {
         // HP number above the head
         const hp = Math.max(0, Math.ceil(e.hp));
         if (hp !== v.lastHp) { v.label.textContent = hp; v.lastHp = hp; v.label.classList.toggle('boss', e.type === T_BOSS); }
-        this._placeLabel(v.label, e.x, v.top * sc + 0.3 + v.group.position.y, e.z);
+        this._placeLabel(v.label, gx, v.top * sc + 0.3 + v.group.position.y, gz);
       }
     }
     // defeated / spent small rats finish their animation
@@ -1498,11 +1542,19 @@ export class View {
         const d = list[i];
         d.k += dt / d.dur;
         if (d.k >= 1) { list[i] = list[list.length - 1]; list.pop(); continue; }
-        if (!d.puffed && d.k >= 0.58) { d.puffed = true; this.fx.puff(d.x, 0, d.z, 0xffffff, 1); }
+        // its momentum carries the body on: it slides to a stop, and falls if it was in the air
+        if (d.vx || d.vz) {
+          d.x += d.vx * dt; d.z += d.vz * dt;
+          const f = Math.exp(-4.5 * dt); d.vx *= f; d.vz *= f;
+          if (d.vx * d.vx + d.vz * d.vz < 0.01) d.vx = d.vz = 0;
+          d.gy = this._gy(d.x, d.z);
+        }
+        if (d.hy > 0) { d.vy -= 22 * dt; d.hy += d.vy * dt; if (d.hy <= 0) { d.hy = 0; d.vy = 0; } }
+        if (!d.puffed && d.k >= 0.58) { d.puffed = true; this._lift(d.x, d.z).puff(d.x, 0, d.z, 0xffffff, 1); this.fx.lift = 0; }
         const vt = d.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
         if (gn >= 1400) continue;
         const sc = CFG.ratTypes[vt === SHIELDLESS ? SHIELD : vt].scale;
-        _p.set(d.x, d.gy || 0, d.z); _q.setFromAxisAngle(UP, d.yaw); _s.set(sc, sc, sc); _m.compose(_p, _q, _s);
+        _p.set(d.x, (d.gy || 0) + (d.hy || 0), d.z); _q.setFromAxisAngle(UP, d.yaw); _s.set(sc, sc, sc); _m.compose(_p, _q, _s);
         gm.setColorAt(gn, this.tint.normal);
         const o = gn * 4;
         ra[o] = d.dir; ra[o + 1] = 0; ra[o + 2] = -1; ra[o + 3] = d.spent ? -Math.max(d.k, 0.001) : Math.max(d.k, 0.001);

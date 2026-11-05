@@ -8,6 +8,10 @@
 //   y  hit flinch, 1 -> 0 after a hit; -1 while stunned or frozen (hold still)
 //   z  gate attack phase 0..1 (the bite lands at 0.65); -1 when not attacking
 //   w  0 alive; 0..1 defeat progress; -1..0 "spent" poof progress
+// aStiff (optional, 0 when absent): how little a vertex follows its part's joint.
+//   The hand-built rats have separate legs, tail and head (0: they swing whole);
+//   a Meshy rat is one skin, so its legs, tail and head bend smoothly out of the
+//   body (1 at the joint, falling to 0 at the foot, the tail tip, the snout).
 // aGait (per model, see RAT_GAIT in models.js): how that kind of rat moves:
 //   0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop
 import * as THREE from 'three';
@@ -17,6 +21,7 @@ export const RAT_POSE_GLSL = [
   "attribute vec3 aPivot;",
   "attribute vec4 iAnim;",
   "attribute float aGait;",
+  "attribute float aStiff;",
   "uniform float uTime;",
   "varying float vFlash;",
   "mat3 rX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }",
@@ -35,6 +40,7 @@ export const RAT_POSE_GLSL = [
   "if (!alive || still) ph = 0.6;",
   "int part = int(aPart + 0.5);",
   "int G = int(aGait + 0.5);",
+  "float bw = 1.0 - aStiff;",
   // quicker little steps when sneaking, slower heavy ones when stomping or waddling
   "if (alive && !still) ph *= G == 4 ? 1.45 : G == 2 ? 0.8 : G == 3 ? 0.85 : G == 5 ? 0.75 : 1.0;",
   "float jit = fract(iAnim.x * 0.137);",
@@ -59,14 +65,14 @@ export const RAT_POSE_GLSL = [
   "} else a = 0.25;",
   "}",
   "if (die > 0.0) a = -0.4 + sin(uTime * 34.0 + float(part) * 1.7) * 0.55 * (1.0 - smoothstep(0.3, 0.6, die));",
-  "R = rX(a);",
+  "R = rX(a * bw);",
   "} else if (part == 5) {",
   "float wag = still ? 0.0 : sin(uTime * 7.0 + ph * 0.5) * 0.3 + sin(ph) * 0.12;",
   "float lift = attacking ? -0.35 : G == 1 ? -0.3 - 0.15 * swing : G == 4 ? 0.15 : G == 5 ? -0.25 * abs(swing) : 0.0;",
   "if (G == 4) wag *= 0.3;",
   "if (G == 3) wag += sin(ph) * 0.25;",
   "wag += sin(hit * 18.0) * 0.5 * hit;",
-  "R = rY(wag) * rX(lift);",
+  "R = rY(wag * bw) * rX(lift * bw);",
   "} else if (part == 6) {",
   "float pitch = sin(ph * 2.0) * 0.07 - 0.04 * foot;",
   "float look = still ? 0.0 : sin(uTime * 1.3 + jit * 40.0) * 0.16 * smoothstep(0.4, 1.0, sin(uTime * 0.7 + jit * 23.0));",
@@ -75,7 +81,7 @@ export const RAT_POSE_GLSL = [
   "if (attacking) pitch += -0.35 * smoothstep(0.1, 0.55, atk) * (1.0 - smoothstep(0.58, 0.64, atk)) + 0.55 * smoothstep(0.58, 0.64, atk) * (1.0 - smoothstep(0.72, 0.9, atk));",
   "pitch -= 0.5 * sin(hit * 3.14159);",
   "if (attacking) look = 0.0;",
-  "R = rY(look) * rX(pitch);",
+  "R = rY(look * bw) * rX(pitch * bw);",
   "}",
   "vec3 q = R * (p - aPivot) + aPivot;",
   "float bob = abs(sin(ph)) * 0.05;",

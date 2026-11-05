@@ -68,6 +68,9 @@ const INK_PROJECT = /* glsl */`
   // side of a model never pokes out as spikes; any normal with a real
   // sideways part gets the full width, so box edges seen from above get a
   // proper line too.
+  #ifdef USE_SKINNING
+    inkN = ( skinMatrix * vec4( inkN, 0.0 ) ).xyz;   // a skinned outline pushes out along the bent skin
+  #endif
   vec3 inkV = normalize( normalMatrix * inkN );
   float inkSide = min( 1.0, length( inkV.xy ) * 2.5 );
   vec2 inkDir = ( projectionMatrix * vec4( inkV, 0.0 ) ).xy * uRes;

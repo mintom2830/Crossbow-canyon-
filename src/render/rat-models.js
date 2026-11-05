@@ -3,9 +3,10 @@
 //
 // The rats are drawn as GPU instances animated in the vertex shader (see
 // ratanim.js), which moves each body part around its joint: legs 1-4, tail 5,
-// head 6, body 0. A Meshy model is one mesh, so its parts are found by where
-// each triangle sits: the back of the model is the tail, the top of the front
-// the head, the bottom the legs (front or back, left or right).
+// head 6, body 0. A Meshy model is one skin, so each vertex gets a part from
+// where it sits (the back is the tail, the top of the front the head, the bottom
+// the legs, front or back, left or right) and a weight, so the parts bend out of
+// the body smoothly (see aStiff in ratanim.js).
 import * as THREE from 'three';
 import { RAT_GAIT } from './models.js';
 import { gltfGeometry } from './tower-models.js';
@@ -57,21 +58,33 @@ export function ratGeometry(gltf, v) {
     5: [0, 0.3 * H, tailZ],
     6: [0, headY, headZ],
   };
-  // whole triangles go to one part (so a triangle never tears across a joint)
-  for (let t = 0; t < n / 3; t++) {
-    let cx = 0, cy = 0, cz = 0;
-    for (let k = 0; k < 3; k++) { cx += pos.getX(t * 3 + k); cy += pos.getY(t * 3 + k); cz += pos.getZ(t * 3 + k); }
-    cx /= 3; cy /= 3; cz /= 3;
-    let p = 0;
-    if (cz < tailZ && cy < 0.6 * H) p = 5;
-    else if (cz > headZ && cy > headY - 0.1 * H) p = 6;
-    else if (cy < legY) p = (cz > midZ ? 1 : 3) + (cx > 0 ? 1 : 0);
-    for (let k = 0; k < 3; k++) {
-      const i = t * 3 + k;
-      part[i] = p;
-      piv[i * 3] = joints[p][0]; piv[i * 3 + 1] = joints[p][1]; piv[i * 3 + 2] = joints[p][2];
+  // Soft skinning: every vertex finds how strongly it belongs to a leg, the tail
+  // and the head, from where it sits (so the copies of a vertex shared by several
+  // triangles always agree and the skin never tears). Each weight fades to 0 at
+  // its joint and grows toward the foot, the tail tip or the snout; a leg's weight
+  // also fades to 0 along the middle of the body and between the front and back
+  // legs, where the leg it belongs to switches. A vertex follows its strongest part
+  // by how much stronger it is than the next one, so where two parts meet neither
+  // moves it and the body bends instead of breaking.
+  const sm = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+  const stiff = new Float32Array(n);
+  const tailOn = fit.tail !== 0;
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const wt = tailOn ? sm(tailZ + 0.03 * L, tailZ - 0.12 * L, z) : 0;
+    const wh = sm(headZ - 0.05 * L, headZ + 0.1 * L, z) * sm(headY - 0.15 * H, headY + 0.05 * H, y);
+    const wl = sm(legY, legY * 0.45, y) * sm(0.04 * W, 0.14 * W, Math.abs(x)) * sm(0.03 * L, 0.12 * L, Math.abs(z - midZ));
+    let p = 0, top = 0, next = 0;
+    for (const [q, w] of [[5, wt], [6, wh], [-1, wl]]) {
+      if (w > top) { next = top; top = w; p = q; } else if (w > next) next = w;
     }
+    if (p === -1) p = (z > midZ ? 1 : 3) + (x > 0 ? 1 : 0);
+    const w = top - next;
+    if (w <= 0.001) p = 0;
+    part[i] = p; stiff[i] = 1 - w;
+    piv[i * 3] = joints[p][0]; piv[i * 3 + 1] = joints[p][1]; piv[i * 3 + 2] = joints[p][2];
   }
+  geo.setAttribute('aStiff', new THREE.BufferAttribute(stiff, 1));
   geo.setAttribute('aPart', new THREE.BufferAttribute(part, 1));
   geo.setAttribute('aPivot', new THREE.BufferAttribute(piv, 3));
   geo.setAttribute('aGait', new THREE.BufferAttribute(new Float32Array(n).fill(RAT_GAIT[v] || 0), 1));
@@ -93,7 +106,7 @@ export function clusterGeometry(geo, cell) {
     if (!s) { s = [0, 0, 0, 0]; sums.set(k, s); }
     s[0] += pos.getX(i); s[1] += pos.getY(i); s[2] += pos.getZ(i); s[3]++;
   }
-  const extra = ['aPart', 'aPivot', 'aGait'].filter((a) => geo.attributes[a]);
+  const extra = ['aPart', 'aPivot', 'aGait', 'aStiff'].filter((a) => geo.attributes[a]);
   const out = { position: [] };
   for (const a of extra) out[a] = [];
   const seen = new Set();
@@ -117,9 +130,9 @@ export function clusterGeometry(geo, cell) {
 }
 
 // ---------------------------------------------------------------- giants and bosses
-// The giant rat and the bosses are posed groups (torso, two arms, two legs
-// around their joints; see giantParts in models.js). A Meshy model is cut into
-// those parts by where each triangle sits. top: the height the game draws them at.
+// The giant rat and the bosses are posed by joints (body, two arms, two legs; see
+// giantParts in models.js). A Meshy model becomes one skinned mesh on bones at
+// those joints. top: the height the game draws them at.
 export const GIANT_FIT = {
   giant: { yaw: 0, top: 3.55, maxW: 3.8 },
   warlord: { yaw: 0, top: 3.55 },
@@ -149,34 +162,25 @@ export function giantModelParts(gltf, style) {
     armL: [-sh * W, (fit.wings ? 0.62 : 0.72) * H, 0], armR: [sh * W, (fit.wings ? 0.62 : 0.72) * H, 0],
     legL: [-0.17 * W, 0.27 * H, 0], legR: [0.17 * W, 0.27 * H, 0],
   };
-  const pos = geo.attributes.position, n = pos.count / 3;
-  const groups = { torso: [], armL: [], armR: [], legL: [], legR: [] };
-  for (let t = 0; t < n; t++) {
-    let cx = 0, cy = 0;
-    for (let k = 0; k < 3; k++) { cx += pos.getX(t * 3 + k); cy += pos.getY(t * 3 + k); }
-    cx /= 3; cy /= 3;
-    let g = 'torso';
-    if (cy < 0.27 * H && !fit.noLegs) g = cx < 0 ? 'legL' : 'legR';
-    else if (!fit.noArms && Math.abs(cx) > sh * W && cy > (fit.wings ? 0.35 : 0.3) * H && cy < 0.88 * H) g = cx < 0 ? 'armL' : 'armR';
-    groups[g].push(t);
+  // Skinned: one mesh on a skeleton (bones 0 root at the feet, 1 body, 2/3 left and
+  // right arm, 4/5 left and right leg; see _getGiant in view.js). Every vertex gets
+  // weights from where it sits, fading smoothly across the shoulders and hips, so
+  // when an arm swings or a leg strides the skin bends instead of splitting.
+  const sm = (a, c, x) => { const k = Math.min(1, Math.max(0, (x - a) / (c - a))); return k * k * (3 - 2 * k); };
+  const pos = geo.attributes.position, nv = pos.count;
+  const idx = new Uint16Array(nv * 4), wts = new Float32Array(nv * 4);
+  const hipY = 0.27 * H, armLo = (fit.wings ? 0.35 : 0.3) * H;
+  for (let i = 0; i < nv; i++) {
+    const x = pos.getX(i), y = pos.getY(i), ax = Math.abs(x);
+    let wl = fit.noLegs ? 0 : sm(hipY + 0.04 * H, hipY - 0.1 * H, y) * sm(0.02 * W, 0.09 * W, ax);
+    let wa = fit.noArms ? 0 : sm((sh - 0.05) * W, (sh + 0.05) * W, ax) * sm(armLo, armLo + 0.08 * H, y) * (1 - sm(0.86 * H, 0.92 * H, y));
+    if (wl + wa > 1) { const k = 1 / (wl + wa); wl *= k; wa *= k; }
+    const rest = 1 - wl - wa, kb = sm(hipY - 0.02 * H, hipY + 0.12 * H, y);
+    idx[i * 4] = 0; idx[i * 4 + 1] = 1; idx[i * 4 + 2] = x < 0 ? 2 : 3; idx[i * 4 + 3] = x < 0 ? 4 : 5;
+    wts[i * 4] = rest * (1 - kb); wts[i * 4 + 1] = rest * kb; wts[i * 4 + 2] = wa; wts[i * 4 + 3] = wl;
   }
-  const out = { top, map, pivots };
-  for (const [k, tris] of Object.entries(groups)) {
-    const p = pickTris(geo, tris);
-    const pv = pivots[k];
-    if (pv) p.translate(-pv[0], -pv[1], -pv[2]);
-    out[k] = p;
-  }
-  return out;
-}
-function pickTris(geo, tris) {
-  const out = new THREE.BufferGeometry();
-  for (const [name, attr] of Object.entries(geo.attributes)) {
-    const k = attr.itemSize, src = attr.array, dst = new Float32Array(tris.length * 3 * k);
-    let o = 0;
-    for (const t of tris) for (let i = t * 9 / 3 * k; i < (t * 3 + 3) * k; i++) dst[o++] = src[i];
-    out.setAttribute(name, new THREE.BufferAttribute(dst, k));
-  }
-  out.computeBoundingSphere();
-  return out;
+  geo.setAttribute('skinIndex', new THREE.BufferAttribute(idx, 4));
+  geo.setAttribute('skinWeight', new THREE.BufferAttribute(wts, 4));
+  geo.computeBoundingSphere();
+  return { skinned: geo, top, map, pivots };
 }

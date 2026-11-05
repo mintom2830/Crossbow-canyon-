@@ -1154,14 +1154,27 @@ await test('satisfying effects: towers recoil and spring back, arrows burst and 
     out.splats = v.fx.dust.items.length; out.drops = v.fx.drops.items.length;
     out.splatColours = new Set(v.fx.dust.items.map((d) => d.color)).size;
     s.events.length = 0;
-    // a blast throws a rat back: it is drawn flying back in a hop, then lands where the simulation put it
+    // a blast throws a rat back: it flies up and back down the road under gravity, turning
+    // head over heels, is drawn up in the air, then thumps down and slides to a stop
     const k = s.enemies.find((e) => e.alive && e.type === 0 && e.s > 30 && !(e.stun > 0)) || s.enemies.find((e) => e.alive && e.type === 0 && !(e.stun > 0));
     v.sync(s, 1 / 60);
-    k.s -= 1.5; s._placeEnemy(k);
-    v.sync(s, 1 / 60);
-    out.knock = { kb: k._kb, sliding: k._vs - k.s };
-    for (let i = 0; i < 30; i++) v.sync(s, 1 / 60);
-    out.knock.landed = Math.abs(k._vs - k.s);
+    s._kick(k, 1.5, k.x - 1, k.z);
+    out.knock = { kv: k.kv, flip: k.spinV < 0, peak: 0, drawnUp: 0, lands: 0 };
+    const vt = k.v || 0;
+    for (let i = 0; i < 70; i++) {
+      s._kickPhysics(k, 1 / 60); s._placeEnemy(k);   // the battle is held still: move just this rat
+      out.knock.lands += s.events.filter((ev) => ev.type === 'land' && ev.id === k.id).length;
+      for (const ev of s.events) if (ev.type === 'land') v.handleEvent(ev, s);
+      s.events.length = 0;
+      v.alpha = 1; v.sync(s, 1 / 60);
+      if (k.hy > out.knock.peak) {
+        out.knock.peak = k.hy;
+        // its instance is drawn up off the ground
+        const idx = s.enemies.filter((q) => q.type === 0 && (q.v || 0) === vt && !(q.v === 3 && !(q.shield > 0))).indexOf(k), m = new (v.camera.matrix.constructor)();
+        if (idx >= 0 && idx < v.ratMeshes[vt].count) { v.ratMeshes[vt].getMatrixAt(idx, m); out.knock.drawnUp = m.elements[13] - (k.gy || 0); }
+      }
+    }
+    out.knock.landed = k.hy === 0 && k.kv === 0;
     // stunned rats: dizzy stars circle their heads
     for (const e of s.enemies.filter((q) => q.alive && q.type === 0).slice(0, 5)) e.stun = 3;
     v.sync(s, 1 / 60);
@@ -1181,7 +1194,7 @@ await test('satisfying effects: towers recoil and spring back, arrows burst and 
   assert(r.stuck === 1 && r.boltsDrawn >= 1, `stuck arrows: ${r.stuck}, drawn ${r.boltsDrawn}`);
   assert(r.falling, 'arrows should drop off a fallen giant');
   assert(r.splats >= 1 && r.drops >= 3, `splash: ${r.splats} splats, ${r.drops} droplets`);
-  assert(r.knock.kb > 1.4 && r.knock.sliding > 1 && r.knock.landed < 0.01, 'knockback hop: ' + JSON.stringify(r.knock));
+  assert(r.knock.kv < -5 && r.knock.flip && r.knock.peak > 0.5 && r.knock.drawnUp > 0.4 && r.knock.lands === 1 && r.knock.landed, 'knockback flight: ' + JSON.stringify(r.knock));
   assert(r.dizzy >= 15, 'dizzy stars: ' + r.dizzy);
   assert(r.coin.sy < r.coin.sx * 0.75, 'a bouncing coin should squash: ' + JSON.stringify(r.coin));
   await page.screenshot({ path: `${SHOTS}/effects.png` });
@@ -1365,12 +1378,12 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   const r = await g(page, ([rats, bigs]) => {
     const v = window.__cc.view;
     const small = rats.map((i) => { const m = v.ratMeshes[i]; m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; return { i, tex: !!(m.material.map && m.material.map.image), part: !!m.geometry.attributes.aPart, legs: [...m.geometry.attributes.aPart.array].some((p) => p >= 1 && p <= 4), y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) }; });
-    const big = bigs.map((k) => { const g = v.giantGeo[k === 'giant' ? 'normal' : k]; return { k, tex: !!g.map, top: g.top, torso: g.torso.attributes.position.count }; });
+    const big = bigs.map((k) => { const g = v.giantGeo[k === 'giant' ? 'normal' : k], geo = g.skinned || g.torso; return { k, tex: !!g.map, top: g.top, torso: geo.attributes.position.count, skinned: !!g.skinned || k === 'slime' }; });
     return { small, big, misses: v.models.misses };
   }, [rats, bigs]);
   assert(r.misses === 0, 'a model failed to load');
   for (const q of r.small) assert(q.tex && q.part && q.legs && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
-  for (const q of r.big) assert(q.tex && q.torso > 0 && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
+  for (const q of r.big) assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
   // a wave with a giant and a boss: they are built from the models and walk
   const out = await g(page, () => {
     const s = window.__cc.sim; s.fortress.hp = s.fortress.maxHp = 1e6;
@@ -1385,8 +1398,13 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   });
   assert(out >= 12, 'the test wave did not spawn: ' + out);
   await page.waitForFunction(() => window.__cc.view.giantPool.filter((q) => q.inUse).length >= 2, null, { timeout: 20000 }).catch(() => {});
-  const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => ({ boss: q.boss, tex: !!q.mat.map, legs: q.legL.children.length })));
-  assert(gi.length >= 2 && gi.every((q) => q.tex && q.legs === 1), 'giants not drawn from their models: ' + JSON.stringify(gi));
+  // giants and bosses are skinned on bones (with a skinned outline), and their joints move as they walk
+  const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => {
+    const skin = q.group.children.find((c) => c.isSkinnedMesh);
+    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), leg: q.legL.rotation.x };
+  }));
+  assert(gi.length >= 2 && gi.every((q) => q.tex && q.skin && q.bones === 6 && q.ink), 'giants not drawn from their skinned models: ' + JSON.stringify(gi));
+  assert(gi.some((q) => Math.abs(q.leg) > 0.05), 'giant legs do not stride: ' + JSON.stringify(gi));
   await page.screenshot({ path: `${SHOTS}/rat-models.png` });
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
