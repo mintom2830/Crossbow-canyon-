@@ -1391,7 +1391,7 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
     });
     const big = bigs.map((k) => {
       const key = k === 'giant' ? 'normal' : k, A = v.animGiant && v.animGiant[key];
-      if (A) return { k, animated: true, tex: !!A.map, clips: Object.keys(A.clips), top: A.fit.top, walkLoop: A.loop.walk };
+      if (A) return { k, animated: true, tex: !!A.map, clips: Object.keys(A.clips), top: A.fit.top, walkLoop: A.loop.walk, parts: A.added.map((a) => a.kind) };
       const g = v.giantGeo[key], geo = g.skinned || g.torso;
       return { k, animated: false, tex: !!g.map, top: g.top, torso: geo.attributes.position.count, skinned: !!g.skinned || k === 'slime' };
     });
@@ -1399,11 +1399,13 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   }, [rats, bigs]);
   assert(r.misses === 0, 'a model failed to load');
   for (const q of r.small) {
-    if (q.crowd) assert(q.tex && q.skin && q.bones >= 20 && q.rows > 30 && ['idle', 'walk', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)), 'crowd rat not baked: ' + JSON.stringify(q));
+    if (q.crowd) assert(q.tex && q.skin && q.bones > 24 && q.rows > 30 && ['idle', 'walk', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)), 'crowd rat not baked (with its extra bones): ' + JSON.stringify(q));
     else assert(q.tex && q.part && q.legs && q.phys && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
   }
   for (const q of r.big) {
     if (q.animated) assert(q.tex && ['idle', 'walk', 'run', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)) && q.walkLoop > 0.3 && q.top > 1.5 && q.top < 4.2, 'animated boss incomplete: ' + JSON.stringify(q));
+    // more moving parts than Meshy's rig: ears, jaw, tail, cape, fingers, hat, belly (see articulate.js)
+    if (q.animated) assert(q.parts.length >= 2, 'boss has no extra moving parts: ' + JSON.stringify(q));
     else assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
   }
   for (const a of animated) assert(r.big.some((q) => q.animated && (q.k === a || (a === 'giant' && q.k === 'giant'))) || r.small.some((q) => q.crowd && 'rat-' + q.i === a), 'animated model not used: ' + a);
@@ -1425,8 +1427,12 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   // giants and bosses are skinned on bones (with a skinned outline); rigged ones walk on their clips
   const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => {
     let skin = null; q.group.traverse((o) => { if (!skin && o.isSkinnedMesh && o.name !== 'ink') skin = o; });
-    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), rig: q.rig ? q.rig.state : null, leg: q.legL.rotation.x };
+    const parts = q.mover ? q.mover.parts : [];
+    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), rig: q.rig ? q.rig.state : null, leg: q.legL.rotation.x,
+      parts: parts.length, moved: parts.filter((p) => p.bone.quaternion.angleTo(p.rest) > 0.01).map((p) => p.name) };
   }));
+  // the extra parts of a rigged giant move on their own as it walks (ears flop, a cape billows, ...)
+  assert(gi.filter((q) => q.rig).every((q) => q.parts >= 2 && q.bones > 24 && q.moved.length >= 1), 'extra parts do not move: ' + JSON.stringify(gi));
   assert(gi.length >= 2 && gi.every((q) => q.tex && q.skin && q.bones >= 6 && q.ink), 'giants not drawn from their skinned models: ' + JSON.stringify(gi));
   assert(gi.every((q) => q.rig ? ['walk', 'run', 'idle'].includes(q.rig) : Math.abs(q.leg) > 0.05) && gi.some((q) => q.rig === 'walk' || q.rig === 'run' || Math.abs(q.leg) > 0.05), 'giants do not walk: ' + JSON.stringify(gi));
   // the crowd rats on baked skeletons show walking frames, each at its own point in the stride

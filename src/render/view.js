@@ -602,7 +602,7 @@ export class View {
     }
     v.inUse = true;
     v.group.visible = true;
-    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; }
+    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; if (v.ps) { v.ps.yaw = undefined; v.ps.turn = 0; } }
     v.group.rotation.set(0, 0, 0, 'YXZ');   // yaw, then local pitch for falling over
     v.group.position.y = 0;
     v.body.rotation.set(0, 0, 0); v.body.position.set(0, 0, 0); v.body.scale.set(1, 1, 1);
@@ -627,7 +627,7 @@ export class View {
     const label = document.createElement('div');
     label.className = 'hp-num';
     this.labels.appendChild(label);
-    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, model };
+    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, mover: inst.mover, model, ps: { speed: 0, turn: 0, step: 0, jaw: 0, grip: 0, t: 0 } };
     this.giantPool.push(v);
     return v;
   }
@@ -646,7 +646,7 @@ export class View {
     }
     // a hard hit (a flinch that starts strong) makes it stagger, now and then
     v.hitCd = (v.hitCd || 0) - dt;
-    if (e.hitT > CFG.hitFlinch * 0.8 && v.hitCd <= 0 && !R.busy()) { R.play('hit', 0.1, 1.5); v.hitCd = 2.5; }
+    if (e.hitT > CFG.hitFlinch * 0.8 && v.hitCd <= 0 && !R.busy()) { R.play('hit', 0.1, 1.5); v.hitCd = 2.5; if (v.mover) v.mover.kick(0.8); }
     // now and then a boss stops to roar (the clip; the ring goes out at its peak)
     if (e.type === T_BOSS && style !== 'mole' && R.has('roar')) {
       v.roarT = (v.roarT ?? 4 + Math.random() * 5) - dt;
@@ -660,6 +660,30 @@ export class View {
     }
     if (R.busy()) return;
     R.move(e.vs || 0, sc);
+  }
+
+  // What a giant's extra parts (ears, jaw, tail, cape; see articulate.js) answer to
+  // this frame: its ground speed and turn rate (in its own size: a boss's cape
+  // billows as a giant's would), where it is in its stride, how wide its jaw opens.
+  _partState(v, e, dt, yaw, sc) {
+    const P = v.ps, R = v.rig;
+    if (!v.mover || dt <= 0) return;
+    let dy = yaw - (P.yaw ?? yaw); dy = Math.atan2(Math.sin(dy), Math.cos(dy)); P.yaw = yaw;
+    P.turn += (dy / dt - P.turn) * Math.min(1, dt * 8);
+    P.speed = e.stun > 0 || e.frozen > 0 || e.held > 0 ? 0 : (e.vs || 0) / Math.max(0.5, sc);
+    P.t = this.time;
+    const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
+    P.step = R.state === 'walk' || R.state === 'run' ? u : 0;
+    // the jaw: wide for a roar, a snarl through a blow, open from a hit or as it dies
+    P.jaw = R.state === 'roar' ? Math.min(1, Math.sin(Math.min(1, u * 1.15) * Math.PI) * 1.6)
+      : R.state === 'attack' ? 0.25 + 0.6 * Math.max(0, Math.sin(Math.min(1, u * 1.3) * Math.PI))
+      : R.state === 'hit' ? 0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
+      : R.state === 'die' ? 0.8 : R.state === 'run' ? 0.2 : 0;
+    // the fingers: a fist through a blow, spread wide in a roar or a hit, curling as it dies
+    P.grip = R.state === 'attack' ? 0.3 + 0.7 * Math.max(0, Math.sin(Math.min(1, u * 1.2) * Math.PI))
+      : R.state === 'roar' ? -Math.sin(Math.min(1, u * 1.15) * Math.PI)
+      : R.state === 'hit' ? -0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
+      : R.state === 'die' ? 0.6 : R.state === 'run' ? 0.35 : 0;
   }
 
   // -------------------------------------------------------------- pads
@@ -1042,7 +1066,7 @@ export class View {
     }
     if (v.rig) {
       // a Meshy skeleton plays its death clip; it lands, lies still and sinks in a puff
-      if (!v.dieStarted) { v.dieStarted = true; v.rig.hold(false); v.rig.die(v.dieDur * 0.6); }
+      if (!v.dieStarted) { v.dieStarted = true; v.rig.hold(false); v.rig.die(v.dieDur * 0.6); if (v.ps) { v.ps.speed = 0; v.ps.turn = 0; v.ps.step = 0; v.ps.jaw = 0.8; v.ps.grip = 0.6; } if (v.mover) v.mover.kick(1); }
       if (!v.downed && k >= 0.42) {
         v.downed = true;
         this.fx.puff(g.position.x, 0, g.position.z, 0xd9c7a8, 2.4);
@@ -1564,6 +1588,7 @@ export class View {
         if (v.rig) {
           // a Meshy skeleton: its clips do the walking, the blows and the roars
           this._driveRig(v, e, dt, fighting, sc, style);
+          this._partState(v, e, dt, gyaw, sc);
           v.body.rotation.set(-0.06 * fl, 0, 0);
           if (style === 'mole') this._poseMole(v, e, sc, t);
           // footfalls still kick up dust
@@ -1790,7 +1815,7 @@ export class View {
         this.exitMat.opacity = 0.45 + pulse * 0.45;
       }
     }
-    for (const g of this.giantPool) if (g.inUse && g.rig) g.rig.update(dt);
+    for (const g of this.giantPool) if (g.inUse && g.rig) { g.rig.update(dt); if (g.mover) g.mover.update(g.rig.mixer.timeScale ? dt : 0, g.ps); }
     for (const [id, v] of this.giantViews) {
       if (seen.has(id)) continue;
       if (v.dying !== undefined && v.dying < 1) { this._animateGiantDeath(v, dt, t); continue; }

@@ -7,6 +7,7 @@
 // so one draw call animates the whole crowd, each rat at its own moment.
 import * as THREE from 'three';
 import { toonGradient } from './toon.js';
+import { poseBakedParts } from './articulate.js';
 
 const FPS = 30;
 
@@ -33,6 +34,7 @@ export function bakeCrowd(model) {
     const c = clips[k];
     for (let f = 0; f < c.frames; f++) {
       mixer.setTime(Math.min(c.duration, f / FPS));
+      if (model.added && model.added.length) poseBakedParts(scene, model.added, k, Math.min(c.duration, f / FPS), c.duration);
       scene.updateMatrixWorld(true);
       skin.skeleton.update();
       const bmats = skin.skeleton.boneMatrices;

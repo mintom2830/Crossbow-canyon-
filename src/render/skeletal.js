@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { toon, inkMaterial, inkNormals, INK_PX } from './toon.js';
+import { articulate, PartMover } from './articulate.js';
 
 // per model: top: its height in the game (before the boss's own scale, like the
 // hand-built ones); impact: how far through the attack clip the blow lands (so it
@@ -40,6 +41,8 @@ export class AnimModel {
     this.scene.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; if (!map && o.material && o.material.map) map = o.material.map; } });
     if (map) { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4; }
     this.map = map;
+    // more bones than Meshy's rig: ears, a jaw, a tail, a cape, each its own part (see articulate.js)
+    this.added = articulate(this.scene, name);
     // fit: its rest pose (the first frame of idle) stands on the ground, centred, top tall
     const mixer = new THREE.AnimationMixer(this.scene);
     if (this.clips.idle) { mixer.clipAction(this.clips.idle).play(); mixer.setTime(0); }
@@ -78,7 +81,8 @@ export class AnimModel {
   }
 
   // A posable copy: its own skeleton, toon material (one per copy, so a hit can
-  // flash one boss white) and a skinned outline on the same bones.
+  // flash one boss white), a skinned outline on the same bones, and a mover for its
+  // extra parts.
   instance(px = INK_PX.big) {
     const root = cloneSkinned(this.scene);
     const mat = toon({ vertexColors: false, map: this.map, emissive: 0x000000, side: THREE.DoubleSide });
@@ -100,7 +104,7 @@ export class AnimModel {
     root.scale.setScalar(this.scale);
     root.position.copy(this.offset).multiplyScalar(this.scale);
     holder.add(root);
-    return { holder, root, mat, rig: new SkeletalRig(this, root) };
+    return { holder, root, mat, rig: new SkeletalRig(this, root), mover: new PartMover(root, this.added) };
   }
 }
 
