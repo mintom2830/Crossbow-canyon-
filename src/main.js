@@ -142,7 +142,23 @@ function syncLevelPick() {
     if (nt) nt.hidden = !open || played || id === 1;
     if (lk) lk.hidden = open;
   }
+  showLevelCard(CFG.level);
 }
+// the row of map cards slides sideways: keep the picked map in view, arrows step a card at a time
+const levelRow = $('levelPick');
+function syncLevelArrows() {
+  $('levelPrev').hidden = levelRow.scrollLeft < 8;
+  $('levelNext').hidden = levelRow.scrollLeft > levelRow.scrollWidth - levelRow.clientWidth - 8;
+}
+function showLevelCard(id, smooth = false) {
+  const b = levelRow.querySelector(`[data-level="${id}"]`);
+  if (!b || !levelRow.clientWidth) return;
+  const left = b.offsetLeft - levelRow.offsetLeft - (levelRow.clientWidth - b.offsetWidth) / 2;
+  levelRow.scrollTo({ left, behavior: smooth ? 'smooth' : 'instant' });
+  syncLevelArrows();
+}
+levelRow.addEventListener('scroll', syncLevelArrows, { passive: true });
+for (const [btn, dir] of [['levelPrev', -1], ['levelNext', 1]]) $(btn).addEventListener('click', () => { const c = levelRow.querySelector('.level-card'); levelRow.scrollBy({ left: dir * (c.offsetWidth + 9) * 2, behavior: 'smooth' }); });
 let levelNoteTimer = 0;
 function levelNote(text) {
   const el = $('levelNote');
@@ -208,6 +224,7 @@ function fitTitle() {
   // (room for the screen's own padding round the edge)
   const k = Math.max(0.45, Math.min(1.35, (H * (upright ? 0.9 : 1) - 44) / h, (W * (upright ? 0.84 : 1) - 28) / w));
   menu.style.zoom = k.toFixed(3);
+  showLevelCard(CFG.level);
 }
 window.addEventListener('resize', () => fitTitle());
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitTitle());

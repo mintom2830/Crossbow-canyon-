@@ -619,12 +619,14 @@ export class Sim {
     if (CFG.decor && CFG.decor.tree) pushOut(CFG.decor.tree.x, CFG.decor.tree.z, 0.75);   // Level 2's lone tree
     const oasis = oasisLayout();
     if (oasis) {
-      // Level 3: walk round the arch's pillars, the palms and the camels, and stay out of the pool
+      // walk round the landmarks (arch pillars, palms, camels, trees, columns, the volcano) and stay out of the pool
       for (const o of oasis.solids) pushOut(o.x, o.z, o.r);
       const P = CFG.decor.pond;
-      const dx = (h.x - P.x) / P.rx, dz = (h.z - P.z) / P.rz, r = Math.hypot(dx, dz) || 1e-6;
-      const lim = pondEdge(P, Math.atan2(dz, dx)) + H.radius / Math.min(P.rx, P.rz);
-      if (r < lim) { h.x = P.x + (dx / r) * lim * P.rx; h.z = P.z + (dz / r) * lim * P.rz; }
+      if (P) {
+        const dx = (h.x - P.x) / P.rx, dz = (h.z - P.z) / P.rz, r = Math.hypot(dx, dz) || 1e-6;
+        const lim = pondEdge(P, Math.atan2(dz, dx)) + H.radius / Math.min(P.rx, P.rz);
+        if (r < lim) { h.x = P.x + (dx / r) * lim * P.rx; h.z = P.z + (dz / r) * lim * P.rz; }
+      }
     }
     for (const hut of CFG.huts) pushOut(hut.x, hut.z, 1.5);
     for (const o of CFG.town.obstacles) pushOut(o.x, o.z, o.r);

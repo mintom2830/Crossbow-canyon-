@@ -1539,6 +1539,101 @@ test('balance (Level 3, Hard and Easy): cannons win Hard with 3 stars; crossbows
     assert(e.result === 'victory' && e.stars === 3, `Level 3 Easy: ${e.result} ${e.stars}`);
   } finally { setLevel(1); }
 });
+test('Levels 4 to 7: every tower spot and pad stands on open ground, clear of the road, the water and the landmarks', () => {
+  forLevels((m) => {
+    if (m.id < 4) return;
+    const sim = new Sim({ seed: 2, cannon: true }), lay = oasisLayout(), H = CFG.pad.half, Wk = CFG.walk;
+    assert(sim.slots.length === 10 && sim.slots[0].prebuilt, 'ten tower spots, the first one built');
+    for (const sl of sim.slots) {
+      const d = road.distanceTo(sl.x, sl.z);
+      assert(d > CFG.roadHalfWidth + 2.3, `slot ${sl.id} is on the road (${d.toFixed(1)})`);
+      assert(!inWater(sl.x, sl.z, 2), `slot ${sl.id} is too close to the water`);
+      assert(sl.upB.length === 2, `slot ${sl.id} has no room for the cannon's two choice pads`);
+      for (const o of lay ? lay.solids : []) assert(Math.hypot(o.x - sl.x, o.z - sl.z) > o.r + 2.2, `a landmark stands on slot ${sl.id}`);
+      for (const [ox, oz] of [sl.up, ...sl.upB]) {
+        const x = sl.x + ox, z = sl.z + oz;
+        assert(road.distanceTo(x, z) > CFG.roadHalfWidth + H, `a pad of slot ${sl.id} is on the road`);
+        assert(!inWater(x, z, H + 0.4), `a pad of slot ${sl.id} is in the water`);
+        assert(x > Wk.minX + H && x < Wk.maxX - H && z > Wk.minZ + H && z < Wk.maxZ - H, `a pad of slot ${sl.id} is outside the canyon`);
+        for (const o of lay ? lay.solids : []) assert(Math.hypot(o.x - x, o.z - z) > o.r + H, `a pad of slot ${sl.id} is under a landmark`);
+      }
+    }
+    // the road keeps clear of itself, and nothing solid stands on it once the rats are out of the burrow
+    for (let i = 0; i < road.count; i += 2) for (let j = i + 120; j < road.count; j += 2) {
+      assert(Math.hypot(road.px[i] - road.px[j], road.pz[i] - road.pz[j]) > 2 * CFG.roadHalfWidth + 3.5, 'the road runs into itself');
+    }
+    for (let i = Math.ceil((CFG.spawnS + 3) / road.step); i < road.count; i++) for (const o of lay ? lay.solids : []) {
+      assert(Math.hypot(o.x - road.px[i], o.z - road.pz[i]) > o.r + CFG.roadHalfWidth - 0.45, `a landmark at ${o.x.toFixed(0)},${o.z.toFixed(0)} stands on the road`);
+    }
+    // the farmer walks round every landmark
+    if (lay && lay.solids.length) {
+      const q = lay.solids[0];
+      sim.hero.x = q.x - q.r - 1.5; sim.hero.z = q.z; sim.setInput(1, 0);
+      run(sim, 1.5);
+      assert(Math.hypot(sim.hero.x - q.x, sim.hero.z - q.z) >= q.r + CFG.hero.radius - 0.01, 'the farmer walked through a landmark');
+    }
+  });
+});
+test('Levels 4 to 7: three bridges over the river, a frozen lake by the ridge, mesas with a temple and two arches, a volcano the rats come out from under', () => {
+  try {
+    setLevel(4);
+    let crossings = 0, wet = false;
+    for (let i = 0; i < road.count; i++) { const w = streamDistance(road.px[i], road.pz[i]) < STREAM_HALF; if (w && !wet) crossings++; wet = w; }
+    assert(CFG.theme === 'meadow' && crossings === 3, `Greenwood Vale: the road crosses the river ${crossings} times`);
+    assert(oasisLayout().trees.length === CFG.decor.trees.n && oasisLayout().trees.every((t) => t.kind === 'leafy'), 'not every tree found room');
+    setLevel(5);
+    assert(CFG.theme === 'snow' && CFG.decor.pond.kind === 'ice' && CFG.hills.length === 1, 'Frostpeak Pass: ridge and frozen lake');
+    let over = 0, up = false;
+    for (let i = 0; i < road.count; i++) { const h = hillHeight(road.px[i], road.pz[i]) > 1.2; if (h && !up) over++; up = h; }
+    assert(over === 2, `the road should cross the ridge twice (${over})`);
+    const P = CFG.decor.pond, s5 = new Sim({ seed: 1 });
+    s5.hero.x = P.x; s5.hero.z = P.z - P.rz - 1.5; s5.setInput(0, 1); run(s5, 3);
+    assert(pondDepth(s5.hero.x, s5.hero.z) < 0, 'the farmer walked onto the ice');
+    setLevel(6);
+    const l6 = oasisLayout();
+    assert(CFG.theme === 'mesa' && CFG.plateaus.length === 3 && l6.arches.length === 2 && l6.pillars.length === 4, 'Sunset Mesas: three mesas, two arches');
+    assert(l6.columns.filter((c) => c.temple).length === 10 && l6.columns.some((c) => c.altar), 'no temple');
+    assert(CFG.slots.filter((sl) => CFG.plateaus.some((p) => plateauSdf(p, sl.x, sl.z) > 0)).length >= 5, 'most towers should stand on the mesas');
+    setLevel(7);
+    const C = CFG.decor.cone, o = {};
+    road.sample(0, o);
+    assert(CFG.theme === 'lava' && CFG.roadStub === 0 && Math.hypot(o.x - C.x, o.z - C.z) < C.r, 'Cinder Crater: the road should start under the volcano');
+    road.sample(CFG.spawnS, o);
+    assert(Math.hypot(o.x - C.x, o.z - C.z) > C.r + 1.5, 'the burrow should be clear of the volcano');
+    // the road winds more than once round the volcano
+    let turn = 0, pa = null;
+    for (let i = Math.ceil(12 / road.step); i < road.count; i += 4) {
+      const a = Math.atan2(road.pz[i] - C.z, road.px[i] - C.x);
+      if (pa !== null) { let d = a - pa; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; turn += d; }
+      pa = a;
+    }
+    assert(Math.abs(turn) > Math.PI * 2.2, `the road should spiral round the volcano (${(Math.abs(turn) / Math.PI / 2).toFixed(2)} turns)`);
+    const s7 = new Sim({ seed: 1 }); s7.callWave(); run(s7, 3);
+    assert(s7.enemies.length > 0 && s7.enemies.every((e) => Math.hypot(e.x - C.x, e.z - C.z) > C.r), 'rats should come out at the foot of the volcano');
+  } finally { setLevel(1); }
+});
+test('balance (Levels 4 to 7, Normal): an efficient player wins every map, a distracted one too; never upgrading loses', () => {
+  try {
+    for (const L of [4, 5, 6, 7]) {
+      const b = runLevel('bot+l' + L, 1); balance['l' + L + 'bot'] = b;
+      assert(b.result === 'victory' && b.stars >= 1, `bot on Level ${L}: ${b.result} wave ${b.wave} ${b.stars} stars`);
+      const l = runLevel('lazy+l' + L, 1); balance['l' + L + 'lazy'] = l;
+      assert(l.result === 'victory', `distracted player lost Level ${L} on wave ${l.wave}`);
+      const n = runLevel('noup+l' + L, 1); balance['l' + L + 'noup'] = n;
+      assert(n.result === 'defeat' && n.wave <= 9, `no-upgrade on Level ${L}: ${n.result} wave ${n.wave}`);
+    }
+  } finally { setLevel(1); }
+});
+test('balance (Levels 4 to 7, Hard and Easy): cannons win Hard with 3 stars; Easy is 3 stars', () => {
+  try {
+    for (const L of [4, 5, 6, 7]) {
+      const c = runLevel('cannon+hard+blast+l' + L, 1); balance['l' + L + 'hardc'] = c;
+      assert(c.result === 'victory' && c.stars === 3, `cannons on Level ${L} Hard: ${c.result} ${c.stars}`);
+      const e = runLevel('bot+easy+l' + L, 1); balance['l' + L + 'easy'] = e;
+      assert(e.result === 'victory' && e.stars === 3, `Level ${L} Easy: ${e.result} ${e.stars}`);
+    }
+  } finally { setLevel(1); }
+});
 test('rides (Shop): the horse and the cow cost 50 diamonds; the farmer rides 50% / 35% faster, the cow pulls coins in from further', () => {
   assert(CFG.rides.horse.cost === 50 && CFG.rides.cow.cost === 50, 'each ride costs 50 diamonds');
   const dist = (ride) => { const s = new Sim({ seed: 1, ride }); s.setInput(1, 0); const x0 = s.hero.x; run(s, 1); return { d: s.hero.x - x0, s }; };

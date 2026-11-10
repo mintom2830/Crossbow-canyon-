@@ -12,6 +12,64 @@ import { fieldPoint, turn } from '../town.js';
 
 let W = CFG.walk;
 
+// ---------------------------------------------------------- themes
+// A level's look: the colours of its ground, cliffs, road and plants, and of its
+// sky (the game's own day, dusk and night, tinted). 'canyon' is the red desert of
+// Levels 1 to 3; the later maps each have their own.
+const BASE = {
+  cliffMid: 0xc96842, bushA: PAL.olive, bushB: 0x8f9a3e, rockA: 0xc77a52, rockB: PAL.stone,
+  wet: 0x9fb24c,   // the ground beside water
+  ruin: 0xe2c79a, ruinDark: 0xc4a678,
+};
+export const THEMES = {
+  canyon: { pal: {}, cacti: 9, sky: null },
+  // a green valley under a soft blue sky
+  meadow: {
+    pal: {
+      sand: 0x8fc45a, sandDark: 0x78ae4a, sandLight: 0xa8d66e, olive: 0x5c9a40, wet: 0x6fb648,
+      road: 0xecd9a8, roadEdge: 0xb9955c, roadInk: 0x7a5530,
+      cliff: 0x8f917c, cliffDark: 0x6c6f5e, cliffLight: 0xabad96, cliffTop: 0x9cc25c, cliffMid: 0x9a937c,
+      bushA: 0x4f9a3c, bushB: 0x6cb04a, rockA: 0x9aa39a, rockB: 0x7f8a86,
+    },
+    cacti: 0,
+    sky: { DAY: { sky: 0xf4fbff, gnd: 0x6a8a4a, bg: 0xbfe3ea }, DUSK: { sky: 0xffd0b0, gnd: 0x5f6f45, bg: 0xe8b890 }, NIGHT: { sky: 0xb8b8d8, gnd: 0x3a4a48, bg: 0x6a7fa0 } },
+  },
+  // snow, blue shadows and a pale winter sky
+  snow: {
+    pal: {
+      sand: 0xf0f5fb, sandDark: 0xdbe6f2, sandLight: 0xffffff, olive: 0xc3d2e4, wet: 0xcfe6f5,
+      road: 0xd9c8ae, roadEdge: 0xa9967c, roadInk: 0x6f5a48,
+      cliff: 0x7f8fa6, cliffDark: 0x5d6b82, cliffLight: 0x9fb0c6, cliffTop: 0xf6faff, cliffMid: 0x8a9ab2,
+      bushA: 0xffffff, bushB: 0xdfe9f4, rockA: 0x8fa0b8, rockB: 0xb9c6d6,
+    },
+    cacti: 0,
+    sky: { DAY: { sky: 0xf2f7ff, gnd: 0x8fa2ba, sun: 0xffffff, bg: 0xd5e4f2 }, DUSK: { sky: 0xf2cdd6, gnd: 0x7f86a6, sun: 0xffd2b0, bg: 0xd8b6c6 }, NIGHT: { sky: 0xb8c0e6, gnd: 0x48507a, sun: 0xcfd8ff, bg: 0x7f8fc0 } },
+  },
+  // deeper red rock in a low orange sun
+  mesa: {
+    pal: {
+      sand: 0xeeb35a, sandDark: 0xd99746, sandLight: 0xf7cc7c, olive: 0xb08a44,
+      cliff: 0xb8492f, cliffDark: 0x7f2c22, cliffLight: 0xd96d42, cliffTop: 0xf0a35e, cliffMid: 0xc4553a,
+      rockA: 0xc26a44,
+    },
+    cacti: 7,
+    sky: { DAY: { sky: 0xffe2c2, gnd: 0x9a5a40, sun: 0xffe0b8, bg: 0xf0a868 }, DUSK: { sky: 0xffb890, gnd: 0x80453a, sun: 0xffa870, bg: 0xe58858 }, NIGHT: { sky: 0xc8a0c0, gnd: 0x4e3048, sun: 0xffa888, bg: 0xa85a60 } },
+  },
+  // ash and black rock under a red sky
+  lava: {
+    pal: {
+      sand: 0x7a6a64, sandDark: 0x5f5150, sandLight: 0x93827a, olive: 0x4a3d40, wet: 0x2c1c1a,
+      road: 0xb39c88, roadEdge: 0x7a6658, roadInk: 0x2a1d1a,
+      cliff: 0x4d4146, cliffDark: 0x2f272c, cliffLight: 0x67585c, cliffTop: 0x80604e, cliffMid: 0x3f3439,
+      bushA: 0x3a3030, bushB: 0x54403a, rockA: 0x2f2a33, rockB: 0x4a3f44,
+    },
+    cacti: 0,
+    sky: { DAY: { sky: 0xffd8c0, gnd: 0x5a3030, sun: 0xffe2cc, bg: 0x8a4a3a }, DUSK: { sky: 0xffb090, gnd: 0x4a2428, sun: 0xffb890, bg: 0x7a3a30 }, NIGHT: { sky: 0xd09090, gnd: 0x3a1a22, sun: 0xff9a78, bg: 0x5a2428 } },
+  },
+};
+export const themeOf = (name = CFG.theme) => THEMES[name] || THEMES.canyon;
+let TP = { ...PAL, ...BASE };   // the palette of the level being built
+
 function nearRoad(x, z, r) { return road.distanceTo(x, z) < r; }
 function nearSlots(x, z, r) {
   for (const s of CFG.slots) { if (Math.hypot(s.x - x, s.z - z) < r) return true; }
@@ -27,8 +85,12 @@ function smoothNoise(rng) {
 
 export function buildEnvironment(scene, quality) {
   W = CFG.walk;
+  const TH = themeOf();
+  TP = { ...PAL, ...BASE, ...TH.pal };
   const hilly = CFG.hills.length > 0;
-  const oasis = !!(CFG.decor && CFG.decor.pond);
+  const D0 = CFG.decor || {};
+  const oasis = !!(D0.pond || D0.stream);
+  const lay = oasisLayout();
   const rng = makeRng(99);
   const noise = smoothNoise(rng);
   const group = new THREE.Group();
@@ -43,8 +105,9 @@ export function buildEnvironment(scene, quality) {
   {
     const pos = ground.attributes.position;
     const col = new Float32Array(pos.count * 3);
-    const cGreen = new THREE.Color(0x9fb24c);
-    const cSand = new THREE.Color(PAL.sand), cDark = new THREE.Color(PAL.sandDark), cOlive = new THREE.Color(PAL.olive), cLight = new THREE.Color(PAL.sandLight);
+    const cGreen = new THREE.Color(TP.wet), pondKind = D0.pond ? D0.pond.kind || 'water' : 'water';
+    const cGlow = new THREE.Color(0xff6a1e);
+    const cSand = new THREE.Color(TP.sand), cDark = new THREE.Color(TP.sandDark), cOlive = new THREE.Color(TP.olive), cLight = new THREE.Color(TP.sandLight);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
@@ -58,6 +121,8 @@ export function buildEnvironment(scene, quality) {
         // Level 3: the sand turns green round the pool and along the stream
         const near = Math.min(-pondDepth(x, z), streamDistance(x, z) - STREAM_HALF);
         if (near < 5.5) c.lerp(cGreen, THREE.MathUtils.clamp(1 - near / 5.5, 0, 1) * 0.8);
+        // a lava pool lights the ash round its rim
+        if (pondKind === 'lava' && near < 2.2) c.lerp(cGlow, THREE.MathUtils.clamp(1 - near / 2.2, 0, 1) * 0.55);
       }
       if (hilly) {
         // the sand hill: the ground rises, paler and wind-rippled towards the top
@@ -88,7 +153,7 @@ export function buildEnvironment(scene, quality) {
     const pts = [], cols = [];
     const out = { x: 0, z: 0, nx: 0, nz: 0 };
     const step = 0.6;
-    const sStart = -12;
+    const sStart = CFG.roadStub ?? -12;   // (0: the road starts under something, like Level 7's volcano)
     const c = new THREE.Color(color);
     const positions = [];
     for (let s = sStart; s <= sEnd; s += step) {
@@ -133,25 +198,25 @@ export function buildEnvironment(scene, quality) {
   };
   const L = road.length;
   const roadMat = toon({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const roadEdge = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.025, PAL.roadEdge, 0.35, L + 1.5), roadMat);
-  const roadTop = new THREE.Mesh(ribbon(CFG.roadHalfWidth, 0.05, PAL.road, 0.3, L + 1.0), roadMat);
+  const roadEdge = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.025, TP.roadEdge, 0.35, L + 1.5), roadMat);
+  const roadTop = new THREE.Mesh(ribbon(CFG.roadHalfWidth, 0.05, TP.road, 0.3, L + 1.0), roadMat);
   // thin, soft lines along both edges of the road
-  const roadInk = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.03, PAL.roadInk, 0.35, L + 1.5, 0.045), roadMat);
+  const roadInk = new THREE.Mesh(ribbon(CFG.roadHalfWidth + 0.45, 0.03, TP.roadInk, 0.35, L + 1.5, 0.045), roadMat);
   roadEdge.receiveShadow = roadTop.receiveShadow = roadInk.receiveShadow = true;
   roadGroup.add(roadEdge, roadTop, roadInk);
   // plaza at the fortress gate + footpaths to the huts
   const plaza = new GB();
-  plaza.add(P.cyl(5.5, 5.5, 0.04, 28), PAL.roadEdge, { x: CFG.fortress.x + 1, y: 0.03, z: CFG.fortress.z + 4.5, sz: 0.8 });
-  plaza.add(P.cyl(5.0, 5.0, 0.06, 28), PAL.road, { x: CFG.fortress.x + 1, y: 0.05, z: CFG.fortress.z + 4.5, sz: 0.8 });
+  plaza.add(P.cyl(5.5, 5.5, 0.04, 28), TP.roadEdge, { x: CFG.fortress.x + 1, y: 0.03, z: CFG.fortress.z + 4.5, sz: 0.8 });
+  plaza.add(P.cyl(5.0, 5.0, 0.06, 28), TP.road, { x: CFG.fortress.x + 1, y: 0.05, z: CFG.fortress.z + 4.5, sz: 0.8 });
   for (const h of CFG.huts) {
     const dx = h.x - CFG.fortress.x, dz = h.z - CFG.fortress.z, l = Math.hypot(dx, dz);
-    plaza.add(P.box(0.9, 0.05, l), PAL.road, { x: CFG.fortress.x + dx / 2, y: 0.045, z: CFG.fortress.z + dz / 2, ry: Math.atan2(dx, dz) });
+    plaza.add(P.box(0.9, 0.05, l), TP.road, { x: CFG.fortress.x + dx / 2, y: 0.045, z: CFG.fortress.z + dz / 2, ry: Math.atan2(dx, dz) });
   }
   // footpaths from the square out to the farms
   for (const pts of CFG.town.paths) {
     for (let i = 0; i < pts.length - 1; i++) {
       const [x0, z0] = pts[i], [x1, z1] = pts[i + 1], dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz);
-      plaza.add(P.box(1.0, 0.05, l + 0.9), PAL.road, { x: (x0 + x1) / 2, y: 0.045, z: (z0 + z1) / 2, ry: Math.atan2(dx, dz) });
+      plaza.add(P.box(1.0, 0.05, l + 0.9), TP.road, { x: (x0 + x1) / 2, y: 0.045, z: (z0 + z1) / 2, ry: Math.atan2(dx, dz) });
     }
   }
   const plazaMesh = new THREE.Mesh(plaza.build(), roadMat);
@@ -168,7 +233,7 @@ export function buildEnvironment(scene, quality) {
     const shape = new THREE.Shape(outline.map(([x, z]) => new THREE.Vector2(x, -z)));
     const top = new THREE.ShapeGeometry(shape, 1);
     top.rotateX(-Math.PI / 2);
-    st.add(top, PAL.sand, { y: H });
+    st.add(top, TP.sand, { y: H });
     // rim lip and cliff face
     const face = [], n = outline.length;
     for (let i = 0; i < n; i++) {
@@ -184,7 +249,7 @@ export function buildEnvironment(scene, quality) {
     fg.setAttribute('position', new THREE.Float32BufferAttribute(face, 3));
     orientTriangles(fg, (x, y, z) => [x - p.x, 0, z - p.z]);
     fg.computeVertexNormals();
-    st.add(fg, PAL.cliff, { shadeY: [0.62, 1.0] });
+    st.add(fg, TP.cliff, { shadeY: [0.62, 1.0] });
     // reddish rim band (the raised edge seen in the reference)
     const rim = [];
     for (let i = 0; i < n; i++) {
@@ -198,7 +263,7 @@ export function buildEnvironment(scene, quality) {
     orientTriangles(rg, () => [0, 1, 0]);
     const rn = new Float32Array(rim.length); for (let i = 0; i < rn.length; i += 3) rn[i + 1] = 1;
     rg.setAttribute('normal', new THREE.BufferAttribute(rn, 3));
-    st.add(rg, PAL.sandDark, {});
+    st.add(rg, TP.sandDark, {});
     // ink lines: along the lip of the plateau and where the cliff meets the ground
     const lip = [], foot = [];
     const inward = (x, z, d) => { const dx = p.x - x, dz = p.z - z, l = Math.hypot(dx, dz) || 1; return [x + dx / l * d, z + dz / l * d]; };
@@ -225,7 +290,7 @@ export function buildEnvironment(scene, quality) {
     { pad: 9, r: [4.5, 7], h: [5, 8], step: 5.5 },
     { pad: 17, r: [6, 9], h: [9, 14], step: 7 },
   ];
-  const cliffCols = [PAL.cliff, PAL.cliffLight, 0xc96842, PAL.cliffDark];
+  const cliffCols = [TP.cliff, TP.cliffLight, TP.cliffMid, TP.cliffDark];
   const entry = (x, z) => {
     // keep the canyon gap open where enemies march in
     const out = { x: 0, z: 0, tx: 0, tz: 0 };
@@ -257,7 +322,7 @@ export function buildEnvironment(scene, quality) {
         st.add(P.cyl(rr * 0.92, rr, sh, 7), col, { x, y: y + sh / 2, z, ry: rng() * 6, jitter: 0.6, jitterY: 0.25, rng, shadeY: [0.72, 1.06] });
         y += sh; rr *= rng.range(0.7, 0.85);
       }
-      st.add(P.cyl(rr * 0.9, rr * 1.05, 0.35, 7), PAL.cliffTop, { x, y: y + 0.12, z, ry: rng() * 6, jitter: 0.3, jitterY: 0.1, rng });
+      st.add(P.cyl(rr * 0.9, rr * 1.05, 0.35, 7), TP.cliffTop, { x, y: y + 0.12, z, ry: rng() * 6, jitter: 0.3, jitterY: 0.1, rng });
     }
   }
   // the burrow: a dark hole in the road ringed with dug-up earth. Rats climb
@@ -318,15 +383,15 @@ export function buildEnvironment(scene, quality) {
       if (CFG.huts.some((h) => Math.hypot(h.x - x, h.z - z) < 3) || inTown(x, z)) continue;
       // keep the hilltop picnic spot clear
       if (CFG.decor && [CFG.decor.tree, CFG.decor.picnic].some((d) => d && Math.hypot(d.x - x, d.z - z) < 5)) continue;
-      // and the oasis: nothing in the water, by the palms, the camels or the arch
-      if (oasis && (inWater(x, z, 1.4) || oasisLayout().solids.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 1.6))) continue;
+      // nothing in the water or against a landmark (palms, camels, arches, trees, columns, the volcano)
+      if (inWater(x, z, 1.4) || (lay && lay.solids.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 1.6))) continue;
       return [x, z, groundHeight(x, z)];
     }
     return null;
   };
   for (let i = 0; i < 46; i++) { // scrub bushes: little clusters
     const p = placeProp(4.6, 2.8); if (!p) continue;
-    const col = rng() < 0.5 ? PAL.olive : 0x8f9a3e;
+    const col = rng() < 0.5 ? TP.bushA : TP.bushB;
     const n = 2 + (rng() * 3 | 0);
     for (let k = 0; k < n; k++) {
       const s = rng.range(0.25, 0.5);
@@ -336,9 +401,11 @@ export function buildEnvironment(scene, quality) {
   for (let i = 0; i < 46; i++) { // rocks
     const p = placeProp(4.4, 2.6); if (!p) continue;
     const s = rng.range(0.3, 0.8);
-    st.add(P.dod(s, 0), rng() < 0.6 ? 0xc77a52 : PAL.stone, { x: p[0], y: p[2] + s * 0.35, z: p[1], sy: 0.6, ry: rng() * 6, jitter: 0.12, rng });
+    st.add(P.dod(s, 0), rng() < 0.6 ? TP.rockA : TP.rockB, { x: p[0], y: p[2] + s * 0.35, z: p[1], sy: 0.6, ry: rng() * 6, jitter: 0.12, rng });
+    if (CFG.theme === 'snow' && s > 0.45) st.add(P.dod(s * 0.8, 0), 0xffffff, { x: p[0], y: p[2] + s * 0.62, z: p[1], sy: 0.3, ry: rng() * 6 });   // snow on the bigger rocks
+    if (CFG.theme === 'lava' && i % 5 === 0) st.add(P.ico(s * 0.32, 0), 0xff8a2a, { x: p[0] + s * 0.5, y: p[2] + 0.12, z: p[1] + s * 0.3 });   // a glowing ember beside it
   }
-  for (let i = 0; i < 9; i++) { // desert cacti
+  for (let i = 0; i < (TH.cacti ?? 9); i++) { // desert cacti
     const p = placeProp(5.5, 4); if (!p) continue;
     const h = rng.range(1.4, 2.4), c = 0x6c9a49;
     st.add(P.cap(0.22, h, 3, 7), c, { x: p[0], y: p[2] + h / 2 + 0.2, z: p[1] });
@@ -442,8 +509,10 @@ export function buildEnvironment(scene, quality) {
 
   // a level's own landmarks (Level 2: the lone tree, the picnic, wildflowers and a kite)
   const kite = CFG.decor ? buildDecor(st, CFG.decor, rng, group) : null;
-  // Level 3: the oasis pool, stream and bridge, palms, camels and the arch
-  const water = oasis ? buildOasis(st, CFG.decor, rng, group) : null;
+  // water (Level 3's oasis pool, Level 4's river, a frozen lake, a pool of lava) with its
+  // bridges, and the landmarks standing round the map
+  const water = CFG.decor && (oasis || lay) ? buildOasis(st, CFG.decor, rng, group) : null;
+  const smoke = CFG.decor ? buildLandmarks(st, CFG.decor, lay, rng) : null;
 
   const staticMesh = new THREE.Mesh(st.build(), toon());
   staticMesh.castShadow = quality !== 'low';
@@ -451,7 +520,7 @@ export function buildEnvironment(scene, quality) {
   addInk(staticMesh, INK_PX.terrain);   // ink outlines round cliffs, plateaus and props
   group.add(staticMesh);
 
-  return { group, torches, ground: groundMesh, kite, ripples: water && water.ripples };
+  return { group, torches, ground: groundMesh, kite, ripples: water && water.ripples, smoke };
 }
 
 // ---------------------------------------------------------- Level 2 landmarks
@@ -558,9 +627,17 @@ const turnXZ = (lx, lz, a) => { const c = Math.cos(a), s = Math.sin(a); return [
 // The oasis: a pool of clear water with lily pads and reeds, the stream that
 // runs out of it under a little wooden bridge, palm trees, resting camels and
 // a sandstone arch over the road. Returns the ripple rings that view.js animates.
-const WATER = { bank: 0xbf9150, shallow: 0x6fd3dc, mid: 0x3fa6d2, deep: 0x2d88c0 };
+const WATERS = {
+  water: { bank: 0xbf9150, shallow: 0x6fd3dc, mid: 0x3fa6d2, deep: 0x2d88c0, glint: 0xf4fdff, ripple: 0xffffff },
+  ice: { bank: 0xe4edf7, shallow: 0xc4e6f4, mid: 0xaedaee, deep: 0x98cde8, glint: 0xffffff, ripple: null },          // a frozen lake
+  lava: { bank: 0x2a1c1a, shallow: 0xff6f1c, mid: 0xffa52c, deep: 0xffdc52, glint: 0xfff2a8, ripple: 0xffd24a },    // a pool of lava
+};
+let WATER = WATERS.water;
 function buildOasis(st, D, rng, group) {
-  const P = D.pond, lay = oasisLayout();
+  const P = D.pond, lay = oasisLayout() || { arches: [], pillars: [], palms: [], solids: [] };
+  const kind = P ? P.kind || 'water' : 'water';
+  WATER = { ...WATERS[kind] };
+  if (CFG.theme === 'meadow') WATER.bank = 0x9c8a52;   // a river's muddy banks in the grass
   const flat = (pts, y, color) => {
     const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
     const g = new THREE.ShapeGeometry(shape, 1);
@@ -590,21 +667,37 @@ function buildOasis(st, D, rng, group) {
     g.setAttribute('normal', new THREE.BufferAttribute(n, 3));
     st.add(g, color, {});
   };
+  const inPool = (k) => { const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * k; return [P.x + Math.cos(a) * P.rx * r, P.z + Math.sin(a) * P.rz * r]; };
+  if (P) {
   // ---- the pool: a wet sandy bank, then shallow turquoise water deepening to blue
+  // (or a sheet of ice, or lava glowing brighter toward the middle)
   flat(ring(1.16), 0.012, WATER.bank);
   flat(ring(1.0), 0.022, WATER.shallow);
   flat(ring(0.7), 0.028, WATER.mid);
   flat(ring(0.38), 0.033, WATER.deep);
   band(ring(1.0), ring(1 + 0.065 / Math.min(P.rx, P.rz)), 0.038, INK);
-  const inPool = (k) => { const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * k; return [P.x + Math.cos(a) * P.rx * r, P.z + Math.sin(a) * P.rz * r]; };
-  // sunlight glinting on the water
+  // sunlight glinting on the water (skate marks on the ice, bright seams in the lava)
   for (let i = 0; i < 9; i++) {
     const [x, z] = inPool(0.75);
-    st.add(P_.box(0.9 + rng() * 0.8, 0.01, 0.09), 0xf4fdff, { x, y: 0.04, z, ry: -0.5 + rng() * 0.2 });
-    st.add(P_.box(0.4, 0.01, 0.07), 0xf4fdff, { x: x + 0.5, y: 0.04, z: z + 0.25, ry: -0.5 });
+    st.add(P_.box(0.9 + rng() * 0.8, 0.01, 0.09), WATER.glint, { x, y: 0.04, z, ry: -0.5 + rng() * (kind === 'water' ? 0.2 : 2.6) });
+    st.add(P_.box(0.4, 0.01, 0.07), WATER.glint, { x: x + 0.5, y: 0.04, z: z + 0.25, ry: -0.5 });
+  }
+  if (kind === 'lava') {
+    // plates of dark crust drifting on it, and black rocks round the rim
+    for (let i = 0; i < 8; i++) { const [x, z] = inPool(0.8); st.add(P_.cyl(0.45 + rng() * 0.4, 0.5, 0.04, 6), i % 2 ? 0x3a2622 : 0x2a1a18, { x, y: 0.05, z, ry: rng() * 6, sz: 0.7 }); }
+    for (let i = 0; i < 12; i++) {
+      const a = rng() * Math.PI * 2, e = pondEdge(P, a) * 1.1, s = rng.range(0.3, 0.7);
+      st.add(P_.dod(s, 0), i % 3 ? 0x2f2a33 : 0x4a3f44, { x: P.x + Math.cos(a) * P.rx * e, y: s * 0.3, z: P.z + Math.sin(a) * P.rz * e, sy: 0.7, ry: rng() * 6, jitter: 0.1, rng });
+    }
+  } else if (kind === 'ice') {
+    // drifts of snow banked up round the shore
+    for (let i = 0; i < 12; i++) {
+      const a = rng() * Math.PI * 2, e = pondEdge(P, a) * 1.1, s = rng.range(0.4, 0.8);
+      st.add(P_.ico(s, 1), 0xffffff, { x: P.x + Math.cos(a) * P.rx * e, y: s * 0.15, z: P.z + Math.sin(a) * P.rz * e, sy: 0.4, ry: rng() * 6 });
+    }
   }
   // lily pads, some in flower
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; kind === 'water' && i < 9; i++) {
     const [x, z] = inPool(0.85);
     st.add(P_.cyl(0.42 + rng() * 0.18, 0.42, 0.03, 12), i % 2 ? 0x5fae4a : 0x4f9a3e, { x, y: 0.045, z, sz: 0.9 });
     if (i % 3 === 0) {
@@ -613,7 +706,7 @@ function buildOasis(st, D, rng, group) {
     }
   }
   // reeds and cattails in clumps round the edge, stones on the bank
-  for (let c = 0; c < 9; c++) {
+  for (let c = 0; kind === 'water' && c < 9; c++) {
     const a = rng() * Math.PI * 2, e = pondEdge(P, a) * (0.97 + rng() * 0.1);
     const cx = P.x + Math.cos(a) * P.rx * e, cz = P.z + Math.sin(a) * P.rz * e;
     if (streamDistance(cx, cz) < STREAM_HALF + 1.2 || nearSlots(cx, cz, 3.2)) continue;
@@ -623,7 +716,7 @@ function buildOasis(st, D, rng, group) {
       if (k % 2 === 0) st.add(P_.cap(0.07, 0.22, 2, 6), 0x6a3f22, { x, y: h + 0.05, z });
     }
   }
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; kind === 'water' && i < 8; i++) {
     const a = rng() * Math.PI * 2, e = pondEdge(P, a) * 1.07;
     const x = P.x + Math.cos(a) * P.rx * e, z = P.z + Math.sin(a) * P.rz * e;
     if (streamDistance(x, z) < STREAM_HALF + 0.8) continue;
@@ -631,7 +724,7 @@ function buildOasis(st, D, rng, group) {
     st.add(P_.dod(s, 0), rng() < 0.5 ? PAL.stone : 0xcfa36a, { x, y: s * 0.3, z, sy: 0.6, ry: rng() * 6, jitter: 0.08, rng });
   }
   // desert flowers in the green round the pool
-  for (let i = 0, tries = 0; i < 26 && tries < 300; tries++) {
+  for (let i = 0, tries = 0; kind === 'water' && i < 26 && tries < 300; tries++) {
     const a = rng() * Math.PI * 2, e = pondEdge(P, a) * (1.2 + rng() * 0.5);
     const x = P.x + Math.cos(a) * P.rx * e, z = P.z + Math.sin(a) * P.rz * e;
     if (road.distanceTo(x, z) < CFG.roadHalfWidth + 0.9 || nearSlots(x, z, 3.6) || inWater(x, z, 0.4)) continue;
@@ -643,6 +736,7 @@ function buildOasis(st, D, rng, group) {
       st.add(P_.ico(0.075 + rng() * 0.03, 0), col, { x: x + Math.cos(b) * rr, y: 0.17 + rng() * 0.08, z: z + Math.sin(b) * rr });
     }
     i++;
+  }
   }
   // ---- the stream: a ribbon of water out of the pool and off between the rocks
   const sp = streamPath();
@@ -677,10 +771,15 @@ function buildOasis(st, D, rng, group) {
       const o = {}; sp.sample(s, o);
       st.add(P_.box(0.07, 0.01, 0.5), 0xf4fdff, { x: o.x + o.nx * rng.range(-0.6, 0.6), y: 0.04, z: o.z + o.nz * rng.range(-0.6, 0.6), ry: Math.atan2(o.tx, o.tz) });
     }
-    // ---- the bridge where the road crosses the stream: a plank deck with rails
-    let best = Infinity, bs = 0;
-    for (let i = 0; i < road.count; i += 2) { const d = sp.distanceTo(road.px[i], road.pz[i]); if (d < best) { best = d; bs = i * road.step; } }
-    if (best < 1) {
+    // ---- a bridge wherever the road crosses the stream: a plank deck with rails
+    const crossings = [];
+    for (let i = 0, best = Infinity, bs = 0, wet = false; i < road.count; i++) {
+      const d = sp.distanceTo(road.px[i], road.pz[i]), w = d < STREAM_HALF + 1.2;
+      if (w && d < best) { best = d; bs = i * road.step; }
+      if (wet && !w) { if (best < 1) crossings.push(bs); best = Infinity; }
+      wet = w;
+    }
+    for (const bs of crossings) {
       const o = {}; road.sample(bs, o);
       const ry = Math.atan2(o.tx, o.tz), half = CFG.roadHalfWidth + 0.7, len = 2 * (STREAM_HALF + 1.6);
       for (let j = 0, n = Math.round(len / 0.55); j < n; j++) {
@@ -695,28 +794,28 @@ function buildOasis(st, D, rng, group) {
       }
     }
   }
-  // ---- the sandstone arch over the road
-  if (lay.arch) {
-    const A = lay.arch, H = 3.1;
-    for (const p of lay.pillars) {
+  // ---- a sandstone arch over the road (Level 6 has two)
+  lay.arches.forEach((A, ai) => {
+    const H = 3.1;
+    for (const p of lay.pillars.slice(ai * 2, ai * 2 + 2)) {
       let y = 0, r = 1.55;
       for (let k = 0; k < 3; k++) {
         const h = H / 3;
-        st.add(P_.cyl(r * 0.94, r, h, 8), [PAL.cliff, PAL.cliffLight, 0xc96842][k], { x: p.x, y: y + h / 2, z: p.z, ry: k, jitter: 0.25, jitterY: 0.1, rng, shadeY: [0.75, 1.05] });
+        st.add(P_.cyl(r * 0.94, r, h, 8), [TP.cliff, TP.cliffLight, 0xc96842][k], { x: p.x, y: y + h / 2, z: p.z, ry: k, jitter: 0.25, jitterY: 0.1, rng, shadeY: [0.75, 1.05] });
         y += h; r *= 0.94;
       }
       for (let i = 0; i < 4; i++) {   // rubble at the foot
         const a = rng() * Math.PI * 2, s = rng.range(0.25, 0.45);
-        st.add(P_.dod(s, 0), PAL.cliffDark, { x: p.x + Math.cos(a) * 1.9, y: s * 0.35, z: p.z + Math.sin(a) * 1.9, sy: 0.6, jitter: 0.08, rng });
+        st.add(P_.dod(s, 0), TP.cliffDark, { x: p.x + Math.cos(a) * 1.9, y: s * 0.35, z: p.z + Math.sin(a) * 1.9, sy: 0.6, jitter: 0.08, rng });
       }
     }
     const ry = Math.atan2(-A.nz, A.nx);
-    st.add(P_.tor(A.half, 1.05, 8, 22, Math.PI), PAL.cliff, { x: A.x, y: H - 0.15, z: A.z, ry, sy: 0.62, sz: 1.5, jitter: 0.22, rng, shadeY: [0.7, 1.08] });
-    st.add(P_.tor(A.half, 0.55, 6, 22, Math.PI), PAL.cliffLight, { x: A.x + A.tx * 0.9, y: H - 0.1, z: A.z + A.tz * 0.9, ry, sy: 0.62, jitter: 0.12, rng });
+    st.add(P_.tor(A.half, 1.05, 8, 22, Math.PI), TP.cliff, { x: A.x, y: H - 0.15, z: A.z, ry, sy: 0.62, sz: 1.5, jitter: 0.22, rng, shadeY: [0.7, 1.08] });
+    st.add(P_.tor(A.half, 0.55, 6, 22, Math.PI), TP.cliffLight, { x: A.x + A.tx * 0.9, y: H - 0.1, z: A.z + A.tz * 0.9, ry, sy: 0.62, jitter: 0.12, rng });
     const top = H + A.half * 0.62 + 0.5;
-    st.add(P_.ico(1.3, 0), PAL.cliffTop, { x: A.x, y: top, z: A.z, sy: 0.4, ry: 0.4, jitter: 0.2, rng });
-    st.add(P_.ico(0.8, 0), PAL.cliffTop, { x: A.x + A.nx * 1.8, y: top - 0.45, z: A.z + A.nz * 1.8, sy: 0.45, jitter: 0.15, rng });
-  }
+    st.add(P_.ico(1.3, 0), TP.cliffTop, { x: A.x, y: top, z: A.z, sy: 0.4, ry: 0.4, jitter: 0.2, rng });
+    st.add(P_.ico(0.8, 0), TP.cliffTop, { x: A.x + A.nx * 1.8, y: top - 0.45, z: A.z + A.nz * 1.8, sy: 0.45, jitter: 0.15, rng });
+  });
   // ---- palm trees: ringed trunks curving up to a crown of drooping fronds and coconuts
   for (const p of lay.palms) {
     const segs = 7, dxl = Math.cos(p.lean), dzl = Math.sin(p.lean);
@@ -763,14 +862,208 @@ function buildOasis(st, D, rng, group) {
       for (const s of [-1, 1]) add(P_.box(0.05, 0.42, 0.66), 0xe8443a, s * 0.5, 0.92, 0.67, { rz: s * 0.25 });
     }
   });
-  // ---- ripples drifting out across the pool (animated in view.js)
+  // ---- ripples drifting out across the pool (animated in view.js); bubbles on lava, none on ice
   const ripples = [];
-  for (let i = 0; i < 4; i++) {
-    const m = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.44, 28), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+  for (let i = 0; P && WATER.ripple !== null && i < 4; i++) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.44, 28), new THREE.MeshBasicMaterial({ color: WATER.ripple, transparent: true, opacity: 0, depthWrite: false }));
     m.rotation.x = -Math.PI / 2;
     m.position.y = 0.05;
     group.add(m);
     ripples.push({ mesh: m, t: i * 0.9, pick: () => inPool(0.8) });
   }
   return { ripples };
+}
+
+// ---------------------------------------------------------- landmarks of the later maps
+// Trees (leafy in the meadow, snowy pines, dead ones by the volcano), snowmen, the rocky
+// summit of the ridge, a ruined temple and lone columns, the volcano, wildflowers and
+// glowing cracks in the ash. Where they stand comes from the map (oasisLayout in
+// world.js), so the farmer walks round exactly what is drawn. Returns where the
+// volcano's smoke rises from (view.js puffs it), if there is one.
+const LEAF = [0x4f9a3c, 0x62ad48, 0x3f8a36, 0x74b852];
+function buildLandmarks(st, D, lay, rng) {
+  const gy = (x, z) => groundHeight(x, z);
+  // ---- trees
+  for (const t of lay ? lay.trees : []) {
+    const { x, z, s } = t, y = gy(x, z) - 0.05;
+    if (t.kind === 'pine') {
+      // a snowy pine: three tiers of dark green, each under a cap of snow
+      st.add(P.cyl(0.16 * s, 0.24 * s, 1.1 * s, 7), PAL.woodDark, { x, y: y + 0.55 * s, z });
+      for (let k = 0; k < 3; k++) {
+        const r = (1.25 - k * 0.32) * s, h = (1.5 - k * 0.2) * s, cy = y + (1.2 + k * 0.95) * s;
+        st.add(P.cone(r, h, 8), k % 2 ? 0x3a7a52 : 0x2f6b4a, { x, y: cy + h / 2 - 0.3 * s, z, ry: t.rot + k, shadeY: [0.75, 1.1] });
+        st.add(P.cone(r * 0.72, h * 0.55, 8), 0xf6faff, { x, y: cy + h * 0.72 - 0.3 * s, z, ry: t.rot + k });
+      }
+    } else if (t.kind === 'dead') {
+      // a burnt tree: a bent black trunk and a few bare branches
+      const lean = 0.12 + 0.1 * Math.sin(t.rot * 3), col = 0x3a2a26;
+      st.add(P.cyl(0.13 * s, 0.26 * s, 2.6 * s, 6), col, { x, y: y + 1.3 * s, z, rz: lean, ry: t.rot, order: 'YXZ', jitter: 0.04, rng });
+      for (let k = 0; k < 4; k++) {
+        const a = t.rot + k * 1.7, up = 1.5 + k * 0.42, len = (1.3 - k * 0.18) * s, tilt = 0.9 - k * 0.1;
+        const dx = Math.sin(a) * Math.sin(tilt), dz = Math.cos(a) * Math.sin(tilt), dy = Math.cos(tilt);
+        st.add(P.cyl(0.035 * s, 0.085 * s, len, 5), k % 2 ? col : 0x4a3832, { x: x + dx * len / 2, y: y + up * s + dy * len / 2, z: z + dz * len / 2, rx: tilt, ry: a, order: 'YXZ' });
+      }
+      if (Math.floor(t.rot * 10) % 3 === 0) st.add(P.ico(0.11 * s, 0), 0xff8a2a, { x: x + 0.25, y: y + 0.12, z: z + 0.2 });   // an ember at its foot
+    } else {
+      // a leafy tree: a brown trunk under round clumps of leaves, some with blossom
+      st.add(P.cyl(0.18 * s, 0.3 * s, 1.9 * s, 7), PAL.woodDark, { x, y: y + 0.95 * s, z, jitter: 0.04, rng, shadeY: [0.7, 1.05] });
+      const clumps = [[0, 2.75, 0, 1.2], [0.75, 2.35, 0.25, 0.9], [-0.7, 2.4, 0.35, 0.88], [0.1, 2.3, -0.75, 0.85], [0.05, 3.35, 0.1, 0.75]];
+      const c = Math.cos(t.rot), sn = Math.sin(t.rot), tint = Math.floor(t.rot * 7) % LEAF.length;
+      clumps.forEach(([lx, ly, lz, r], k) => {
+        const cx = x + (lx * c + lz * sn) * s, cz = z + (-lx * sn + lz * c) * s;
+        st.add(P.ico(r * s, 1), LEAF[(tint + k) % LEAF.length], { x: cx, y: y + ly * s, z: cz, sy: 0.82, jitter: 0.1 * s, rng, shadeY: [0.72, 1.12] });
+      });
+      if (tint === 0) for (let k = 0; k < 10; k++) {   // one tree in four is in blossom
+        const a = rng() * Math.PI * 2, rr = rng() * 1.2 * s;
+        st.add(P.ico(0.09, 0), k % 2 ? 0xffd6e8 : 0xfff6e0, { x: x + Math.cos(a) * rr, y: y + (3.25 - rr * 0.35) * s + 0.25, z: z + Math.sin(a) * rr });
+      }
+    }
+  }
+  // ---- snowmen: three balls of snow, a carrot nose, coal eyes, stick arms and a scarf
+  (D.snowmen || []).forEach((m, i) => {
+    const y = gy(m.x, m.z), fx = Math.sin(m.rot), fz = Math.cos(m.rot);
+    st.add(P.sph(0.62, 10, 8), 0xffffff, { x: m.x, y: y + 0.52, z: m.z, sy: 0.9, shadeY: [0.82, 1.05] });
+    st.add(P.sph(0.45, 10, 8), 0xffffff, { x: m.x, y: y + 1.3, z: m.z, sy: 0.92 });
+    st.add(P.sph(0.32, 10, 8), 0xffffff, { x: m.x, y: y + 1.92, z: m.z });
+    st.add(P.cone(0.06, 0.34, 6), 0xff8a2a, { x: m.x + fx * 0.42, y: y + 1.92, z: m.z + fz * 0.42, rx: Math.PI / 2, ry: m.rot, order: 'YXZ' });
+    for (const side of [-1, 1]) {
+      st.add(P.ico(0.045, 0), PAL.ink, { x: m.x + fx * 0.28 + fz * side * 0.12, y: y + 2.02, z: m.z + fz * 0.28 - fx * side * 0.12 });
+      st.add(P.cyl(0.025, 0.035, 0.85, 5), PAL.woodDark, { x: m.x + fz * side * 0.72, y: y + 1.5, z: m.z - fx * side * 0.72, rz: side * 1.05, ry: m.rot, order: 'YXZ' });
+    }
+    for (let k = 0; k < 3; k++) st.add(P.ico(0.045, 0), PAL.ink, { x: m.x + fx * 0.44, y: y + 1.12 + k * 0.17, z: m.z + fz * 0.44 });
+    const scarf = [0xe2282c, 0x23aa9c, 0xffc63a][i % 3];
+    st.add(P.cyl(0.33, 0.36, 0.14, 12), scarf, { x: m.x, y: y + 1.66, z: m.z });
+    st.add(P.box(0.14, 0.42, 0.06), scarf, { x: m.x + fx * 0.3 + fz * 0.14, y: y + 1.46, z: m.z + fz * 0.3 - fx * 0.14, ry: m.rot });
+    if (i % 2 === 0) {   // a top hat on every other one
+      st.add(P.cyl(0.34, 0.34, 0.04, 12), PAL.ink, { x: m.x, y: y + 2.2, z: m.z });
+      st.add(P.cyl(0.21, 0.22, 0.34, 12), PAL.ink, { x: m.x, y: y + 2.38, z: m.z });
+    }
+  });
+  // ---- the ridge's summit: crags of grey rock under snow
+  for (const q of D.peaks || []) {
+    const y0 = gy(q.x, q.z) - 0.4;
+    const crags = [[0, 0, 1, 1], [0.55, 0.35, 0.62, 0.7], [-0.6, 0.2, 0.58, 0.62], [0.1, -0.6, 0.55, 0.55], [-0.25, 0.65, 0.45, 0.45]];
+    for (const [lx, lz, kr, kh] of crags) {
+      let y = y0, r = q.r * kr * 0.8;
+      const x = q.x + lx * q.r, z = q.z + lz * q.r, H = q.h * kh;
+      for (let k = 0; k < 3; k++) {
+        const h = H / 3;
+        st.add(P.cyl(r * 0.62, r, h, 7), [TP.cliff, TP.cliffLight, TP.cliffMid][k], { x, y: y + h / 2, z, ry: k * 1.3 + lx, jitter: 0.3, jitterY: 0.12, rng, shadeY: [0.72, 1.06] });
+        y += h; r *= 0.62;
+      }
+      st.add(P.cone(r * 1.5, H * 0.3, 7), 0xffffff, { x, y: y + H * 0.1, z, ry: lx * 3, jitter: 0.12, rng });
+    }
+  }
+  // ---- the volcano: a cone of black rock, lava glowing in its crater and running down its sides
+  let smoke = null;
+  if (D.cone) {
+    const C = D.cone, tiers = 5;
+    let y = 0, r = C.r;
+    for (let k = 0; k < tiers; k++) {
+      const h = C.h / tiers, r1 = r * (k === tiers - 1 ? 0.8 : 0.78);
+      st.add(P.cyl(r1, r, h, 10), [TP.cliffDark, TP.cliff, TP.cliffMid, TP.cliff, TP.cliffLight][k], { x: C.x, y: y + h / 2, z: C.z, ry: k * 0.7, jitter: 0.32, jitterY: 0.14, rng, shadeY: [0.7, 1.08] });
+      y += h; r = r1;
+    }
+    // the crater: a dark lip round a pool of lava
+    st.add(P.tor(r * 0.86, r * 0.24, 6, 12), TP.cliffDark, { x: C.x, y: y + 0.02, z: C.z, rx: Math.PI / 2, jitter: 0.12, rng });
+    st.add(P.cyl(r * 0.8, r * 0.8, 0.1, 12), 0xff6f1c, { x: C.x, y: y - 0.12, z: C.z });
+    st.add(P.cyl(r * 0.5, r * 0.5, 0.1, 10), 0xffa52c, { x: C.x, y: y - 0.08, z: C.z });
+    st.add(P.cyl(r * 0.24, r * 0.24, 0.1, 8), 0xffdc52, { x: C.x, y: y - 0.04, z: C.z });
+    // streams of lava down the slopes (away from the side the road comes out of)
+    const o = {}; road.sample(CFG.spawnS, o);
+    const out = Math.atan2(o.x - C.x, o.z - C.z);
+    for (const da of [2.0, 3.3, 4.5]) {
+      const a = out + da, slope = Math.hypot(C.r - r, C.h), tilt = Math.atan2(C.r - r, C.h);
+      for (let k = 0; k < 5; k++) {
+        const t = (k + 0.5) / 5, rr = r + (C.r - r) * t + 0.12, wob = Math.sin(k * 2.1 + da) * 0.18;
+        st.add(P.box(0.5 - k * 0.04, 0.08, slope / 5 + 0.1), k % 2 ? 0xff7a1e : 0xffa52c, { x: C.x + Math.sin(a + wob) * rr, y: C.h * (1 - t), z: C.z + Math.cos(a + wob) * rr, rx: Math.PI / 2 - tilt, ry: a + wob, order: 'YXZ' });
+      }
+      st.add(P.cyl(0.9, 1.0, 0.05, 9), 0xff7a1e, { x: C.x + Math.sin(a) * (C.r + 0.5), y: 0.04, z: C.z + Math.cos(a) * (C.r + 0.5), sz: 0.7, ry: a });
+    }
+    // boulders thrown out round its foot
+    for (let i = 0; i < 9; i++) {
+      const a = out + 1.2 + (i / 9) * 4.2, s = rng.range(0.35, 0.8), d = C.r + rng.range(0.2, 1.3);
+      st.add(P.dod(s, 0), i % 2 ? 0x2f2a33 : 0x4a3f44, { x: C.x + Math.sin(a) * d, y: s * 0.35, z: C.z + Math.cos(a) * d, sy: 0.7, ry: rng() * 6, jitter: 0.12, rng });
+    }
+    smoke = { x: C.x, y: C.h + 0.3, z: C.z, r: r * 0.5 };
+  }
+  // ---- ruins: a temple's columns round a paved floor with an altar, and lone columns in the sand
+  const temple = lay ? lay.columns.filter((q) => q.temple || q.altar) : [];
+  for (const R of D.ruins || []) {
+    const y = gy(R.x, R.z);
+    st.add(P.box(5.6, 0.1, 6.2), TP.ruinDark, { x: R.x, y: y + 0.05, z: R.z, ry: R.rot || 0 });
+    st.add(P.box(5.0, 0.1, 5.6), TP.ruin, { x: R.x, y: y + 0.1, z: R.z, ry: R.rot || 0 });
+  }
+  const column = (q, y) => {
+    const h = q.h;
+    st.add(P.box(1.15, 0.24, 1.15), TP.ruinDark, { x: q.x, y: y + 0.12, z: q.z, ry: q.rot });
+    st.add(P.cyl(0.4, 0.46, h, 9), TP.ruin, { x: q.x, y: y + 0.24 + h / 2, z: q.z, ry: q.rot, shadeY: [0.78, 1.06] });
+    for (let k = 1; k * 0.9 < h; k++) st.add(P.cyl(0.47, 0.47, 0.06, 9), TP.ruinDark, { x: q.x, y: y + 0.24 + k * 0.9, z: q.z, ry: q.rot });   // the drums it is built from
+    if (h > 3) {   // still whole: its capital on top
+      st.add(P.cyl(0.6, 0.42, 0.26, 9), TP.ruin, { x: q.x, y: y + 0.24 + h + 0.13, z: q.z, ry: q.rot });
+      st.add(P.box(1.25, 0.2, 1.25), TP.ruinDark, { x: q.x, y: y + 0.24 + h + 0.36, z: q.z, ry: q.rot });
+    } else st.add(P.dod(0.42, 0), TP.ruin, { x: q.x, y: y + 0.24 + h, z: q.z, sy: 0.5, ry: q.rot * 3, jitter: 0.1, rng });   // broken off
+  };
+  for (const q of lay ? lay.columns : []) {
+    const y = gy(q.x, q.z);
+    if (q.altar) {
+      st.add(P.box(1.9, 0.3, 1.5), TP.ruinDark, { x: q.x, y: y + 0.25, z: q.z, ry: q.rot });
+      st.add(P.box(1.5, 0.5, 1.1), TP.ruin, { x: q.x, y: y + 0.65, z: q.z, ry: q.rot });
+      st.add(P.cyl(0.3, 0.2, 0.22, 8), PAL.gold, { x: q.x, y: y + 1.0, z: q.z });   // a golden bowl left on it
+      continue;
+    }
+    column(q, y);
+    if (!q.temple) {
+      // a lone column: the rest of it lies in pieces beside it
+      const a = q.rot, len = 1.5;
+      for (let k = 0; k < 2; k++) {
+        const d = 1.3 + k * 1.75;
+        st.add(P.cyl(0.4, 0.42, len, 9), k ? TP.ruin : TP.ruinDark, { x: q.x + Math.sin(a) * d, y: y + 0.4, z: q.z + Math.cos(a) * d, rx: Math.PI / 2, ry: a + (k ? 0.25 : -0.1), order: 'YXZ' });
+      }
+      st.add(P.dod(0.32, 0), TP.ruinDark, { x: q.x - Math.cos(a) * 0.9, y: y + 0.14, z: q.z + Math.sin(a) * 0.9, sy: 0.6 });
+    }
+  }
+  if (temple.length) {
+    // two of the temple's beams still lie across the tops of whole columns standing side by side
+    const whole = temple.filter((q) => q.temple && q.h > 3);
+    let beams = 0;
+    for (let i = 0; i < whole.length && beams < 2; i++) for (let j = i + 1; j < whole.length && beams < 2; j++) {
+      const a = whole[i], b = whole[j], d = Math.hypot(a.x - b.x, a.z - b.z);
+      if (d > 1.4 && d < 2.3) { st.add(P.box(0.7, 0.34, d + 1.1), TP.ruin, { x: (a.x + b.x) / 2, y: gy(a.x, a.z) + 0.24 + a.h + 0.62, z: (a.z + b.z) / 2, ry: Math.atan2(b.x - a.x, b.z - a.z) }); beams++; }
+    }
+  }
+  // ---- wildflowers all over the meadow (off the road, the build spots and the water)
+  const free = (x, z, gap, slot) => road.distanceTo(x, z) > CFG.roadHalfWidth + gap && !nearSlots(x, z, slot) && !inWater(x, z, 0.5)
+    && !(lay && lay.solids.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.5)) && !CFG.plateaus.some((p) => plateauSdf(p, x, z) > -1);
+  for (let i = 0, tries = 0; i < (D.meadow || 0) && tries < D.meadow * 12; tries++) {
+    const x = rng.range(W.minX + 1.5, W.maxX - 1.5), z = rng.range(-25, W.maxZ - 1.5);
+    if (!free(x, z, 0.9, 3.6)) continue;
+    const y = gy(x, z), col = WILDFLOWERS[Math.floor(rng() * WILDFLOWERS.length)];
+    st.add(P.ico(0.3, 0), 0x5f9a3e, { x, y: y + 0.05, z, sy: 0.35, ry: rng() * 6 });
+    for (let k = 0; k < 6; k++) {
+      const b = (k / 6) * Math.PI * 2 + rng(), rr = 0.12 + rng() * 0.2;
+      st.add(P.ico(0.075 + rng() * 0.03, 0), k === 5 ? WILDFLOWERS[Math.floor(rng() * WILDFLOWERS.length)] : col, { x: x + Math.cos(b) * rr, y: y + 0.17 + rng() * 0.08, z: z + Math.sin(b) * rr });
+    }
+    i++;
+  }
+  // ---- cracks in the ash with lava glowing in them: a few jagged lines, dark at the lip, bright in the middle
+  for (let i = 0, tries = 0; i < (D.cracks || 0) && tries < D.cracks * 20; tries++) {
+    let x = rng.range(W.minX + 2, W.maxX - 2), z = rng.range(-24, W.maxZ - 2), a = rng() * Math.PI * 2;
+    const segs = [];
+    for (let k = 0; k < 4; k++) {
+      const len = rng.range(1.1, 2.1), nx = x + Math.sin(a) * len, nz = z + Math.cos(a) * len;
+      if (!free((x + nx) / 2, (z + nz) / 2, 1.1, 3.4) || !free(nx, nz, 1.1, 3.4)) break;
+      segs.push([x, z, nx, nz, a, len]);
+      x = nx; z = nz; a += rng.range(-0.9, 0.9);
+    }
+    if (segs.length < 2) continue;
+    segs.forEach(([x0, z0, x1, z1, ang, len], k) => {
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, w = 1 - k * 0.16;
+      st.add(P.box(0.5 * w, 0.02, len + 0.3), 0x1c1210, { x: mx, y: 0.02, z: mz, ry: ang });
+      st.add(P.box(0.24 * w, 0.02, len + 0.2), 0xff7a1e, { x: mx, y: 0.03, z: mz, ry: ang });
+      st.add(P.box(0.09 * w, 0.02, len + 0.1), 0xffd24a, { x: mx, y: 0.04, z: mz, ry: ang });
+    });
+    i++;
+  }
+  return smoke;
 }

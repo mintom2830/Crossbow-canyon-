@@ -117,7 +117,9 @@ export function makeBot(opts = {}) {
     // finish the pad we are standing on
     if (goal && goal.away) {
       // stepping off a disarmed pad (the repeat-purchase safeguard), then come back
-      if (Math.hypot(goal.x - h.x, goal.z - h.z) < 0.4) goal = goal.back;
+      // (or after two seconds of trying: something solid may stand in the way)
+      goal.n = (goal.n || 0) + 1;
+      if (Math.hypot(goal.x - h.x, goal.z - h.z) < 0.4 || goal.n > 120) goal = goal.back;
     } else if (goal && goal.padId) {
       const p = sim.pads.find((q) => q.id === goal.padId);
       if (!p) { lastPadDone = goal.padId; goal = null; }
@@ -125,7 +127,10 @@ export function makeBot(opts = {}) {
       else if (p.heroOn && !p.armed) {
         const dx = p.x - (sim.slots[p.slot]?.x ?? p.x - 1), dz = p.z - (sim.slots[p.slot]?.z ?? p.z);
         const l = Math.hypot(dx, dz) || 1;
-        goal = { x: p.x + dx / l * 2.4, z: p.z + dz / l * 2.4, away: true, back: goal };
+        // (never a step into the canyon wall: beside it, step off along the wall instead)
+        const Wk = CFG.walk, ux = dx / l, uz = dz / l;
+        const [sx, sz] = [[ux, uz], [-uz, ux], [uz, -ux]].find(([qx, qz]) => p.x + qx * 2.4 > Wk.minX + 0.3 && p.x + qx * 2.4 < Wk.maxX - 0.3 && p.z + qz * 2.4 > Wk.minZ + 0.3 && p.z + qz * 2.4 < Wk.maxZ - 0.3) || [-ux, -uz];
+        goal = { x: p.x + sx * 2.4, z: p.z + sz * 2.4, away: true, back: goal };
       }
     }
     if (!goal || (!goal.padId && !goal.away)) {
@@ -168,8 +173,8 @@ export function makeBot(opts = {}) {
     if (d < 0.25) { sim.setInput(0, 0); return; }
     const s = Math.min(1, d / 1.2);
     let ix = dx / d, iz = dz / d;
-    if (CFG.decor && CFG.decor.pond) {
-      // Level 3: follow a route round the pool and the landmarks
+    if (oasisLayout()) {
+      // a map with a pool or landmarks: follow a route round them
       const [wx, wz] = nav(sim, goal.x, goal.z);
       const wl = Math.hypot(wx - h.x, wz - h.z);
       if (wl > 0.05) { ix = (wx - h.x) / wl; iz = (wz - h.z) / wl; }

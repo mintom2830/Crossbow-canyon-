@@ -17,6 +17,8 @@ export const CFG = {
   level: 1,
   hills: [],     // smooth sand hills the road can climb (Level 2): centre, radii, height
   decor: null,   // a level's own landmarks (Level 2: the lone tree and the picnic)
+  theme: 'canyon',   // the level's look: ground, cliffs, plants and sky (THEMES in render/env.js)
+  roadStub: -12,     // how far the road is drawn back behind its first point (0: it starts under something)
   levelHp: 1,    // the level's own rat health multiplier (Level 2's longer road gives towers more time)
   // Road control points (x = east, z = south). Enemies walk from the first
   // point (canyon gap, bottom-right) to the last point (fortress gate).
@@ -479,4 +481,156 @@ const OASIS = {
   },
 };
 
-export const MAPS = [SUNSTONE, LONETREE, OASIS];
+// Level 4: a green valley. A river winds across it from wall to wall and the road
+// weaves over it three times, on three wooden bridges, through meadows of flowers
+// and leafy trees.
+const GREENWOOD = {
+  id: 4, name: 'Greenwood Vale', theme: 'meadow',
+  roadPoints: [
+    [-15, 47.5], [-16, 36], [-17, 23], [-17.5, 9], [-14.5, -1.5], [-7.5, -7.5], [-0.5, -2], [0.5, 9],
+    [2, 20], [8.5, 27], [16.5, 26], [20.5, 17.5], [20.5, 8.5], [21.5, -4], [18.5, -15],
+    [11, -22], [3, -26], [-5, -26], [-12, -27.6], [-16, -33.5],
+  ],
+  plateaus: [],
+  hills: [],
+  slots: [
+    { id: 'G1', x: -9, z: 28, prebuilt: true },
+    { id: 'G2', x: -25, z: 17 },
+    { id: 'G3', x: -8, z: 0.5 },
+    { id: 'G4', x: -8, z: 16.5 },
+    { id: 'G5', x: 11, z: 19 },
+    { id: 'G6', x: 8.5, z: 2.5 },
+    { id: 'G7', x: 12.5, z: -9.5 },
+    { id: 'F1', x: -5.5, z: -33.5 },
+    { id: 'G8', x: 26.5, z: -18 },
+    { id: 'G9', x: 5.5, z: -17.5 },
+  ],
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk,
+  heroStart: [-10, 22],
+  huts: CFG.huts, town: CFG.town,
+  moleExit: 0,
+  hpMul: 1.35,
+  decor: {
+    // the river: in through the west wall, out through the east (a bridge wherever the road crosses it)
+    stream: [[-46, 6], [-31, 10.5], [-17.5, 9], [-9, 8.6], [0.5, 9], [10.5, 11.5], [20.5, 8.5], [31, 6], [46, 8]],
+    trees: { n: 24, kind: 'leafy' },
+    meadow: 70,   // clumps of wildflowers all over the grass
+  },
+};
+
+// Level 5: a snowy mountain pass. The road climbs over a white ridge, swings round
+// and comes back over it further north; pines, snowmen and a frozen lake.
+const FROSTPEAK = {
+  id: 5, name: 'Frostpeak Pass', theme: 'snow',
+  roadPoints: [
+    [-48, 21], [-34, 22.5], [-21, 20.5], [-9, 16.5], [1, 15], [11, 16.5], [18.5, 19.5], [23.8, 15],
+    [25, 6], [23, -2.5], [17.5, -8], [9, -9.5], [0, -8], [-6.5, -9.5], [-10, -15.5], [-10, -22],
+    [-12, -27.6], [-16, -33.5],
+  ],
+  plateaus: [],
+  // the ridge: long from north to south, the road crosses it twice
+  hills: [{ x: 0.5, z: 3, rx: 11, rz: 23.5, h: 3.8, seed: 2.1 }],
+  slots: [
+    { id: 'P1', x: -22, z: 12.5, prebuilt: true },
+    { id: 'P2', x: -17.5, z: 28 },
+    { id: 'P3', x: -4.5, z: 7.5 },
+    { id: 'P4', x: 9, z: 24.5 },
+    { id: 'P5', x: 16.5, z: 12 },
+    { id: 'P6', x: 16.5, z: 0.5 },
+    { id: 'P7', x: 5, z: -0.5 },
+    { id: 'P8', x: 9.5, z: -17.5 },
+    { id: 'F1', x: -5.5, z: -33.5 },
+    { id: 'P9', x: -2, z: -17 },
+  ],
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk,
+  heroStart: [-16, 14],
+  huts: CFG.huts, town: CFG.town,
+  moleExit: 0,
+  hpMul: 1.12,
+  decor: {
+    pond: { x: -3.5, z: 32, rx: 7.2, rz: 3.6, seed: 4.4, kind: 'ice' },
+    peaks: [{ x: 0.5, z: 3.5, r: 3.1, h: 6.5 }],   // the rocky summit of the ridge, between the two crossings
+    trees: { n: 22, kind: 'pine' },
+    snowmen: [{ x: 7.5, z: 32.5, rot: 0.6 }, { x: 22.5, z: -17, rot: -2.4 }, { x: -24.5, z: 4.5, rot: 1.2 }],
+  },
+};
+
+// Level 6: red mesas at sunset. The road hooks round three flat-topped mesas, under
+// two stone arches; the towers stand up on the rims, and a ruined temple crowns the
+// biggest mesa.
+const MESAS = {
+  id: 6, name: 'Sunset Mesas', theme: 'mesa',
+  roadPoints: [
+    [46, -21], [33, -19.5], [22.5, -15], [17, -4.5], [18.5, 8], [23.5, 19], [19, 28], [7, 31.6],
+    [-4.5, 29.5], [-11.5, 20.5], [-9.5, 9.5], [-3, 0.5], [-5.5, -10], [-9, -20], [-12, -27.6], [-16, -33.5],
+  ],
+  plateaus: [
+    { x: 4.6, z: 16.5, rx: 10.2, rz: 9.4, seed: 0.9 },
+    { x: -22, z: 16, rx: 5.2, rz: 7.5, seed: 3.3 },
+    { x: 6.2, z: -14, rx: 7.2, rz: 5.8, seed: 5.9 },
+  ],
+  hills: [],
+  slots: [
+    { id: 'M1', x: 27.5, z: -10.5, prebuilt: true },
+    { id: 'C1', x: 10.5, z: -13 },
+    { id: 'M2', x: 26, z: 7.5 },
+    { id: 'A1', x: 11.5, z: 14 },
+    { id: 'A2', x: 4.5, z: 22.5 },
+    { id: 'A3', x: -2.6, z: 17 },
+    { id: 'B1', x: -19.6, z: 17 },
+    { id: 'C2', x: 2, z: -14.5 },
+    { id: 'F1', x: -5.5, z: -33.5 },
+    { id: 'M3', x: -16.5, z: 29.5 },
+  ],
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk,
+  heroStart: [24, -6],
+  huts: CFG.huts, town: CFG.town,
+  moleExit: 0,
+  hpMul: 1,
+  decor: {
+    arches: [{ x: 17, z: -1 }, { x: -4.5, z: -6 }],
+    ruins: [{ x: 5.2, z: 11.4, rot: 0.12 }],   // the temple on the big mesa
+    columns: [{ x: 28.5, z: 20 }, { x: -25.5, z: 31.5 }, { x: 22, z: -24.5 }, { x: -1.5, z: -24 }],   // lone broken columns in the sand
+    cacti: 7,
+  },
+};
+
+// Level 7: a volcano. The rats pour out of a burrow at the foot of the cinder cone
+// in the middle of the map and spiral outwards round it, over ash and past cracks
+// of glowing lava, all the way to the town.
+const CINDER = {
+  id: 7, name: 'Cinder Crater', theme: 'lava',
+  roadPoints: [
+    [1.5, 12], [6.5, 8.5], [8.5, 1], [5.5, -5.5], [-2.5, -8], [-10.5, -6], [-17, 1.5], [-18, 12.5],
+    [-13, 22], [-2, 26.5], [11, 25], [21.5, 17], [26, 4.5], [23.5, -9.5], [15, -20], [1.5, -24.5],
+    [-12, -27.6], [-16, -33.5],
+  ],
+  roadStub: 0,   // the road starts under the volcano: nothing of it shows behind the burrow
+  plateaus: [],
+  hills: [],
+  slots: [
+    { id: 'V1', x: 17, z: 5, prebuilt: true },
+    { id: 'V2', x: 0, z: 1 },
+    { id: 'V3', x: -1, z: -16 },
+    { id: 'V4', x: 13, z: -10 },
+    { id: 'V5', x: 10.5, z: 16 },
+    { id: 'V6', x: -25, z: 15.5 },
+    { id: 'V7', x: -15, z: 30.5 },
+    { id: 'V8', x: 25, z: 25 },
+    { id: 'F1', x: -5.5, z: -33.5 },
+    { id: 'V9', x: 26, z: -20 },
+  ],
+  fortress: CFG.fortress, fortressPad: CFG.fortressPad, walk: CFG.walk,
+  heroStart: [17, 10],
+  huts: CFG.huts, town: CFG.town,
+  moleExit: 0,
+  hpMul: 1.5,
+  decor: {
+    cone: { x: -1.2, z: 9.5, r: 6, h: 7.5 },   // the volcano the rats come out from under
+    pond: { x: -24, z: 29.5, rx: 4.6, rz: 4.2, seed: 1.1, kind: 'lava' },
+    trees: { n: 13, kind: 'dead' },
+    cracks: 16,   // glowing cracks in the ash
+  },
+};
+
+export const MAPS = [SUNSTONE, LONETREE, OASIS, GREENWOOD, FROSTPEAK, MESAS, CINDER];

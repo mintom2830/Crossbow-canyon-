@@ -191,23 +191,42 @@ export function inWater(x, z, margin = 0) {
   return pondDepth(x, z) > -margin || streamDistance(x, z) < STREAM_HALF + margin;
 }
 
-// Level 3's landmarks that the farmer walks round: the arch's two pillars,
-// the palm trunks and the resting camels. Worked out from the map (seeded), so
-// the scenery and the game agree on where everything stands.
+// A level's landmarks that the farmer walks round: an arch's two pillars, palm
+// trunks and resting camels (Level 3), and on the later maps trees, snowmen, a
+// mountain summit, a ruined temple's columns and the volcano. Worked out from the
+// map (seeded), so the scenery and the game agree on where everything stands.
 let oasisCache = null;
 export function oasisLayout() {
   const D = CFG.decor;
-  if (!D || !D.pond) return null;
+  if (!D || !(D.pond || D.arch || D.arches || D.trees || D.ruins || D.columns || D.snowmen || D.peaks || D.cone)) return null;
   if (oasisCache && oasisCache.src === D) return oasisCache;
-  const out = { src: D, arch: null, pillars: [], palms: [], solids: [] };
-  if (D.arch) {
+  const out = { src: D, arch: null, arches: [], pillars: [], palms: [], trees: [], columns: [], solids: [] };
+  for (const A of D.arches || (D.arch ? [D.arch] : [])) {
     let best = Infinity, bi = 0;
-    for (let i = 0; i < road.count; i++) { const d = (road.px[i] - D.arch.x) ** 2 + (road.pz[i] - D.arch.z) ** 2; if (d < best) { best = d; bi = i; } }
+    for (let i = 0; i < road.count; i++) { const d = (road.px[i] - A.x) ** 2 + (road.pz[i] - A.z) ** 2; if (d < best) { best = d; bi = i; } }
     const o = {}; road.sample(bi * road.step, o);
     const half = CFG.roadHalfWidth + 1.9;
-    out.arch = { x: o.x, z: o.z, nx: o.nx, nz: o.nz, tx: o.tx, tz: o.tz, half };
+    out.arches.push({ x: o.x, z: o.z, nx: o.nx, nz: o.nz, tx: o.tx, tz: o.tz, half });
     for (const side of [-1, 1]) out.pillars.push({ x: o.x + o.nx * side * half, z: o.z + o.nz * side * half, r: 1.45 });
   }
+  out.arch = out.arches[0] || null;
+  // the standing stones of a ruined temple: columns round a rectangle (some broken short), an altar in the middle
+  const crng = makeRng(57);
+  for (const R of D.ruins || []) {
+    const c = Math.cos(R.rot || 0), sn = Math.sin(R.rot || 0);
+    for (const lx of [-2, 0, 2]) for (const lz of [-2.25, -0.75, 0.75, 2.25]) {
+      if (lx === 0 && Math.abs(lz) < 2) continue;   // only round the edge
+      out.columns.push({ x: R.x + lx * c + lz * sn, z: R.z - lx * sn + lz * c, r: 0.5, h: crng() < 0.4 ? 1 + crng() * 1.2 : 3.4, rot: R.rot || 0, temple: true });
+    }
+    out.columns.push({ x: R.x, z: R.z, r: 0.95, h: 0, altar: true, rot: R.rot || 0 });
+  }
+  for (const q of D.columns || []) out.columns.push({ x: q.x, z: q.z, r: 0.55, h: 1.2 + crng() * 1.6, rot: crng() * 3, fallen: crng() < 0.5 });
+  const fixed = [
+    ...out.columns.map((q) => ({ x: q.x, z: q.z, r: q.r })),
+    ...(D.snowmen || []).map((q) => ({ x: q.x, z: q.z, r: 0.8 })),
+    ...(D.peaks || []).map((q) => ({ x: q.x, z: q.z, r: q.r })),
+    ...(D.cone ? [{ x: D.cone.x, z: D.cone.z, r: D.cone.r }] : []),
+  ];
   const rng = makeRng(31);
   const camels = D.camels || [];
   // the town, its farms and footpaths stay clear
@@ -226,7 +245,7 @@ export function oasisLayout() {
     && x > CFG.walk.minX + 1 && x < CFG.walk.maxX - 1 && z > CFG.walk.minZ + 1 && z < CFG.walk.maxZ - 1;
   // a ring of palms round the pool, then a few out in the dunes
   const P = D.pond, want = D.palms || 0;
-  for (let tries = 0; out.palms.length < Math.ceil(want * 0.65) && tries < 400; tries++) {
+  for (let tries = 0; P && out.palms.length < Math.ceil(want * 0.65) && tries < 400; tries++) {
     const a = rng() * Math.PI * 2, k = pondEdge(P, a) * (1.18 + rng() * 0.32);
     const x = P.x + Math.cos(a) * P.rx * k, z = P.z + Math.sin(a) * P.rz * k;
     if (clear(x, z, 1.6)) out.palms.push({ x, z, h: 4.2 + rng() * 1.2, lean: rng() * Math.PI * 2, tilt: 0.12 + rng() * 0.16, r: 0.4 });
@@ -235,7 +254,23 @@ export function oasisLayout() {
     const x = rng.range(CFG.walk.minX + 2, CFG.walk.maxX - 2), z = rng.range(-26, CFG.walk.maxZ - 2);
     if (clear(x, z, 2.2)) out.palms.push({ x, z, h: 4.2 + rng() * 1.4, lean: rng() * Math.PI * 2, tilt: 0.1 + rng() * 0.18, r: 0.4 });
   }
-  out.solids = [...out.pillars, ...out.palms.map((p) => ({ x: p.x, z: p.z, r: p.r })), ...camels.map((c) => ({ x: c.x, z: c.z, r: 1.1 }))];
+  // trees scattered over the open ground (leafy in the meadow, pines in the snow, dead by
+  // the volcano): off the road, the build spots, the cliffs' flat tops and the other landmarks
+  if (D.trees) {
+    const trng = makeRng(83), hs = CFG.hero.start;
+    for (let tries = 0; out.trees.length < D.trees.n && tries < 1500; tries++) {
+      const x = trng.range(CFG.walk.minX + 2, CFG.walk.maxX - 2), z = trng.range(-26, CFG.walk.maxZ - 2);
+      const s = 0.8 + trng() * 0.5, rot = trng() * Math.PI * 2;
+      if (!clear(x, z, 2.4)) continue;
+      if (CFG.plateaus.some((p) => plateauSdf(p, x, z) > -2)) continue;
+      if (fixed.some((q) => Math.hypot(q.x - x, q.z - z) < q.r + 2.2)) continue;
+      if (out.trees.some((q) => Math.hypot(q.x - x, q.z - z) < 3.2)) continue;
+      if (Math.hypot(hs[0] - x, hs[1] - z) < 3) continue;
+      out.trees.push({ x, z, s, rot, kind: D.trees.kind, r: 0.5 });
+    }
+  }
+  out.solids = [...out.pillars, ...out.palms.map((p) => ({ x: p.x, z: p.z, r: p.r })), ...camels.map((c) => ({ x: c.x, z: c.z, r: 1.1 })),
+    ...out.trees.map((t) => ({ x: t.x, z: t.z, r: t.r })), ...fixed];
   oasisCache = out;
   return out;
 }
@@ -248,6 +283,7 @@ export function setLevel(id) {
   Object.assign(CFG, {
     level: m.id, roadPoints: m.roadPoints, plateaus: m.plateaus, hills: m.hills, slots: m.slots,
     fortress: m.fortress, fortressPad: m.fortressPad, walk: m.walk, huts: m.huts, town: m.town, decor: m.decor, levelHp: m.hpMul || 1,
+    theme: m.theme || 'canyon', roadStub: m.roadStub ?? -12,
   });
   CFG.hero.start = m.heroStart;
   road = new RoadPath(CFG.roadPoints);

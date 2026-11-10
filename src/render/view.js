@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CFG } from '../config.js';
 import { groundHeight, hillHeight, road } from '../world.js';
 import { T_GRUNT, T_BOSS, SHIELD, BOMB, NINJA, JET } from '../sim.js';
-import { buildEnvironment } from './env.js';
+import { buildEnvironment, themeOf } from './env.js';
 import { FX } from './fx.js';
 import { radialTexture, GB, P } from './geo.js';
 import { toon, toonGradient, INK_PX, inkUniforms, addInk, inkInstanced, inkGeometry, inkNormals, setInkedGeometry, inkMaterial } from './toon.js';
@@ -149,8 +149,12 @@ export class View {
 
     const scene = new THREE.Scene();
     this.scene = scene;
-    scene.background = new THREE.Color(DAY.bg);
-    scene.fog = new THREE.Fog(DAY.bg, 95, 175);
+    // the level's own sky: the game's day, dusk and night, tinted by its theme (env.js)
+    const TS = themeOf().sky || {};
+    this.sky = { DAY: { ...DAY, ...TS.DAY }, DUSK: { ...DUSK, ...TS.DUSK }, NIGHT: { ...NIGHT, ...TS.NIGHT } };
+    const DAY0 = this.sky.DAY;
+    scene.background = new THREE.Color(DAY0.bg);
+    scene.fog = new THREE.Fog(DAY0.bg, 95, 175);
     this.camera = new THREE.PerspectiveCamera(34, 1, 1, 320);
     this.camTarget = new THREE.Vector3(...[CFG.hero.start[0], 0, CFG.hero.start[1]]);
     this.camDist = 50;
@@ -163,9 +167,9 @@ export class View {
     this.pitch = THREE.MathUtils.degToRad(54);
 
     // lights
-    this.hemi = new THREE.HemisphereLight(DAY.sky, DAY.gnd, DAY.hemi);
+    this.hemi = new THREE.HemisphereLight(DAY0.sky, DAY0.gnd, DAY0.hemi);
     scene.add(this.hemi);
-    const sun = new THREE.DirectionalLight(DAY.sun, DAY.sunI);
+    const sun = new THREE.DirectionalLight(DAY0.sun, DAY0.sunI);
     sun.position.set(-30, 62, 24);   // key light from the upper left, in front: lit tops, mid fronts, shaded right sides
     sun.target.position.set(0, 0, -4);
     sun.castShadow = quality !== 'low';
@@ -2341,6 +2345,17 @@ export class View {
       const k = 0.85 + Math.sin(t * 13 + i * 2.1) * 0.12 + Math.sin(t * 23 + i) * 0.06;
       fl.scale.set(k, k * (1 + this.night * 0.3), k);
     }
+    // ---- Level 7: smoke rolls up out of the volcano, lit from below by the lava
+    const smoke = this.env.smoke;
+    if (smoke && dt > 0) {
+      this._smokeT = (this._smokeT || 0) - dt;
+      if (this._smokeT <= 0) {
+        this._smokeT = 0.2 + Math.random() * 0.12;
+        const a = Math.random() * Math.PI * 2, d = Math.random() * smoke.r;
+        this.fx.puffs.spawn({ x: smoke.x + Math.cos(a) * d, y: smoke.y + Math.random() * 0.4, z: smoke.z + Math.sin(a) * d, t: 0, life: 2.2 + Math.random() * 0.9, s: 1.5 + Math.random() * 0.9, color: Math.random() < 0.3 ? 0xb8a49a : 0x6f6462, vy: 1.7 + Math.random() * 0.6 });
+        if (Math.random() < 0.4) this.fx.glow(smoke.x, smoke.y + 0.2, smoke.z, 3.4, 0xff7a1e, 0.5);
+      }
+    }
     // ---- Level 3: rings of ripples spread across the oasis pool and fade
     const ripples = this.env.ripples;
     if (ripples) for (const r of ripples) {
@@ -2381,6 +2396,7 @@ export class View {
     if (Math.abs(this.night - this.lastNight) < 0.002) return;
     this.lastNight = this.night;
     const n = this.night;
+    const { DAY, DUSK, NIGHT } = this.sky;
     const a = n < 0.5 ? DAY : DUSK, b = n < 0.5 ? DUSK : NIGHT, k = n < 0.5 ? n * 2 : (n - 0.5) * 2;
     const c1 = new THREE.Color(), c2 = new THREE.Color();
     this.hemi.color.copy(c1.set(a.sky)).lerp(c2.set(b.sky), k);
