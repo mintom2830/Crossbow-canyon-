@@ -217,15 +217,54 @@ Late in a game every tower is usually at level 7 and gold piles up with nothing 
 
 ## Rat animations
 
-**The small rats walk simply, as they did when the game began** (the title-menu version): every kind takes the same easy step, legs swinging in diagonal pairs, a small bob and sway each stride, the head nodding and the tail wagging. They don't lean into turns, glance about, twitch their ears or swing their tails out of turns while they walk. Their **fighting** is kept as it is: rearing up and biting the gate (front paws taking turns scratching), the jaw snapping open, flinching and flashing when hit, being thrown by blasts and thumping down with a squash and bouncing ears, the dizzy stars, and the death roll. (Each model still carries its own gait from the bestiary remodel; the walk on the graphics card no longer uses it.)
+### The enemy animation controller
 
-**Giants and bosses** swagger: hips sway, shoulders roll, the weapon arm swings wide, the head nods with each stomp and a puff of dust comes up from every footfall (a boss's steps shake the screen a little). Now and then a boss stops to **roar**, head up and arms flung wide, sending out a ring in its aura colour. Each has its own **attack on the gate**: the giant rat's overhead club smash, the Rat Warlord's wide sideways sweep of his spiked mace (with sparks), the Iron Rat Baron's ground-shaking two-handed slam (with a shockwave), and the Rat King raising his sceptre to the sky and thrusting it at the gate in a burst of gold.
+Every enemy (the GPU-instanced small rats, the healers and ratlings on baked skeletons, the rigged giant and bosses) runs the same small state machine every frame (`src/render/enemyanim.js`). It reads what the simulation says the enemy is doing and decides what it should look like it is doing:
+
+| Group | States |
+|---|---|
+| Moving | idle (breathing, glancing left and right) · slow walk · walk · run · sprint · start (push-off, leaning in) · stop (braking, sitting back) · turn (45°, 90°, 180°) |
+| Fighting | attack (anticipation, the strike, impact) · recover (follow-through) |
+| Reactions | light hurt (a flinch layered over anything) · heavy hurt · stagger (a critical hit: off balance) · knockback (thrown by a blast) · fall (dropped by the buzzard) · get up (scrambling back to its feet after landing) |
+| Holds and others | stunned (dazed) · frozen (held in ice) · special (a heal, a dodge, a jetpack burst) · dying |
+
+Each state has a priority: a higher one interrupts a lower one, a timed one (a stagger, a get-up, a special) runs to its end unless something more important comes, **dying overrides everything and never plays twice**, **stunned enemies cannot attack**, and **frozen ones cannot use a special**. The renderers ease every value they read from it, which crossfades the states. Which reaction a hit gets depends on how hard it was (the simulation records each hit's share of the enemy's health): an arrow gives a small flinch and a spark, a heavy hit a stronger reaction, a critical one (a fifth of its health or more) a stagger, and a blast throws it. Frost slows the animation with the walk and sheds ice glints until the enemy freezes solid. **Damage never comes from an animation starting**: the simulation takes the gate's health on its swing timer, and every attack's impact frame is timed to that moment (`tests/anim.test.mjs` checks the controller's rules).
+
+**Each kind of small rat moves its own way** (a gait in its model, read by the walk cycle on the graphics card, so hundreds of rats still cost nothing extra on the processor): plain, healer and jetpack rats trot; fast rats gallop; armoured and shield rats stomp; brood and bomb rats waddle; ninjas sneak; ratlings hop. The pace scales the stride (short steps when slowed, long strides and a forward lean when running or sprinting), a push-off leans forward and braking sits back, the tail lags out of turns and the head looks into them, ears flop back with speed.
+
+**Each kind attacks the gate its own way**, wind-up, strike, impact, follow-through and recovery:
+
+| Rat | Attack |
+|---|---|
+| Plain rat | slows, lowers its head, lunges, bites, recoils |
+| Fast rat | a short dash in, a quick bite, a hop back into its running stance |
+| Armoured rat | lowers its armoured head, steps back, charges and slams in (sparks and dust, an iron clang) |
+| Shield rat | rears up behind the raised shield, braces its feet, bashes (wood dust, a wooden knock) |
+| Brood rat | a heavy lunge, the sack throwing its weight |
+| Ratling | jumps at the gate and bites once |
+| Bomb rat | braces low as its fuse fizzes harder, then blows up at the gate (fire, smoke, sparks, a shockwave) |
+| Ninja rat | crouches, then a full spinning strike |
+| Jetpack rat | bites like a plain rat; its jetpack: an ignition crouch, a launch burst of flame and smoke, the arc, a landing squash |
+
+**Giants and bosses** play Meshy's clips on a layered rig (a hit or a roar plays on the upper body while the legs keep walking), with body work on top (`BodyMotion`): breathing, leaning into push-offs and turns, feet finding the hillside, a chest flinch on light hits, a stagger on heavy ones, a dazed sway when stunned, and the gate attack's wind-up, swing, follow-through and recovery tuned per boss:
+
+| Boss | Gate attack |
+|---|---|
+| Giant rat (club) | plants its feet, pulls the club back, hips and shoulders wind away, swings through, a ground crack and dust, follows through |
+| Rat Warlord | winds up the weapon, a powerful forward slam with a shockwave; **roars and raises his weapon as he climbs out** (after the 5-second boss siren) |
+| Iron Rat Baron (heavy) | raises the spiked mace, weight back, slams it down with a heavy shockwave and shake |
+| Rat King | gathers himself, a massive slam in a burst of gold; crown and robe jolt with every impact |
+| Tunnel Mole | a raking blow with its claws; stops, scratches the ground and digs under, races underground, bursts out by the town |
+| Sewer Slime | compresses, springs forward and slams into the gate |
+| Canyon Buzzard | dives at the gate; glides between wingbeats, banks into turns, beats hard hovering before each drop, legs forward to land |
+
+Impacts shake the screen by the attacker's weight, and every gate hit has its own sound.
 
 - **Small rats** are animated on the graphics card, so hundreds of them still draw in one call. Each rat's legs, tail and head move around their own joints.
   - **Climbing out:** a new rat rises out of the burrow nose first, with a little dirt puff.
-  - **Walking:** the simple walk cycle from the game's first version, with diagonal legs together, a nodding head and a swishing tail. The cycle follows the distance actually walked, so feet don't slide, and slowed rats walk slower.
+  - **Walking:** its own gait (see above). The cycle follows the distance actually walked, so feet don't slide, and slowed rats walk slower.
   - **Hit:** the rat flashes white, recoils with a squash, and its head jerks back and its tail whips.
-  - **Attacking the town hall:** the rat rears up on its hind legs with its front paws raised, then lunges and bites. The bite lands on the exact frame the town hall loses health.
+  - **Attacking the town hall:** its own attack (see above). The blow lands on the exact frame the town hall loses health.
   - **Defeated:** the rat flashes, hops and flips onto its back, kicks its legs, then shrinks away in a white puff.
   - **Spent** (after its last swing at the gate): it spins and puffs away.
   - **Stunned or frozen:** it holds still, mid-stride. A rat dazed by a blast gets three little yellow **dizzy stars** circling its head.
@@ -331,13 +370,23 @@ Clothes are shells offset from the body and skinned to the same bones by the sam
 
 ### The Meshy bosses
 
-The bosses are drawn with their Meshy PBR maps (see *Skeletal animation* above) and play Meshy's clips as they are: walk and run at ground speed, the attack held so the blow lands with the hit on the gate, a full-body stagger or roar, and their moving ears, jaws, tails, capes and fingers. A layered upper/lower body, extra breathing and leaning, feet finding the hill, and derived metal materials were tried for them and taken out again at your request. The farmer keeps his.
+The bosses are drawn with their Meshy PBR maps (see *Skeletal animation* above) and move with the enemy animation controller (see *Rat animations*): Meshy's clips on a layered upper/lower body, with breathing, leaning, feet finding the hill, flinches, staggers, the attack's body work, and their moving ears, jaws, tails, capes, fingers and crowns.
+
+### Animation clips still missing
+
+The movement is built from Meshy's clips where they exist and from procedural animation on the graphics card everywhere else. Procedural motion covers the gaits, attacks, reactions and secondary physics, but it is not hand-keyed rigged animation. These clips would make it better, and the game is ready to play them (`tools/merge-anim.mjs` merges clips into a model):
+
+- **Four-legged rats** (plain, fast, armoured, shield, brood, bomb, ninja, jetpack): no skeleton at all, because Meshy's rigger only takes upright characters. They would need a quadruped rig with idle, walk, run, sprint, a bite, a charge, a shield bash, light and heavy hits, knockback and landing, getting up, stunned, death, a backflip dodge, and a jetpack launch and landing. Tripo3D can rig quadrupeds and is connected, but its account has no credits.
+- **Giant and bosses:** turning in place (45°, 90°, 180°), starting and stopping, a separate light and heavy hit, a stagger, a knockback with a get-up, a stunned loop, and their own gate attacks (they all share Meshy's standard weapon swing: a two-handed club swing, an overhead mace slam, a two-arm ground slam for the King).
+- **Sewer Slime and Canyon Buzzard:** static models animated in code; the buzzard's wings would need an avian rig for real feather motion.
+- **Healer:** a looping heal channel (it uses the spell-cast clip).
+- **Higgsfield** makes pictures and videos, not animation clips a game can play, and its generation tools are not available in this session, so it was not used.
 
 ### What could not be done (yet)
 
 - **Separate garments on the Meshy farmer.** Meshy always fuses a character into one surface, so only the code-built farmer has his garments as separate meshes.
 - **Weapons as separate objects.** The giant's club is fused to his hands in Meshy's one surface, and its middle is weighted to his body. Cutting it out automatically (by shape, by the hands' skin weights, by the wood's colour) did not separate it cleanly from his belly and thighs, so it was left as Meshy made it rather than shipped half cut. Meshy's own part splitter can do it once the key limits are raised.
-- **Jumping, dodging, dashing, sliding.** The farmer and the enemies have no such moves in the game, and adding them would change how it plays.
+- **New moves that change how it plays** (the farmer jumping, enemies dodging arrows they don't already dodge): the movement system only animates what the game already does.
 
 ## Characters
 - **The farmer** (you): straw hat with a red band, red shirt, blue denim overalls and a pitchfork slung across the back.
