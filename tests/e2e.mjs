@@ -518,7 +518,47 @@ await test('Level 3: winning Level 2 unlocks Mirage Oasis; the road loops round 
   await page.keyboard.press('Escape');
   await page.click('#quitBtn');
   await page.waitForFunction(() => window.__cc.screen === 'titleScreen');
-  assert((await page.$$eval('[data-level] .lock-tag', (els) => els.filter((e) => !e.hidden).length)) === 0, 'a map is still locked');
+  // Levels 1 to 3 are open now; the later maps each wait for the one before
+  const locked = await page.$$eval('[data-level]', (els) => els.filter((e) => e.classList.contains('locked')).map((e) => +e.dataset.level));
+  assert(locked.join() === '4,5,6,7', 'after winning Level 2 only Levels 4 to 7 should be locked: ' + locked.join());
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('Levels 4 to 7: each map opens from the sliding picker with its own look and landmarks, and rats walk its road', async () => {
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'high', tutorialDone: true }, null, await httpURL());
+  const byLevel = {}; for (let i = 1; i <= 6; i++) byLevel[i] = { cleared: true, bestWave: 16, bestStars: 2 };
+  await setStorageAndReload(page, 'crossbow-canyon:progress:v1', JSON.stringify({ diamonds: 0, byLevel }));
+  assert((await page.$$('[data-level]')).length === 7, 'seven map cards');
+  const want = { 4: ['Greenwood Vale', 'G1'], 5: ['Frostpeak Pass', 'P1'], 6: ['Sunset Mesas', 'M1'], 7: ['Cinder Crater', 'V1'] };
+  const inView = (id) => page.evaluate((lv) => { const r = document.getElementById('levelPick').getBoundingClientRect(), c = document.querySelector('[data-level="' + lv + '"]').getBoundingClientRect(); return c.left >= r.left - 2 && c.right <= r.right + 2; }, id);
+  for (const L of [4, 5, 6, 7]) {
+    // the arrow slides the row along until the card is in view
+    for (let k = 0; k < 4 && !(await inView(L)); k++) { await page.click('#levelNext'); await page.waitForTimeout(600); }
+    assert(await inView(L), 'the arrow did not bring the card of Level ' + L + ' into view');
+    await page.click('[data-level="' + L + '"]');
+    await page.waitForTimeout(500);
+    const t = await g(page, () => { const c = window.__cc, v = c.view; return { level: c.level, smoke: !!v.env.smoke }; });
+    assert(t.level === L && (await page.textContent('#bestLine')).includes(want[L][0]), 'Level ' + L + ' was not picked: ' + JSON.stringify(t));
+    assert(t.smoke === (L === 7), 'only the volcano smokes');
+    await page.screenshot({ path: SHOTS + '/level' + L + '-title.png' });
+  }
+  // every theme has its own sky
+  const skies = new Set();
+  for (const L of [1, 4, 5, 6, 7]) { await g(page, (id) => { window.__cc.switchLevel(id); }, L); skies.add(await g(page, () => window.__cc.view.scene.background.getHex())); }
+  assert(skies.size === 5, 'the themes should each have their own sky: ' + skies.size);
+  for (const L of [4, 5, 6, 7]) {
+    await g(page, (id) => { window.__cc.goTitle(); window.__cc.switchLevel(id); }, L);
+    await g(page, () => { window.__cc.startGame(); });
+    await page.waitForFunction(() => window.__cc.mode === 'play');
+    const r = await g(page, () => {
+      const c = window.__cc, s = c.sim;
+      s.fortress.hp = s.fortress.maxHp = 99999; s.callWave(); c.advance(25);
+      return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res({ slot: s.slots[0].id, rats: s.enemies.length, far: Math.max(...s.enemies.map((e) => e.s)), drawn: c.view.gruntMesh.count }))));
+    });
+    assert(r.slot === want[L][1] && r.rats > 5 && r.far > 40 && r.drawn > 5, 'Level ' + L + ' did not play: ' + JSON.stringify(r));
+    await page.screenshot({ path: SHOTS + '/level' + L + '-wave.png' });
+  }
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });
