@@ -25,7 +25,8 @@
 //   z  along the tail, 0 at the root to 1 at the tip (0: a rigid hand-built tail)
 //   w  the stiffness above
 // aPivot.w (per model, see gaitCode in models.js): how that kind of rat moves, gait +
-// 8 × attack. Gaits: 0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop.
+// 8 × attack. Gaits: 0 trot · 1 fast trot · 2 heavy trot · 3 loaded trot · 4 low trot · 5 hop
+// · 6 upright stomp.
 // Attacks: 0 lunge and bite · 1 dash, bite, hop back · 2 charge and slam · 3 shield bash ·
 // 4 heavy lunge · 5 jump and bite · 6 brace and blow up · 7 spinning strike
 // (The gait and the stiffness ride in spare components so the shader stays well
@@ -69,8 +70,21 @@ export const RAT_POSE_GLSL = [
   "bool idleNow = alive && !still && !attacking && spd < 0.06;",
   // how much it is on the move (0 standing: the legs settle under it)
   "float mov = alive && !still ? smoothstep(0.02, 0.3, spd) : 0.0;",
-  // quicker little steps when sneaking, slower heavy ones when stomping or waddling
-  "if (alive && !still) ph *= G == 4 ? 1.45 : G == 2 ? 0.8 : G == 3 ? 0.85 : G == 5 ? 0.75 : 1.0;",
+  // Every rat on four legs trots like a real rat (diagonal feet together, the body low
+  // and level, the spine rolling, the head carried level, the tail held out behind),
+  // each kind with its own weight: G 0 plain · 1 fast (a running trot: longer strides,
+  // stretched out and leaning in) · 2 heavy (armoured: slower, lower steps, a heavy roll)
+  // · 3 loaded (brood, bomb: the load rocks it side to side) · 4 low (ninja: crouched,
+  // quick quiet steps). 5 hop (ratling) and 6 upright stomp (the shield rat) are not trots.
+  "bool trot = G <= 4;",
+  "float cad = 1.0, amp = 0.72, duty = 0.6, liftF = 0.07, liftH = 0.1, bobA = 0.02, rump = 0.03, shld = 0.012, sway = 0.035, rollA = 0.03, strA = 0.025, tall = 0.035, leanF = 0.0, headUp = 0.16;",
+  "if (G == 1) { cad = 0.75; amp = 0.95; duty = 0.5; liftF = 0.09; liftH = 0.13; bobA = 0.03; rump = 0.04; shld = 0.016; sway = 0.03; rollA = 0.02; strA = 0.045; leanF = 0.06; headUp = 0.12; }",
+  "else if (G == 2) { cad = 0.85; amp = 0.62; duty = 0.64; liftF = 0.06; liftH = 0.08; bobA = 0.028; rump = 0.018; shld = 0.008; sway = 0.03; rollA = 0.05; strA = 0.015; tall = 0.02; headUp = 0.1; }",
+  "else if (G == 3) { cad = 0.9; amp = 0.62; duty = 0.62; liftF = 0.055; liftH = 0.075; rump = 0.025; shld = 0.01; sway = 0.045; rollA = 0.07; strA = 0.02; tall = 0.025; headUp = 0.14; }",
+  "else if (G == 4) { cad = 1.3; amp = 0.58; duty = 0.66; liftF = 0.045; liftH = 0.06; bobA = 0.01; rump = 0.015; shld = 0.006; sway = 0.02; rollA = 0.015; strA = 0.015; tall = -0.04; leanF = 0.04; headUp = 0.06; }",
+  "else if (G == 5) { cad = 0.75; amp = 0.9; duty = 0.5; liftF = 0.06; liftH = 0.06; }",
+  "else if (G == 6) { cad = 0.8; amp = 0.6; duty = 0.66; liftF = 0.09; liftH = 0.09; }",
+  "if (alive && !still) ph *= cad;",
   "float jit = fract(iAnim.x * 0.137);",
   "float swing = sin(ph);",
   "float foot = 1.0 - abs(sin(ph));",
@@ -81,19 +95,15 @@ export const RAT_POSE_GLSL = [
   "if (part >= 1 && part <= 4) {",
   // diagonal pairs step together (front left with back right); the back foot a beat ahead
   "float off = (part == 1 || part == 4) ? 0.0 : 3.14159;",
-  "float amp = 0.8, duty = 0.6, lift = 0.085;",
-  "if (G == 0) { off += part <= 2 ? 0.0 : 0.3; amp = 0.72; lift = part <= 2 ? 0.07 : 0.1; }",
-  "else if (G == 1) { off = part <= 2 ? (part == 1 ? 0.0 : 0.35) : (part == 3 ? 2.6 : 2.95); amp = 1.05; duty = 0.42; lift = 0.12; }",
-  "else if (G == 5) { off = part <= 2 ? 0.0 : 0.5; amp = 0.9; duty = 0.5; lift = 0.06; }",
-  "else if (G == 2) { amp = 0.6; duty = 0.66; lift = 0.09; }",
-  "else if (G == 3) { amp = 0.55; duty = 0.62; lift = 0.05; }",
-  "else if (G == 4) { amp = 0.7; duty = 0.7; lift = 0.045; }",
-  "duty -= 0.1 * smoothstep(1.2, 2.4, spd);",   // running: less time on the ground
+  "if (trot) off += part <= 2 ? 0.0 : 0.3;",
+  "else if (G == 5) off = part <= 2 ? 0.0 : 0.5;",
+  "float lift = part <= 2 ? liftF : liftH;",
+  "float dty = duty - 0.1 * smoothstep(1.2, 2.4, spd);",   // running: less time on the ground
   // each foot is planted and sweeps back under the body as it moves on (so it doesn't
   // slide), then lifts and flicks forward to plant again
   "float u = fract((ph + off) / 6.28318), sw;",
-  "if (u < duty) sw = -1.0 + 2.0 * u / duty;",
-  "else { float s = (u - duty) / (1.0 - duty); sw = 1.0 - 2.0 * s * s * (3.0 - 2.0 * s); legUp = sin(s * 3.14159) * lift * stride; }",
+  "if (u < dty) sw = -1.0 + 2.0 * u / dty;",
+  "else { float s = (u - dty) / (1.0 - dty); sw = 1.0 - 2.0 * s * s * (3.0 - 2.0 * s); legUp = sin(s * 3.14159) * lift * stride; }",
   "float a = sw * amp * stride * mix(0.25, 1.0, mov);",
   "legUp *= mov * (1.0 - stg) * (1.0 - gup) * (attacking || !alive ? 0.0 : 1.0);",
   // knocked off balance: the legs splay; scrambling up after a throw: they paddle
@@ -128,8 +138,8 @@ export const RAT_POSE_GLSL = [
   "float wave = (still || aSub.z <= 0.0) ? 0.0 : sin(uTime * 8.0 + ph * 0.5 - tt * 3.4) * 0.32 * tt;",
   // a trotting rat holds its tail out straight and low behind it, swaying a little with
   // the hips and a slow ripple running down it (not curled up)
-  "if (G == 0 && aSub.z > 0.0) {",
-  "lift = 0.04 * mov + (attacking ? 0.12 : 0.0);",   // (the model's curled tail is laid out straight at load: rat-models.js)
+  "if (trot && aSub.z > 0.0) {",
+  "lift = (G == 1 ? 0.1 : 0.04) * mov + (attacking ? 0.12 : 0.0);",   // (the model's curled tail is laid out straight at load: rat-models.js)
   "wag = still ? 0.0 : (sin(ph - 0.9) * 0.08 * mov + sin(uTime * 1.7 + jit * 20.0) * 0.05) + sin(hit * 18.0) * 0.5 * hit + stg * sin(uTime * 20.0) * 0.4;",
   "wave = still ? 0.0 : sin(ph - tt * 2.6) * 0.09 * tt * mov;",
   "}",
@@ -138,8 +148,7 @@ export const RAT_POSE_GLSL = [
   "float pitch = sin(ph * 2.0) * 0.07 - 0.04 * foot;",
   "float look = still ? 0.0 : sin(uTime * 1.3 + jit * 40.0) * 0.16 * smoothstep(0.4, 1.0, sin(uTime * 0.7 + jit * 23.0));",
   // trotting, the head is carried up and level (it rides out the body's roll) and only nods a little
-  "if (G == 0) pitch = mov * (-0.16 - 0.02 * sin(m2) + 0.025 * sin(m2 - 1.2)) - 0.04 * (1.0 - mov) * foot;",
-  "if (G == 1) pitch -= 0.12;",
+  "if (trot) pitch = mov * (-headUp - 0.02 * sin(m2) + 0.025 * sin(m2 - 1.2)) - 0.04 * (1.0 - mov) * foot;",
   "if (G == 4) { pitch += 0.12; look = still ? 0.0 : sin(uTime * 4.0 + jit * 40.0) * 0.3 * step(0.6, sin(uTime * 1.1 + jit * 9.0)); }",
   "if (attacking) {",
   "float hu = smoothstep(0.1, 0.55, atk) * (1.0 - smoothstep(0.58, 0.64, atk)), hd = smoothstep(0.58, 0.64, atk) * (1.0 - smoothstep(0.72, 0.9, atk));",
@@ -174,10 +183,10 @@ export const RAT_POSE_GLSL = [
   // trotting, the spine rolls: the rump rises as each back foot pushes off, the shoulders
   // a moment later, and the hips swing a little toward the back foot on the ground
   // (planted feet stay where they are)
-  "if (G == 0 && !attacking) {",
+  "if (trot && !attacking) {",
   "float rr = smoothstep(0.6, -0.6, q.z), keep = (part >= 1 && part <= 4) ? 1.0 - bw : 1.0;",
-  "q.y += keep * mov * (0.035 + stride * (0.03 * rr * sin(m2 - 0.7) + 0.012 * (1.0 - rr) * sin(m2 + 0.6)));",   // it stands a little taller on the move
-  "q.x += keep * mov * stride * 0.035 * rr * sin(ph + 0.4);",
+  "q.y += keep * mov * (tall + stride * (rump * rr * sin(m2 - 0.7) + shld * (1.0 - rr) * sin(m2 + 0.6)));",   // a little taller on the move (the ninja lower)
+  "q.x += keep * mov * stride * sway * rr * sin(ph + 0.4);",
   "}",
   "float bob = abs(sin(ph)) * 0.05;",
   "float pitchB = sin(ph * 2.0) * 0.04;",
@@ -186,11 +195,8 @@ export const RAT_POSE_GLSL = [
   "vec3 sc = vec3(1.0, 1.0 - 0.06 * foot, 1.0 + 0.03 * foot);",
   // trotting: low and level, a small lift on each diagonal step, and the body stretching
   // as it pushes off and bunching as the feet come under it
-  "if (G == 0) { bob = 0.02 * (0.5 + 0.5 * cos(m2)); pitchB = 0.022 * sin(m2); rollB = sin(ph - 0.6) * 0.03; sc = vec3(1.0, 1.0 - 0.02 * (0.5 - 0.5 * cos(m2)), 1.0 + 0.025 * sin(m2 - 0.5)); }",
-  "else if (G == 1) { bob = abs(sin(ph + 0.5)) * 0.1; pitchB = sin(ph) * 0.16; rollB = 0.0; sc = vec3(1.0, 1.0 - 0.05 * foot, 1.0 + 0.12 * sin(ph)); }",
-  "else if (G == 2) { bob = abs(sin(ph)) * 0.035; rollB = sin(ph) * 0.09; sc = vec3(1.0 + 0.05 * foot, 1.0 - 0.09 * foot, 1.0); }",
-  "else if (G == 3) { bob = abs(sin(ph)) * 0.03; rollB = sin(ph) * 0.17; pitchB *= 0.5; }",
-  "else if (G == 4) { bob = abs(sin(ph)) * 0.015; rollB *= 0.3; pitchB = 0.07; off.y = -0.07; }",
+  "if (trot) { bob = bobA * (0.5 + 0.5 * cos(m2)); pitchB = 0.022 * sin(m2) + leanF * mov; rollB = sin(ph - 0.6) * rollA; sc = vec3(1.0, 1.0 - 0.02 * (0.5 - 0.5 * cos(m2)), 1.0 + strA * sin(m2 - 0.5)); }",
+  "else if (G == 6) { bob = abs(sin(ph)) * 0.035; rollB = sin(ph) * 0.09; sc = vec3(1.0 + 0.05 * foot, 1.0 - 0.09 * foot, 1.0); }",
   "else if (G == 5) { bob = abs(sin(ph)) * 0.16; pitchB = -sin(ph) * 0.12; sc = vec3(1.0 + 0.08 * foot, 0.86 + 0.24 * abs(sin(ph)), 1.0 - 0.05 * foot); }",
   "if (still) { bob = 0.0; pitchB = 0.0; rollB = 0.0; sc = vec3(1.0); off.y = 0.0; }",
   "off.y += bob * (still ? 0.0 : stride);",
@@ -290,7 +296,7 @@ export function ratMaterial(uniforms, gradientMap, map = null) {
       .replace('#include <common>', '#include <common>\nvarying float vFlash;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.96, 0.92) * vFlash;');
   };
-  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v7' : 'rat-anim-toon-v7');
+  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v8' : 'rat-anim-toon-v8');
   return mat;
 }
 

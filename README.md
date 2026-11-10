@@ -230,16 +230,28 @@ Every enemy (the GPU-instanced small rats, the healers and ratlings on baked ske
 
 Each state has a priority: a higher one interrupts a lower one, a timed one (a stagger, a get-up, a special) runs to its end unless something more important comes, **dying overrides everything and never plays twice**, **stunned enemies cannot attack**, and **frozen ones cannot use a special**. The renderers ease every value they read from it, which crossfades the states. Which reaction a hit gets depends on how hard it was (the simulation records each hit's share of the enemy's health): an arrow gives a small flinch and a spark, a heavy hit a stronger reaction, a critical one (a fifth of its health or more) a stagger, and a blast throws it. Frost slows the animation with the walk and sheds ice glints until the enemy freezes solid. **Damage never comes from an animation starting**: the simulation takes the gate's health on its swing timer, and every attack's impact frame is timed to that moment (`tests/anim.test.mjs` checks the controller's rules).
 
-**Each kind of small rat moves its own way** (a gait in its model, read by the walk cycle on the graphics card, so hundreds of rats still cost nothing extra on the processor): plain, healer and jetpack rats trot; fast rats gallop; armoured and shield rats stomp; brood and bomb rats waddle; ninjas sneak; ratlings hop. The pace scales the stride (short steps when slowed, long strides and a forward lean when running or sprinting), a push-off leans forward and braking sits back, the tail lags out of turns and the head looks into them, ears flop back with speed.
+**Each kind of small rat moves its own way** (a gait in its model, read by the walk cycle on the graphics card, so hundreds of rats still cost nothing extra on the processor): every rat on four legs trots like a real rat (see below), each with its own weight; the shield rat, which stands behind its shield, stomps; ratlings hop. The pace scales the stride (short steps when slowed, long strides and a forward lean when running or sprinting), a push-off leans forward and braking sits back, the tail lags out of turns and the head looks into them, ears flop back with speed.
 
-**Every foot steps:** it is planted and sweeps back under the body as the rat moves on (so it doesn't slide), then lifts and flicks forward to plant again. Each gait has its own time on the ground and step height: a gallop is airborne longer, a sneak keeps low. Standing still, the legs settle under the body.
+**Every foot steps:** it is planted and sweeps back under the body as the rat moves on (so it doesn't slide), then lifts and flicks forward to plant again. Each kind has its own time on the ground and step height: a fast rat's feet are off the ground longer, a ninja keeps them low. Standing still, the legs settle under the body.
 
-**The plain rat trots like a real rat** (modelled on a reference video of a rat running across a wooden floor):
+**Every little rat on four legs trots like a real rat** (modelled on a reference video of a rat running across a wooden floor):
 - Diagonal pairs of feet step together, with quick short steps and the feet barely lifting.
 - The body stays low and level. With each step it rises a little, stretches as it pushes off and bunches as the feet come under it.
 - The spine rolls: the rump rises as each back foot pushes, the shoulders a moment later, and the hips swing a little toward the back foot on the ground.
 - The head is carried up and level, riding out the body's roll.
-- The tail is held out straight and low behind it with a slow sway and a ripple running down it. The model's tail was curled up in a loop, so it is unrolled when the model loads (`straightenTail` in `src/render/rat-models.js`): its centre line is traced from the root and laid out straight, and every vertex keeps its place around the line, so nothing tears.
+- The tail is held out straight and low behind it with a slow sway and a ripple running down it. The plain rat's model had its tail curled up in a loop, so it is unrolled when the model loads (`straightenTail` in `src/render/rat-models.js`): its centre line is traced from the root and laid out straight, and every vertex keeps its place around the line, so nothing tears. The fast rat's tail already trails behind it and the brood rat's lies along the ground. The bomb rat keeps its tail wrapped round its bomb, and the armoured, ninja and jetpack rats' tails are hidden under armour, a sword and a jetpack.
+
+Each kind trots with its own weight:
+
+| Rat | Its trot |
+|---|---|
+| Plain, jetpack | the trot above |
+| Fast | a running trot: longer strides with the feet off the ground longer, stretched out and leaning in, the tail held a little higher |
+| Armoured | heavier: slower, lower steps, a heavier bob and a roll from side to side |
+| Brood, bomb | loaded: the sack or the bomb rocks it from side to side and its hips sway more |
+| Ninja | low: crouched, with quick, quiet little steps, the nose down and glancing about |
+
+The upright rats are not trots: the shield rat stomps along on its hind legs behind its shield, and the healer and the ratling play Meshy's walking clips on their skeletons.
 
 **Each kind attacks the gate its own way**, wind-up, strike, impact, follow-through and recovery:
 

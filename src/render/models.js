@@ -44,10 +44,11 @@ const RAT_LOOKS = [
   { fur: 0xf09a44, dark: 0xc87632, light: 0xffc07a, belly: 0xffe4c0, body: [0.95, 0.86, 1.45] },     // jetpack rat: bright ginger
 ];
 export const SHIELDLESS = 10;
-// How each kind of rat moves (read by the walk cycle in ratanim.js):
-// 0 trot · 1 gallop (fast rat) · 2 heavy stomp (armored, shield) · 3 waddle (brood, bomb)
-// 4 sneak (ninja) · 5 hop (ratling)
-export const RAT_GAIT = [0, 1, 2, 2, 0, 3, 5, 3, 4, 0, 2];
+// How each kind of rat moves (read by the walk cycle in ratanim.js). Every rat on four
+// legs trots like a real rat, each with its own weight: 0 trot (plain, healer, jetpack)
+// · 1 fast trot (fast rat) · 2 heavy trot (armored) · 3 loaded trot (brood, bomb)
+// · 4 low trot (ninja) · 5 hop (ratling) · 6 upright stomp (shield rat, standing behind its shield)
+export const RAT_GAIT = [0, 1, 2, 6, 0, 3, 5, 3, 4, 0, 6];
 // how each kind attacks the gate (see ratanim.js): 0 lunge and bite · 1 dash, bite and
 // hop back · 2 armoured charge and slam · 3 shield bash · 4 heavy lunge · 5 jump and
 // bite · 6 brace and blow up · 7 spinning strike
