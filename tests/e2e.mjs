@@ -1409,7 +1409,7 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
         return { i, crowd, tex: !!(m.material.map && m.material.map.image), skin: !!(A.skinIndex && A.skinWeight && A.iClip), clips: Object.keys(B.clips), rows: B.tex.image.height, bones: B.bones };
       }
       m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox;
-      return { i, crowd, tex: !!(m.material.map && m.material.map.image), part: !!A.aPart, legs: [...A.aPart.array].some((p) => p >= 1 && p <= 4), phys: !!A.iPhys, y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) };
+      return { i, crowd, tex: !!(m.material.map && m.material.map.image), part: !!A.aPart, legs: [...A.aPart.array].some((p) => p >= 1 && p <= 4), phys: !!A.iPhys, y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y), tail: m.geometry.userData.tail ? +m.geometry.userData.tail.length.toFixed(2) : 0 };
     });
     const big = bigs.map((k) => {
       const key = k === 'giant' ? 'normal' : k, A = v.animGiant && v.animGiant[key];
@@ -1422,7 +1422,8 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   assert(r.misses === 0, 'a model failed to load');
   for (const q of r.small) {
     if (q.crowd) assert(q.tex && q.skin && q.bones > 24 && q.rows > 30 && ['idle', 'walk', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)), 'crowd rat not baked (with its extra bones): ' + JSON.stringify(q));
-    else assert(q.tex && q.part && q.legs && q.phys && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
+    // fitted to its length (a curled tail laid out straight behind it reaches past that: rat-models.js)
+    else assert(q.tex && q.part && q.legs && q.phys && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < (q.tail > 0.5 ? 3.0 : 2.4), 'rat model not fitted: ' + JSON.stringify(q));
   }
   for (const q of r.big) {
     if (q.animated) assert(q.tex && ['idle', 'walk', 'run', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)) && q.walkLoop > 0.3 && q.top > 1.5 && q.top < 4.2, 'animated boss incomplete: ' + JSON.stringify(q));
