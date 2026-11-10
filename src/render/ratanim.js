@@ -67,21 +67,35 @@ export const RAT_POSE_GLSL = [
   // a slow walk takes short steps, a run long ones, a sprint longer still
   "float stride = mix(0.55, 1.0, smoothstep(0.0, 1.0, spd)) * (1.0 + 0.3 * smoothstep(1.2, 2.6, spd));",
   "bool idleNow = alive && !still && !attacking && spd < 0.06;",
+  // how much it is on the move (0 standing: the legs settle under it)
+  "float mov = alive && !still ? smoothstep(0.02, 0.3, spd) : 0.0;",
   // quicker little steps when sneaking, slower heavy ones when stomping or waddling
   "if (alive && !still) ph *= G == 4 ? 1.45 : G == 2 ? 0.8 : G == 3 ? 0.85 : G == 5 ? 0.75 : 1.0;",
   "float jit = fract(iAnim.x * 0.137);",
   "float swing = sin(ph);",
   "float foot = 1.0 - abs(sin(ph));",
   "mat3 R = mat3(1.0);",
+  // the trot's beat: 0 at the middle of a diagonal pair's time on the ground, twice a cycle
+  "float m2 = 2.0 * ph - 1.9;",
+  "float legUp = 0.0;",
   "if (part >= 1 && part <= 4) {",
+  // diagonal pairs step together (front left with back right); the back foot a beat ahead
   "float off = (part == 1 || part == 4) ? 0.0 : 3.14159;",
-  "float amp = 0.8;",
-  "if (G == 1) { off = part <= 2 ? (part == 1 ? 0.0 : 0.35) : (part == 3 ? 2.6 : 2.95); amp = 1.05; }",
-  "else if (G == 5) { off = part <= 2 ? 0.0 : 0.5; amp = 0.9; }",
-  "else if (G == 2) amp = 0.6;",
-  "else if (G == 3) amp = 0.55;",
-  "else if (G == 4) amp = 0.7;",
-  "float a = sin(ph + off) * amp * stride;",
+  "float amp = 0.8, duty = 0.6, lift = 0.085;",
+  "if (G == 0) { off += part <= 2 ? 0.0 : 0.3; amp = 0.72; lift = part <= 2 ? 0.07 : 0.1; }",
+  "else if (G == 1) { off = part <= 2 ? (part == 1 ? 0.0 : 0.35) : (part == 3 ? 2.6 : 2.95); amp = 1.05; duty = 0.42; lift = 0.12; }",
+  "else if (G == 5) { off = part <= 2 ? 0.0 : 0.5; amp = 0.9; duty = 0.5; lift = 0.06; }",
+  "else if (G == 2) { amp = 0.6; duty = 0.66; lift = 0.09; }",
+  "else if (G == 3) { amp = 0.55; duty = 0.62; lift = 0.05; }",
+  "else if (G == 4) { amp = 0.7; duty = 0.7; lift = 0.045; }",
+  "duty -= 0.1 * smoothstep(1.2, 2.4, spd);",   // running: less time on the ground
+  // each foot is planted and sweeps back under the body as it moves on (so it doesn't
+  // slide), then lifts and flicks forward to plant again
+  "float u = fract((ph + off) / 6.28318), sw;",
+  "if (u < duty) sw = -1.0 + 2.0 * u / duty;",
+  "else { float s = (u - duty) / (1.0 - duty); sw = 1.0 - 2.0 * s * s * (3.0 - 2.0 * s); legUp = sin(s * 3.14159) * lift * stride; }",
+  "float a = sw * amp * stride * mix(0.25, 1.0, mov);",
+  "legUp *= mov * (1.0 - stg) * (1.0 - gup) * (attacking || !alive ? 0.0 : 1.0);",
   // knocked off balance: the legs splay; scrambling up after a throw: they paddle
   "a += stg * (part <= 2 ? -0.5 : 0.35) + gup * sin(uTime * 26.0 + float(part) * 1.9) * 0.7;",
   "if (attacking) {",
@@ -112,10 +126,19 @@ export const RAT_POSE_GLSL = [
   // a Meshy rat's tail bends along its length (the tip most) and a wave runs down it
   "float tt = aSub.z > 0.0 ? aSub.z : 1.0, bend = aSub.z > 0.0 ? tt * 1.6 : 1.0;",
   "float wave = (still || aSub.z <= 0.0) ? 0.0 : sin(uTime * 8.0 + ph * 0.5 - tt * 3.4) * 0.32 * tt;",
+  // a trotting rat holds its tail out straight and low behind it, swaying a little with
+  // the hips and a slow ripple running down it (not curled up)
+  "if (G == 0 && aSub.z > 0.0) {",
+  "lift = 0.04 * mov + (attacking ? 0.12 : 0.0);",   // (the model's curled tail is laid out straight at load: rat-models.js)
+  "wag = still ? 0.0 : (sin(ph - 0.9) * 0.08 * mov + sin(uTime * 1.7 + jit * 20.0) * 0.05) + sin(hit * 18.0) * 0.5 * hit + stg * sin(uTime * 20.0) * 0.4;",
+  "wave = still ? 0.0 : sin(ph - tt * 2.6) * 0.09 * tt * mov;",
+  "}",
   "R = rY(((wag + iPhys.x) * bend + wave) * bw) * rX(lift * bend * bw);",
   "} else if (part == 6) {",
   "float pitch = sin(ph * 2.0) * 0.07 - 0.04 * foot;",
   "float look = still ? 0.0 : sin(uTime * 1.3 + jit * 40.0) * 0.16 * smoothstep(0.4, 1.0, sin(uTime * 0.7 + jit * 23.0));",
+  // trotting, the head is carried up and level (it rides out the body's roll) and only nods a little
+  "if (G == 0) pitch = mov * (-0.16 - 0.02 * sin(m2) + 0.025 * sin(m2 - 1.2)) - 0.04 * (1.0 - mov) * foot;",
   "if (G == 1) pitch -= 0.12;",
   "if (G == 4) { pitch += 0.12; look = still ? 0.0 : sin(uTime * 4.0 + jit * 40.0) * 0.3 * step(0.6, sin(uTime * 1.1 + jit * 9.0)); }",
   "if (attacking) {",
@@ -147,12 +170,24 @@ export const RAT_POSE_GLSL = [
   "pp = RS * (p - aSubPivot) + aSubPivot;",
   "}",
   "vec3 q = R * (pp - aPivot.xyz) + aPivot.xyz;",
+  "q.y += legUp * bw;",   // a stepping foot lifts off the ground
+  // trotting, the spine rolls: the rump rises as each back foot pushes off, the shoulders
+  // a moment later, and the hips swing a little toward the back foot on the ground
+  // (planted feet stay where they are)
+  "if (G == 0 && !attacking) {",
+  "float rr = smoothstep(0.6, -0.6, q.z), keep = (part >= 1 && part <= 4) ? 1.0 - bw : 1.0;",
+  "q.y += keep * mov * (0.035 + stride * (0.03 * rr * sin(m2 - 0.7) + 0.012 * (1.0 - rr) * sin(m2 + 0.6)));",   // it stands a little taller on the move
+  "q.x += keep * mov * stride * 0.035 * rr * sin(ph + 0.4);",
+  "}",
   "float bob = abs(sin(ph)) * 0.05;",
   "float pitchB = sin(ph * 2.0) * 0.04;",
   "float rollB = sin(ph) * 0.05;",
   "vec3 off = vec3(0.0);",
   "vec3 sc = vec3(1.0, 1.0 - 0.06 * foot, 1.0 + 0.03 * foot);",
-  "if (G == 1) { bob = abs(sin(ph + 0.5)) * 0.1; pitchB = sin(ph) * 0.16; rollB = 0.0; sc = vec3(1.0, 1.0 - 0.05 * foot, 1.0 + 0.12 * sin(ph)); }",
+  // trotting: low and level, a small lift on each diagonal step, and the body stretching
+  // as it pushes off and bunching as the feet come under it
+  "if (G == 0) { bob = 0.02 * (0.5 + 0.5 * cos(m2)); pitchB = 0.022 * sin(m2); rollB = sin(ph - 0.6) * 0.03; sc = vec3(1.0, 1.0 - 0.02 * (0.5 - 0.5 * cos(m2)), 1.0 + 0.025 * sin(m2 - 0.5)); }",
+  "else if (G == 1) { bob = abs(sin(ph + 0.5)) * 0.1; pitchB = sin(ph) * 0.16; rollB = 0.0; sc = vec3(1.0, 1.0 - 0.05 * foot, 1.0 + 0.12 * sin(ph)); }",
   "else if (G == 2) { bob = abs(sin(ph)) * 0.035; rollB = sin(ph) * 0.09; sc = vec3(1.0 + 0.05 * foot, 1.0 - 0.09 * foot, 1.0); }",
   "else if (G == 3) { bob = abs(sin(ph)) * 0.03; rollB = sin(ph) * 0.17; pitchB *= 0.5; }",
   "else if (G == 4) { bob = abs(sin(ph)) * 0.015; rollB *= 0.3; pitchB = 0.07; off.y = -0.07; }",
@@ -255,7 +290,7 @@ export function ratMaterial(uniforms, gradientMap, map = null) {
       .replace('#include <common>', '#include <common>\nvarying float vFlash;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.96, 0.92) * vFlash;');
   };
-  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v6' : 'rat-anim-toon-v6');
+  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v7' : 'rat-anim-toon-v7');
   return mat;
 }
 

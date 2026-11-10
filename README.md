@@ -232,6 +232,15 @@ Each state has a priority: a higher one interrupts a lower one, a timed one (a s
 
 **Each kind of small rat moves its own way** (a gait in its model, read by the walk cycle on the graphics card, so hundreds of rats still cost nothing extra on the processor): plain, healer and jetpack rats trot; fast rats gallop; armoured and shield rats stomp; brood and bomb rats waddle; ninjas sneak; ratlings hop. The pace scales the stride (short steps when slowed, long strides and a forward lean when running or sprinting), a push-off leans forward and braking sits back, the tail lags out of turns and the head looks into them, ears flop back with speed.
 
+**Every foot steps:** it is planted and sweeps back under the body as the rat moves on (so it doesn't slide), then lifts and flicks forward to plant again. Each gait has its own time on the ground and step height: a gallop is airborne longer, a sneak keeps low. Standing still, the legs settle under the body.
+
+**The plain rat trots like a real rat** (modelled on a reference video of a rat running across a wooden floor):
+- Diagonal pairs of feet step together, with quick short steps and the feet barely lifting.
+- The body stays low and level. With each step it rises a little, stretches as it pushes off and bunches as the feet come under it.
+- The spine rolls: the rump rises as each back foot pushes, the shoulders a moment later, and the hips swing a little toward the back foot on the ground.
+- The head is carried up and level, riding out the body's roll.
+- The tail is held out straight and low behind it with a slow sway and a ripple running down it. The model's tail was curled up in a loop, so it is unrolled when the model loads (`straightenTail` in `src/render/rat-models.js`): its centre line is traced from the root and laid out straight, and every vertex keeps its place around the line, so nothing tears.
+
 **Each kind attacks the gate its own way**, wind-up, strike, impact, follow-through and recovery:
 
 | Rat | Attack |

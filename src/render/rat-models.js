@@ -18,7 +18,7 @@ import { gltfGeometry } from './tower-models.js';
 // tailBox: [x0, x1, y0, y1, z0, z1] the tail stays inside (the rest of the back half
 // is body, sack or bomb); tail: 0 for no moving tail; noJaw: no jaw to open
 export const RAT_FIT = {
-  0: { len: 2.0 },
+  0: { len: 2.0, straightTail: { low: -0.12, tip: 0.22 } },   // the curled-up tail laid out behind it, as a trotting rat carries it
   1: { len: 2.0 },
   2: { len: 2.05, tail: 0 },                  // armored rat: the armour covers its rump, no tail to swing
   3: { h: 1.25, upright: true, noJaw: true }, // shield rat: stands behind its shield (held up in front of its face)
@@ -88,6 +88,7 @@ export function ratGeometry(gltf, v) {
     part[i] = p; stiff[i] = 1 - w;
     piv[i * 3] = joints[p][0]; piv[i * 3 + 1] = joints[p][1]; piv[i * 3 + 2] = joints[p][2];
   }
+  if (fit.straightTail) straightenTail(geo, part, stiff, joints[5], fit.straightTail);
   // Smaller parts, each moving on its own: inside the head, the two ears (they flop
   // and twitch) and the jaw (it opens to bite and squeak); along the tail, how far
   // out each vertex is (0 at the root, 1 at the tip), so the tail bends as a curve
@@ -131,6 +132,90 @@ export function ratGeometry(gltf, v) {
   geo.setAttribute('aPivot', new THREE.BufferAttribute(piv4, 4));
   geo.computeBoundingSphere();
   return { geo, map };
+}
+
+// Unrolls a tail the model has curled up into one held out behind the rat, the way a
+// real rat carries it as it trots: along the ground, a little low, the tip lifting.
+// The tail's centre line is traced from its root (a slab of the tail's vertices at a
+// time), then every vertex near it keeps its place around the line while the line is
+// laid out straight; the root stays where it joins the body, so nothing tears.
+// opt: { low: how far the middle droops (rad), tip: how far the tip lifts (rad) }
+function straightenTail(geo, part, stiff, joint, opt) {
+  const pos = geo.attributes.position, nor = geo.attributes.normal, n = pos.count;
+  const V = new THREE.Vector3(), J = new THREE.Vector3(...joint);
+  const strong = [];
+  for (let i = 0; i < n; i++) if (part[i] === 5 && stiff[i] < 0.5) strong.push(i);
+  if (strong.length < 30) return;
+  const P = (i) => new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+  const centroid = (ids) => { const c = new THREE.Vector3(); for (const i of ids) c.add(P(i)); return c.divideScalar(ids.length); };
+  // the root: the tail vertices closest to the tail's joint
+  let dmin = Infinity;
+  for (const i of strong) dmin = Math.min(dmin, P(i).distanceTo(J));
+  const root = strong.filter((i) => P(i).distanceTo(J) < dmin + 0.05);
+  const C = [centroid(root)];
+  const near = strong.filter((i) => P(i).distanceTo(C[0]) < 0.16);
+  let d = centroid(near).sub(C[0]).normalize();
+  // march along it: the next point is the middle of the vertices in a thin slab ahead
+  const h = 0.04, rSel = 0.1;
+  for (let k = 0; k < 80; k++) {
+    const ahead = C[k].clone().addScaledVector(d, h);
+    let ids = [];
+    for (const slab of [0.6, 1.2]) {   // a wider slab where the tail's rings are far apart
+      ids = strong.filter((i) => { V.copy(P(i)).sub(ahead); const along = V.dot(d); return Math.abs(along) < h * slab && V.addScaledVector(d, -along).length() < rSel; });
+      if (ids.length >= 3) break;
+    }
+    if (ids.length < 3) break;
+    const c = centroid(ids);
+    const nd = c.clone().sub(C[k]);
+    if (nd.length() < 1e-4) break;
+    d = d.multiplyScalar(0.35).add(nd.normalize().multiplyScalar(0.65)).normalize();
+    C.push(c);
+  }
+  if (C.length < 4) return;
+  // smooth the traced line (it wobbles a little where the tail's rings are sparse)
+  for (let it = 0; it < 3; it++) {
+    const sm2 = C.map((c) => c.clone());
+    for (let k = 1; k < C.length - 1; k++) sm2[k].copy(C[k - 1]).add(C[k + 1]).multiplyScalar(0.25).addScaledVector(C[k], 0.5);
+    for (let k = 1; k < C.length - 1; k++) C[k].copy(sm2[k]);
+  }
+  const s = [0], T = [];
+  for (let k = 1; k < C.length; k++) s.push(s[k - 1] + C[k].distanceTo(C[k - 1]));
+  for (let k = 0; k < C.length; k++) T.push(C[Math.min(k + 1, C.length - 1)].clone().sub(C[Math.max(k - 1, 0)]).normalize());
+  const S = s[s.length - 1];
+  // the new line: it leaves the body the way the tail did, then runs straight back
+  // (drooping a little, the tip lifting)
+  const t0 = T[0], th0 = Math.atan2(t0.y, -t0.z);
+  const smooth = (a, b, x) => { const u = Math.min(1, Math.max(0, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+  const dirAt = (u) => { const th = th0 + ((opt.low ?? -0.12) - th0) * smooth(0, 0.3, u) + (opt.tip ?? 0.2) * smooth(0.55, 1, u); return new THREE.Vector3(0, Math.sin(th), -Math.cos(th)); };
+  const blendAt = (u) => smooth(0, 0.06, u);
+  const C2 = [C[0].clone()], T2 = [];
+  for (let k = 1; k < C.length; k++) C2.push(C2[k - 1].clone().addScaledVector(dirAt((s[k - 1] + s[k]) / 2 / S), s[k] - s[k - 1]));
+  for (let k = 0; k < C.length; k++) T2.push(dirAt(s[k] / S).lerp(T[k], 1 - blendAt(s[k] / S)).normalize());
+  const q = new THREE.Quaternion(), A = new THREE.Vector3(), B = new THREE.Vector3(), O = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    if (part[i] !== 5) continue;
+    const p = P(i);
+    // the nearest point of the centre line (a cap past the tip belongs to the last point)
+    let best = Infinity, bk = 0, bt = 0;
+    for (let k = 0; k < C.length - 1; k++) {
+      A.copy(C[k + 1]).sub(C[k]); const L2 = A.lengthSq();
+      const t = Math.min(1, Math.max(0, B.copy(p).sub(C[k]).dot(A) / L2));
+      const dd = B.copy(C[k]).addScaledVector(A, t).distanceTo(p);
+      if (dd < best) { best = dd; bk = k; bt = t; }
+    }
+    if (best > 0.12) continue;   // the rump, not the tail
+    const c = C[bk].clone().lerp(C[bk + 1], bt), tan = T[bk].clone().lerp(T[bk + 1], bt).normalize();
+    const c2 = C2[bk].clone().lerp(C2[bk + 1], bt), tan2 = T2[bk].clone().lerp(T2[bk + 1], bt).normalize();
+    const w = blendAt((s[bk] + (s[bk + 1] - s[bk]) * bt) / S);
+    q.setFromUnitVectors(tan, tan2);
+    O.copy(p).sub(c).applyQuaternion(q);
+    p.lerp(O.add(c2), w);
+    pos.setXYZ(i, p.x, p.y, p.z);
+    if (nor) { V.set(nor.getX(i), nor.getY(i), nor.getZ(i)).applyQuaternion(q.slerp(new THREE.Quaternion(), 1 - w)); nor.setXYZ(i, V.x, V.y, V.z); }
+  }
+  pos.needsUpdate = true; if (nor) nor.needsUpdate = true;
+  geo.computeBoundingBox();
+  geo.userData.tail = { points: C.length, length: S };
 }
 
 // A cheap stand-in for a model (for its ink outline, which needs no texture):
