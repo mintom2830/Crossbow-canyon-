@@ -652,9 +652,14 @@ await test('rat animations: burrow spawn, walk cycle, gate attack, defeat flip a
     })));
   });
   assert(walk.n > 20 && walk.distinct > walk.n * 0.5, `walk phases ${walk.distinct} for ${walk.n} rats`);
-  // the three rat types of wave 3 are drawn, each with its own model
-  const types = await g(page, () => window.__cc.view.ratMeshes.map((m) => m.count));
-  assert(types.length === 11 && types.slice(0, 3).every((n) => n > 0), `rat types drawn: ${types.join('/')}`);
+  // every kind of rat on the road is drawn, each with its own model (wave 3 mixes
+  // plain and armoured rats, and on most seeds fast ones)
+  const types = await g(page, () => {
+    const v = window.__cc.view, onRoad = new Array(v.ratMeshes.length).fill(0);
+    for (const e of window.__cc.sim.enemies) if (e.type === 0 && e.alive) onRoad[e.v || 0]++;
+    return { drawn: v.ratMeshes.map((m) => m.count), onRoad };
+  });
+  assert(types.drawn.length === 11 && types.drawn[0] > 0 && types.drawn[2] > 0 && types.onRoad.every((n, i) => i === 3 || n === 0 || types.drawn[i] > 0), `rat types drawn: ${types.drawn.join('/')} on the road ${types.onRoad.join('/')}`);
   assert(walk.minS >= 7.99, 'a rat appeared before the burrow');
   // attacking: rats at the gate carry an attack phase in [0, 1)
   const atk = await g(page, () => {
