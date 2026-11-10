@@ -19,6 +19,7 @@ import { buildFarmer, FARMER_JOINTS } from './farmer.js';
 import { FarmerRig } from './farmer-anim.js';
 import { Spring, setWorldQuaternion } from './ik.js';
 import { bakeCrowd, crowdMaterial, crowdInkPose, crowdRow } from './crowdanim.js';
+import { EnemyAnim, ST } from './enemyanim.js';
 import { ARSENAL_LOOK } from './arsenal-models.js';
 import { isArsenal } from '../arsenal.js';
 import { turn } from '../town.js';
@@ -217,6 +218,11 @@ export class View {
       phys.setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute('iPhys', phys);
       (this.ratPhys || (this.ratPhys = [])).push(phys);
+      // the animation controller's state per rat (see enemyanim.js and iState in ratanim.js)
+      const state = new THREE.InstancedBufferAttribute(new Float32Array(1400 * 4), 4);
+      state.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('iState', state);
+      (this.ratState || (this.ratState = [])).push(state);
       const mesh = new THREE.InstancedMesh(geo, ratMat, 1400);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
@@ -227,6 +233,7 @@ export class View {
       const inkGeo = inkNormals(gruntInkGeometry(v));
       inkGeo.setAttribute('iAnim', anim);
       inkGeo.setAttribute('iPhys', phys);
+      inkGeo.setAttribute('iState', state);
       inkInstanced(mesh, INK_PX.rat, { geo: inkGeo, rat: this.ratUniforms });
       this.ratMeshes.push(mesh); this.ratAnims.push(anim);
     }
@@ -640,15 +647,23 @@ export class View {
   // frozen mid-move while stunned.
   _driveRig(v, e, dt, fighting, sc, style) {
     const R = v.rig;
-    if (e.stun > 0 || e.frozen > 0 || e.held > 0) { R.hold(true); return; }
+    // the animation controller (enemyanim.js) decides the state; the clips play it
+    const AN = e._an || (e._an = new EnemyAnim(e.id));
+    const atk = e.atGate && fighting ? attackPhase(e.attackT, CFG.giant.gateRate) : -1;
+    const roar = R.oneShot === 'roar' && R.busy() ? R.actions.roar.time / R.actions.roar.getClip().duration : -1;
+    const was = AN.state;
+    AN.update(e, dt, e.speed || 1, atk, roar);
+    v.an = AN;
+    if (AN.state === ST.FROZEN) { R.hold(true); return; }          // held in the ice
     R.hold(false);
-    if (e.atGate) {
-      if (fighting) R.attackAt(attackPhase(e.attackT, CFG.giant.gateRate)); else R.go('idle', 0.3);
-      return;
-    }
-    // a hard hit (a flinch that starts strong) makes it stagger, now and then
+    if (AN.state === ST.STUNNED) { R.go('idle', 0.3); R.mixer.timeScale = 0.45; return; }   // dazed: swaying in slow motion
+    if (atk >= 0) { R.attackAt(atk); return; }                      // anticipation, the blow on the gate's hit, follow-through
+    if (e.atGate) { R.go('idle', 0.3); return; }
+    // a heavy hit makes it stagger (on the upper body: the legs keep walking); a
+    // critical one knocks it off balance for longer; light hits only flinch (BodyMotion)
     v.hitCd = (v.hitCd || 0) - dt;
-    if (e.hitT > CFG.hitFlinch * 0.8 && v.hitCd <= 0 && !R.busy()) { R.play('hit', 0.1, 1.5); v.hitCd = 2.5; if (v.mover) v.mover.kick(0.8); }
+    const big = (AN.state === ST.HEAVY || AN.state === ST.STAGGER) && was !== AN.state;
+    if (big && v.hitCd <= 0 && !(R.busy() && R.oneShot === 'hit')) { R.play('hit', 0.1, AN.state === ST.STAGGER ? 1.05 : 1.5); v.hitCd = 1.2; if (v.mover) v.mover.kick(AN.state === ST.STAGGER ? 1.2 : 0.8); }
     // now and then a boss stops to roar (the clip; the ring goes out at its peak)
     if (e.type === T_BOSS && style !== 'mole' && R.has('roar')) {
       v.roarT = (v.roarT ?? 4 + Math.random() * 5) - dt;
@@ -675,6 +690,9 @@ export class View {
     P.speed = e.stun > 0 || e.frozen > 0 || e.held > 0 ? 0 : (e.vs || 0) / Math.max(0.5, sc);
     P.accel += ((P.speed - P.lastSpeed) / dt - P.accel) * Math.min(1, dt * 8); P.lastSpeed = P.speed;
     P.t = this.time;
+    // the controller's reactions: a light flinch, a stagger, dazed
+    const AN = v.an;
+    P.flinch = AN ? AN.hurt : 0; P.stagger = AN ? AN.stagger : 0; P.dazed = !!(AN && AN.state === ST.STUNNED);
     const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
     P.step = R.state === 'walk' || R.state === 'run' ? u : 0;
     // the jaw: wide for a roar, a snarl through a blow, open from a hit or as it dies
@@ -948,8 +966,9 @@ export class View {
       if (clip === 'idle') row = crowdRow(B, 'idle', this.time + e.phase, true);
       else { const c = B.clips[clip], loop = C.loop[clip] * sc; row = crowdRow(B, clip, ((e.walk || 0) / loop) * c.duration + e.phase, true); }
     }
-    // a big hit makes it stagger now and then
-    if (e.hitT > CFG.hitFlinch * 0.85 && !(this.time - (e._hitT ?? -9) < 1.6)) e._hitT = this.time;
+    // a heavy or critical hit (the animation controller's call) makes it stagger
+    const AN = e._an;
+    if (AN && AN.t === 0 && (AN.state === ST.HEAVY || AN.state === ST.STAGGER || AN.state === ST.GETUP) && !(this.time - (e._hitT ?? -9) < 0.8)) e._hitT = this.time;
     if (clip !== e._clip) { e._from = e._row ?? row; e._blend = 1; e._clip = clip; }
     e._blend = Math.max(0, (e._blend || 0) - dt / 0.2);
     e._row = row;
@@ -1051,6 +1070,7 @@ export class View {
     const mesh = this.ratMeshes[v], anim = this.ratAnims[v];
     geo.setAttribute('iAnim', anim);
     geo.setAttribute('iPhys', this.ratPhys[v]);
+    geo.setAttribute('iState', this.ratState[v]);
     mesh.geometry = geo;
     mesh.material = ratMaterial(this.ratUniforms, toonGradient(), map);
     const ink = mesh.userData.ink;
@@ -1060,6 +1080,7 @@ export class View {
       inkNormals(ig);
       ig.setAttribute('iAnim', anim);
       ig.setAttribute('iPhys', this.ratPhys[v]);
+      ig.setAttribute('iState', this.ratState[v]);
       ink.geometry = ig;
     }
     (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
@@ -1590,6 +1611,20 @@ export class View {
         ra[o + 1] = e.stun > 0 ? -1 : Math.max(0, e.hitT / CFG.hitFlinch);
         ra[o + 2] = e.atGate && fighting ? attackPhase(e.attackT, CFG.grunt.gateRate) : -1;
         ra[o + 3] = 0;
+        // the animation controller (enemyanim.js) decides its state: pace, push-off and
+        // braking, turns, the gate attack and recovery, light and heavy hits, staggers,
+        // throws and getting back up, stunned and frozen holds, its special
+        const AN = e._an || (e._an = new EnemyAnim(e.id));
+        const NJ = CFG.ratTypes[NINJA].dodge, JT = CFG.ratTypes[JET].jet;
+        const spc = e.v === JET && e.boost > 0 ? 1 - e.boost / JT.t
+          : e.v === NINJA && e.dodgeT > NJ.every - 0.42 ? 1 - (e.dodgeT - (NJ.every - 0.42)) / 0.42
+          : e._castT !== undefined && this.time - e._castT < 0.8 ? (this.time - e._castT) / 0.8 : -1;
+        AN.update(e, dt, e.speed || 1, ra[o + 2], spc);
+        if (e.frozen > 0) ra[o + 1] = -1;   // frozen: held still in the ice
+        const sa = this.ratState[vt].array;
+        sa[o] = AN.speedK; sa[o + 1] = AN.lean; sa[o + 2] = Math.max(AN.stagger, AN.heavy * 0.5); sa[o + 3] = AN.getup;
+        // slowed by frost: now and then a fleck of ice glints off it
+        if (e.slow > 0 && !(e.frozen > 0) && this.moteBudget >= 1 && Math.random() < 0.02) { this.moteBudget--; this.fx.twinkle(ex + (Math.random() - 0.5) * 0.6 * sc, y + 0.4 * sc, ez + (Math.random() - 0.5) * 0.6 * sc, 0.3, 0xbfe9ff); }
         // secondary motion: the tail lags out of a turn on a spring and whips back, the
         // head looks into the turn, and a rat thumping down from a throw squashes
         const bank = e.bank || 0;
@@ -1608,7 +1643,7 @@ export class View {
           e._ea = clampN(ea + e._ev * k, -0.3, 0.9);
         }
         const pa = this.ratPhys[vt].array;
-        pa[o] = e._ta || 0; pa[o + 1] = clampN(bank * 0.12, -0.45, 0.45); pa[o + 2] = e._sq || 0; pa[o + 3] = e._ea || 0;
+        pa[o] = e._ta || 0; pa[o + 1] = clampN(bank * 0.12, -0.45, 0.45) + AN.look; pa[o + 2] = e._sq || 0; pa[o + 3] = e._ea || 0;
         const CR = this.crowd && this.crowd[vt];
         if (CR) this._crowdPose(CR, e, sc, dt, fighting, CR.clip.array, o);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
@@ -1858,6 +1893,7 @@ export class View {
         const o = gn * 4;
         ra[o] = d.dir; ra[o + 1] = 0; ra[o + 2] = -1; ra[o + 3] = d.spent ? -Math.max(d.k, 0.001) : Math.max(d.k, 0.001);
         this.ratPhys[vt].array.fill(0, o, o + 4);
+        this.ratState[vt].array.fill(0, o, o + 4);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
         const b = (1 - d.k) * sc / 1.1;
         _p.set(d.x, (d.gy || 0) + 0.06, d.z); _s.set(0.85 * b, 1, 1.6 * b); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m);
@@ -1905,6 +1941,7 @@ export class View {
       if (gm.instanceColor) gm.instanceColor.needsUpdate = true;
       RA[i].needsUpdate = true;
       this.ratPhys[i].needsUpdate = true;
+      this.ratState[i].needsUpdate = true;
       if (this.crowd && this.crowd[i]) this.crowd[i].clip.needsUpdate = true;
     }
     im.count = icn; im.instanceMatrix.needsUpdate = true;

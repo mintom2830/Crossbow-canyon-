@@ -919,6 +919,7 @@ export class Sim {
     e.hp -= d;
     e.flash = 0.09;
     e.hitT = CFG.hitFlinch;
+    e.hitAmt = d / Math.max(1, e.maxHp);   // how hard the hit was, for the drawing (light flinch to stagger)
     if (e.hp <= 0) { this._kill(e); return true; }
     return false;
   }
@@ -2081,7 +2082,7 @@ export class Sim {
   _shieldHit(e, dmg, L) {
     const d = dmg * (L.armorPierce ? CFG.ratTypes[e.v].shieldPierce : 1);
     e.shield -= d;
-    e.hitT = CFG.hitFlinch * 0.6;
+    e.hitT = CFG.hitFlinch * 0.6; e.hitAmt = 0.01;   // a blow on the shield: a small jolt
     this.stats.blocked = (this.stats.blocked || 0) + Math.min(d, d + e.shield);
     if (e.shield > 0) { this.events.push({ type: 'block', x: e.x, z: e.z, id: e.id }); return false; }
     const rest = -e.shield / (L.armorPierce ? CFG.ratTypes[e.v].shieldPierce : 1);

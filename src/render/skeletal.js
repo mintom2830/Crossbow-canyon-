@@ -235,9 +235,9 @@ export class BodyMotion {
     const by = (n) => root.getObjectByName(n);
     this.b = { hips: by('Hips'), spine: by('Spine'), spine1: by('Spine01'), spine2: by('Spine02') };
     this.legs = ['Left', 'Right'].map((s) => ({ up: by(s + 'UpLeg'), lo: by(s + 'Leg'), ft: by(s + 'Foot') })).filter((l) => l.up && l.lo && l.ft);
-    this.lean = new Spring(30, 8); this.bank = new Spring(25, 7); this.t = Math.random() * 10; this.drop = 0;
+    this.lean = new Spring(30, 8); this.bank = new Spring(25, 7); this.flinch = new Spring(160, 14); this.t = Math.random() * 10; this.drop = 0;
   }
-  // st: { speed, accel, turn } in the character's own size; ground(x, z); baseY:
+  // st: { speed, accel, turn, flinch, stagger, dazed } in the character's own size; ground(x, z); baseY:
   // the ground under its centre; holder: the object to lower; scale: world per holder unit
   update(dt, st, ground, baseY, holder, scale) {
     if (dt <= 0) return;
@@ -246,8 +246,12 @@ export class BodyMotion {
     const lean = this.lean.update(Math.max(-0.12, Math.min(0.12, (st.accel || 0) * 0.04)), dt);
     const bank = this.bank.update(Math.max(-0.1, Math.min(0.1, -(st.turn || 0) * (st.speed || 0) * 0.05)), dt);
     const breathe = Math.sin(this.t * 1.9) * idle;
-    if (b.spine) b.spine.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.5, 0, bank * 0.6)));
-    if (b.spine1) b.spine1.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.3 - breathe * 0.015, 0, bank * 0.4)));
+    // reactions (from the enemy animation controller): a light hit jerks the chest
+    // back, a stagger rocks it off balance, a dazed one sways
+    const fl = this.flinch.update((st.flinch || 0) * 0.14 + (st.stagger || 0) * 0.22, dt);
+    const rock = (st.stagger || 0) * Math.sin(this.t * 13) * 0.12 + (st.dazed ? Math.sin(this.t * 3.1) * 0.09 : 0);
+    if (b.spine) b.spine.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.5 - fl * 0.5, 0, bank * 0.6 + rock)));
+    if (b.spine1) b.spine1.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.3 - breathe * 0.015 - fl * 0.5, 0, bank * 0.4 + rock * 0.6)));
     if (b.spine2) b.spine2.quaternion.multiply(_q.setFromEuler(_e.set(-breathe * 0.025, 0, 0)));
     // feet on a hillside
     if (!ground || !this.legs.length) return;
