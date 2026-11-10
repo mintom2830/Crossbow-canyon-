@@ -17,9 +17,6 @@
 //   hat      the crown, topknot or hood on top of the head: it wobbles on a spring
 //            with every step, turn and hit
 // Bones are added once to the loaded model, before it is cloned for each enemy.
-// The enemies move as they did when the game began, so on them these bones are held
-// still (they keep the skin re-hung where it belongs: the healer's cloak and the
-// ratling's tail off the hand); only the farmer's hat moves on its spring.
 import * as THREE from 'three';
 
 // which parts each model has, and per-model tuning:
@@ -412,5 +409,46 @@ export class PartMover {
       p.vz += ((tz - p.z) * stiff - p.vz * damp) * k; p.z += p.vz * k;
       turn(p.bone, p.rest, p.ax, p.x, p.y, p.z);
     }
+  }
+}
+
+// For the crowd rats (baked): the same parts moved by time and clip alone (no
+// springs: the bake has no idea where each rat is going), written before each frame
+// is sampled. clip: the clip's name; t: seconds into it; dur: its length (so a loop
+// still loops).
+export function poseBakedParts(root, added, clip, t, dur) {
+  const moving = clip === 'walk' ? 1 : clip === 'run' ? 1.8 : 0.25, u = t / Math.max(1e-3, dur);
+  // whole waves per loop, so the baked loop has no seam
+  const cyc = (hz) => Math.PI * 2 * Math.max(1, Math.round(hz * Math.max(0.2, dur))) * u;
+  const once = Math.sin(Math.min(1, u) * Math.PI);   // up and back down over a one-shot clip
+  for (const a of added) {
+    const b = root.getObjectByName(a.name);
+    if (!b) continue;
+    if (!b.userData.rest) b.userData.rest = b.quaternion.clone();
+    let x = 0, y = 0, z = 0;
+    if (a.kind === 'ear') {
+      x = (-0.22 * moving - 0.12 * Math.abs(Math.sin(cyc(0.9))) * moving) * a.k;
+      z = -a.side * 0.12 * a.k;
+      if (clip === 'hit') x -= 0.5 * a.k * once;
+      if (clip === 'die') x -= 0.5 * a.k * Math.min(1, u * 2);
+      if (clip === 'cast') x += 0.25 * a.k * once;
+      if (clip === 'idle') x -= 0.25 * a.k * Math.pow(Math.max(0, Math.sin(cyc(0.4))), 16);
+    } else if (a.kind === 'tail') {
+      y = Math.sin(cyc(1.1) - a.k * 2.4) * (0.12 + 0.12 * a.k) * (0.6 + 0.4 * moving);
+      x = 0.04 + 0.06 * moving * a.k;
+      if (clip === 'die') x -= 0.25 * Math.min(1, u * 2);
+    } else if (a.kind === 'cape') {
+      x = 0.07 * moving + 0.03 * Math.sin(cyc(0.9) + a.k);
+      if (clip === 'cast') x += 0.14 * once;
+    } else if (a.kind === 'hat') {
+      x = (Math.sin(cyc(1.8)) * 0.06 * moving - 0.04 * moving) * a.k;
+      z = Math.sin(cyc(0.9)) * 0.04 * moving * a.k;
+      if (clip === 'hit' || clip === 'cast') x -= 0.2 * a.k * once;
+    } else if (a.kind === 'jaw') {
+      x = clip === 'attack' ? 0.45 * once : clip === 'hit' || clip === 'die' ? 0.35 : clip === 'cast' ? 0.3 * once : 0;
+    } else if (a.kind === 'fingers') {
+      x = clip === 'attack' ? 0.15 + 1.0 * once : clip === 'hit' ? 0.15 - 0.45 * once : clip === 'cast' ? 0.15 - 0.5 * once : clip === 'die' ? 0.5 * Math.min(1, u * 2) : 0.15 + 0.12 * Math.sin(cyc(1.8) + a.side) * moving;
+    }
+    turn(b, b.userData.rest, a.ax, x, y, z);
   }
 }

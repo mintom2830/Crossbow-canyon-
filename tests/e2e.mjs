@@ -1171,15 +1171,27 @@ await test('satisfying effects: towers recoil and spring back, arrows burst and 
     out.splats = v.fx.dust.items.length; out.drops = v.fx.drops.items.length;
     out.splatColours = new Set(v.fx.dust.items.map((d) => d.color)).size;
     s.events.length = 0;
-    // a blast knocks a rat back (as when the game began): the simulation moves it at once,
-    // and it is drawn flying back along the road in a hop, then lands where the simulation put it
+    // a blast throws a rat back: it flies up and back down the road under gravity, turning
+    // head over heels, is drawn up in the air, then thumps down and slides to a stop
     const k = s.enemies.find((e) => e.alive && e.type === 0 && e.s > 30 && !(e.stun > 0)) || s.enemies.find((e) => e.alive && e.type === 0 && !(e.stun > 0));
     v.sync(s, 1 / 60);
-    k.s -= 1.5; s._placeEnemy(k);
-    v.sync(s, 1 / 60);
-    out.knock = { kb: k._kb, sliding: k._vs - k.s };
-    for (let i = 0; i < 30; i++) v.sync(s, 1 / 60);
-    out.knock.landed = Math.abs(k._vs - k.s);
+    s._kick(k, 1.5, k.x - 1, k.z);
+    out.knock = { kv: k.kv, flip: k.spinV < 0, peak: 0, drawnUp: 0, lands: 0 };
+    const vt = k.v || 0;
+    for (let i = 0; i < 70; i++) {
+      s._kickPhysics(k, 1 / 60); s._placeEnemy(k);   // the battle is held still: move just this rat
+      out.knock.lands += s.events.filter((ev) => ev.type === 'land' && ev.id === k.id).length;
+      for (const ev of s.events) if (ev.type === 'land') v.handleEvent(ev, s);
+      s.events.length = 0;
+      v.alpha = 1; v.sync(s, 1 / 60);
+      if (k.hy > out.knock.peak) {
+        out.knock.peak = k.hy;
+        // its instance is drawn up off the ground
+        const idx = s.enemies.filter((q) => q.type === 0 && (q.v || 0) === vt && !(q.v === 3 && !(q.shield > 0))).indexOf(k), m = new (v.camera.matrix.constructor)();
+        if (idx >= 0 && idx < v.ratMeshes[vt].count) { v.ratMeshes[vt].getMatrixAt(idx, m); out.knock.drawnUp = m.elements[13] - (k.gy || 0); }
+      }
+    }
+    out.knock.landed = k.hy === 0 && k.kv === 0;
     // stunned rats: dizzy stars circle their heads
     for (const e of s.enemies.filter((q) => q.alive && q.type === 0).slice(0, 5)) e.stun = 3;
     v.sync(s, 1 / 60);
@@ -1199,7 +1211,7 @@ await test('satisfying effects: towers recoil and spring back, arrows burst and 
   assert(r.stuck === 1 && r.boltsDrawn >= 1, `stuck arrows: ${r.stuck}, drawn ${r.boltsDrawn}`);
   assert(r.falling, 'arrows should drop off a fallen giant');
   assert(r.splats >= 1 && r.drops >= 3, `splash: ${r.splats} splats, ${r.drops} droplets`);
-  assert(r.knock.kb > 1.4 && r.knock.sliding > 1 && r.knock.landed < 0.01, 'knockback hop: ' + JSON.stringify(r.knock));
+  assert(r.knock.kv < -5 && r.knock.flip && r.knock.peak > 0.5 && r.knock.drawnUp > 0.4 && r.knock.lands === 1 && r.knock.landed, 'knockback flight: ' + JSON.stringify(r.knock));
   assert(r.dizzy >= 15, 'dizzy stars: ' + r.dizzy);
   assert(r.coin.sy < r.coin.sx * 0.75, 'a bouncing coin should squash: ' + JSON.stringify(r.coin));
   await page.screenshot({ path: `${SHOTS}/effects.png` });
@@ -1392,7 +1404,7 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
         return { i, crowd, tex: !!(m.material.map && m.material.map.image), skin: !!(A.skinIndex && A.skinWeight && A.iClip), clips: Object.keys(B.clips), rows: B.tex.image.height, bones: B.bones };
       }
       m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox;
-      return { i, crowd, tex: !!(m.material.map && m.material.map.image), part: !!A.aPart, legs: [...A.aPart.array].some((p) => p >= 1 && p <= 4), y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) };
+      return { i, crowd, tex: !!(m.material.map && m.material.map.image), part: !!A.aPart, legs: [...A.aPart.array].some((p) => p >= 1 && p <= 4), phys: !!A.iPhys, y0: b.min.y, size: Math.max(b.max.z - b.min.z, b.max.y - b.min.y) };
     });
     const big = bigs.map((k) => {
       const key = k === 'giant' ? 'normal' : k, A = v.animGiant && v.animGiant[key];
@@ -1405,11 +1417,13 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   assert(r.misses === 0, 'a model failed to load');
   for (const q of r.small) {
     if (q.crowd) assert(q.tex && q.skin && q.bones > 24 && q.rows > 30 && ['idle', 'walk', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)), 'crowd rat not baked (with its extra bones): ' + JSON.stringify(q));
-    else assert(q.tex && q.part && q.legs && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
+    else assert(q.tex && q.part && q.legs && q.phys && Math.abs(q.y0) < 0.02 && q.size > 0.9 && q.size < 2.4, 'rat model not fitted: ' + JSON.stringify(q));
   }
   for (const q of r.big) {
     if (q.animated) assert(q.tex && ['idle', 'walk', 'run', 'attack', 'hit', 'die'].every((c) => q.clips.includes(c)) && q.walkLoop > 0.3 && q.top > 1.5 && q.top < 4.2, 'animated boss incomplete: ' + JSON.stringify(q));
-    if (!q.animated) assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
+    // more moving parts than Meshy's rig: ears, jaw, tail, cape, fingers, hat, belly (see articulate.js)
+    if (q.animated) assert(q.parts.length >= 2, 'boss has no extra moving parts: ' + JSON.stringify(q));
+    else assert(q.tex && q.torso > 0 && q.skinned && q.top > 1.5 && q.top < 4.2, 'boss model not fitted: ' + JSON.stringify(q));
   }
   for (const a of animated) assert(a === 'farmer' || r.big.some((q) => q.animated && (q.k === a || (a === 'giant' && q.k === 'giant'))) || r.small.some((q) => q.crowd && 'rat-' + q.i === a), 'animated model not used: ' + a);
   // the Meshy farmer (when shipped) takes over from the code-built one: his clips, the
@@ -1437,12 +1451,12 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   // giants and bosses are skinned on bones (with a skinned outline); rigged ones walk on their clips
   const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => {
     let skin = null; q.group.traverse((o) => { if (!skin && o.isSkinnedMesh && o.name !== 'ink') skin = o; });
-    // the bones added for ears, capes and so on hold still (the enemies move as when the game began)
-    const added = q.model ? q.model.added.map((a) => skin && skin.skeleton.bones.find((b) => b.name === a.name)).filter(Boolean) : [];
+    const parts = q.mover ? q.mover.parts : [];
     return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), rig: q.rig ? q.rig.state : null, leg: q.legL.rotation.x,
-      still: added.every((b) => b.quaternion.angleTo(b.userData.rest || b.quaternion) < 1e-6), mover: 'mover' in q };
+      parts: parts.length, moved: parts.filter((p) => p.bone.quaternion.angleTo(p.rest) > 0.01).map((p) => p.name) };
   }));
-  assert(gi.filter((q) => q.rig).every((q) => q.bones > 24 && q.still && !q.mover && q.rig !== 'roar'), 'rigged giants: extra parts should hold still, no roars: ' + JSON.stringify(gi));
+  // the extra parts of a rigged giant move on their own as it walks (ears flop, a cape billows, ...)
+  assert(gi.filter((q) => q.rig).every((q) => q.parts >= 2 && q.bones > 24 && q.moved.length >= 1), 'extra parts do not move: ' + JSON.stringify(gi));
   assert(gi.length >= 2 && gi.every((q) => q.tex && q.skin && q.bones >= 6 && q.ink), 'giants not drawn from their skinned models: ' + JSON.stringify(gi));
   assert(gi.every((q) => q.rig ? ['walk', 'run', 'idle'].includes(q.rig) : Math.abs(q.leg) > 0.05) && gi.some((q) => q.rig === 'walk' || q.rig === 'run' || Math.abs(q.leg) > 0.05), 'giants do not walk: ' + JSON.stringify(gi));
   // the crowd rats on baked skeletons show walking frames, each at its own point in the stride

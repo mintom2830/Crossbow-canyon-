@@ -50,13 +50,12 @@ const BOSS_SPLAT = { warlord: 0xd8907c, baron: 0x9fb6d8, king: 0xbd8ade, slime: 
 const splatOf = (e) => (e.kind === T_GRUNT ? RAT_SPLAT[e.v] || RAT_SPLAT[0] : BOSS_SPLAT[e.boss] || 0xa98ac2);
 const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);
 // An enemy's pose between the last two simulation steps (a: how far into the
-// next step this frame is), so the crowd is drawn smoothly at any frame rate (it
-// moves exactly as the simulation moves it). walk: how far along the road it is,
-// for the stride. A jump of more than 2 m in one step (a Time Warp rewind) is not blended.
-const _pose = { x: 0, z: 0, yaw: 0, walk: 0 };
+// next step this frame is), so the crowd glides smoothly at any frame rate.
+// A jump of more than 2 m in one step (a Time Warp rewind) is not blended.
+const _pose = { x: 0, z: 0, yaw: 0, walk: 0, hy: 0 };
 function lerpPose(e, a) {
   if (e.px === undefined || (e.x - e.px) ** 2 + (e.z - e.pz) ** 2 > 4) {
-    _pose.x = e.x; _pose.z = e.z; _pose.yaw = e.yaw; _pose.walk = e.s || 0;
+    _pose.x = e.x; _pose.z = e.z; _pose.yaw = e.yaw; _pose.walk = e.walk || 0; _pose.hy = e.hy || 0;
     return _pose;
   }
   _pose.x = e.px + (e.x - e.px) * a; _pose.z = e.pz + (e.z - e.pz) * a;
@@ -64,7 +63,8 @@ function lerpPose(e, a) {
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   _pose.yaw = e.pyaw + d * a;
-  _pose.walk = e.pwalk + (e.s - e.pwalk) * a;
+  _pose.walk = e.pwalk + (e.walk - e.pwalk) * a;
+  _pose.hy = e.phy + (e.hy - e.phy) * a;
   return _pose;
 }
 const _zq = new THREE.Quaternion(), _ZAX = new THREE.Vector3(0, 0, 1);
@@ -156,6 +156,7 @@ export class View {
     // zoom out: 0 follows the farmer, 1 shows the whole map (button, M, wheel or pinch)
     this.overview = 0; this.overviewWant = 0;
     this.shake = 0;
+    this._gyFn = (x, z) => this._gy(x, z);   // the ground height, for feet finding it (BodyMotion)
     // players who ask their system for reduced motion get only a faint screen shake
     this.calmMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
     this.pitch = THREE.MathUtils.degToRad(54);
@@ -211,6 +212,11 @@ export class View {
       const anim = new THREE.InstancedBufferAttribute(new Float32Array(1400 * 4), 4);
       anim.setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute('iAnim', anim);
+      // tail, head and squash springs (see iPhys in ratanim.js)
+      const phys = new THREE.InstancedBufferAttribute(new Float32Array(1400 * 4), 4);
+      phys.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('iPhys', phys);
+      (this.ratPhys || (this.ratPhys = [])).push(phys);
       const mesh = new THREE.InstancedMesh(geo, ratMat, 1400);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
@@ -220,6 +226,7 @@ export class View {
       // ink outline: a cheaper hull that shares the instances and the animation state
       const inkGeo = inkNormals(gruntInkGeometry(v));
       inkGeo.setAttribute('iAnim', anim);
+      inkGeo.setAttribute('iPhys', phys);
       inkInstanced(mesh, INK_PX.rat, { geo: inkGeo, rat: this.ratUniforms });
       this.ratMeshes.push(mesh); this.ratAnims.push(anim);
     }
@@ -597,7 +604,7 @@ export class View {
     }
     v.inUse = true;
     v.group.visible = true;
-    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; }
+    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; if (v.ps) { v.ps.yaw = undefined; v.ps.turn = 0; } }
     v.group.rotation.set(0, 0, 0, 'YXZ');   // yaw, then local pitch for falling over
     v.group.position.y = 0;
     v.body.rotation.set(0, 0, 0); v.body.position.set(0, 0, 0); v.body.scale.set(1, 1, 1);
@@ -622,7 +629,7 @@ export class View {
     const label = document.createElement('div');
     label.className = 'hp-num';
     this.labels.appendChild(label);
-    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, model };
+    const v = { group, body, armL, armR, legL, legR, mat: inst.mat, boss, label, inUse: false, lastHp: -1, top: model.fit.top + 0.25, rig: inst.rig, mover: inst.mover, motion: inst.body, holder: inst.holder, model, ps: { speed: 0, turn: 0, step: 0, jaw: 0, grip: 0, t: 0, accel: 0, lastSpeed: 0 } };
     this.giantPool.push(v);
     return v;
   }
@@ -641,9 +648,45 @@ export class View {
     }
     // a hard hit (a flinch that starts strong) makes it stagger, now and then
     v.hitCd = (v.hitCd || 0) - dt;
-    if (e.hitT > CFG.hitFlinch * 0.8 && v.hitCd <= 0 && !R.busy()) { R.play('hit', 0.1, 1.5); v.hitCd = 2.5; }
-    if (R.busy()) return;
+    if (e.hitT > CFG.hitFlinch * 0.8 && v.hitCd <= 0 && !R.busy()) { R.play('hit', 0.1, 1.5); v.hitCd = 2.5; if (v.mover) v.mover.kick(0.8); }
+    // now and then a boss stops to roar (the clip; the ring goes out at its peak)
+    if (e.type === T_BOSS && style !== 'mole' && R.has('roar')) {
+      v.roarT = (v.roarT ?? 4 + Math.random() * 5) - dt;
+      if (v.roarT < 0 && !R.busy()) {
+        R.play('roar', 0.25, 1.6); v.roarT = 9 + Math.random() * 6; v.roared = false;
+      }
+      if (R.oneShot === 'roar' && !v.roared && R.actions.roar.time > R.actions.roar.getClip().duration * 0.3) {
+        v.roared = true;
+        this._lift(e.x, e.z).ring(e.x, 0, e.z, 2.4 * sc, BOSS_AURA[style] || 0xffffff, 0.7); this.fx.lift = 0;
+      }
+    }
+    // (during a hit or roar on the upper body the legs keep walking; see SkeletalRig)
     R.move(e.vs || 0, sc);
+  }
+
+  // What a giant's extra parts (ears, jaw, tail, cape; see articulate.js) answer to
+  // this frame: its ground speed and turn rate (in its own size: a boss's cape
+  // billows as a giant's would), where it is in its stride, how wide its jaw opens.
+  _partState(v, e, dt, yaw, sc) {
+    const P = v.ps, R = v.rig;
+    if (!v.mover || dt <= 0) return;
+    let dy = yaw - (P.yaw ?? yaw); dy = Math.atan2(Math.sin(dy), Math.cos(dy)); P.yaw = yaw;
+    P.turn += (dy / dt - P.turn) * Math.min(1, dt * 8);
+    P.speed = e.stun > 0 || e.frozen > 0 || e.held > 0 ? 0 : (e.vs || 0) / Math.max(0.5, sc);
+    P.accel += ((P.speed - P.lastSpeed) / dt - P.accel) * Math.min(1, dt * 8); P.lastSpeed = P.speed;
+    P.t = this.time;
+    const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
+    P.step = R.state === 'walk' || R.state === 'run' ? u : 0;
+    // the jaw: wide for a roar, a snarl through a blow, open from a hit or as it dies
+    P.jaw = R.state === 'roar' ? Math.min(1, Math.sin(Math.min(1, u * 1.15) * Math.PI) * 1.6)
+      : R.state === 'attack' ? 0.25 + 0.6 * Math.max(0, Math.sin(Math.min(1, u * 1.3) * Math.PI))
+      : R.state === 'hit' ? 0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
+      : R.state === 'die' ? 0.8 : R.state === 'run' ? 0.2 : 0;
+    // the fingers: a fist through a blow, spread wide in a roar or a hit, curling as it dies
+    P.grip = R.state === 'attack' ? 0.3 + 0.7 * Math.max(0, Math.sin(Math.min(1, u * 1.2) * Math.PI))
+      : R.state === 'roar' ? -Math.sin(Math.min(1, u * 1.15) * Math.PI)
+      : R.state === 'hit' ? -0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
+      : R.state === 'die' ? 0.6 : R.state === 'run' ? 0.35 : 0;
   }
 
   // -------------------------------------------------------------- pads
@@ -903,7 +946,7 @@ export class View {
       const v = e.vs || 0, run = v > C.fit.run * sc && B.clips.run;
       clip = e.atGate || v < 0.15 ? 'idle' : run ? 'run' : 'walk';
       if (clip === 'idle') row = crowdRow(B, 'idle', this.time + e.phase, true);
-      else { const c = B.clips[clip], loop = C.loop[clip] * sc; row = crowdRow(B, clip, ((e.s || 0) / loop) * c.duration + e.phase, true); }
+      else { const c = B.clips[clip], loop = C.loop[clip] * sc; row = crowdRow(B, clip, ((e.walk || 0) / loop) * c.duration + e.phase, true); }
     }
     // a big hit makes it stagger now and then
     if (e.hitT > CFG.hitFlinch * 0.85 && !(this.time - (e._hitT ?? -9) < 1.6)) e._hitT = this.time;
@@ -950,8 +993,8 @@ export class View {
   // seated on a ride, cheering a win
   _driveMeshyHero(hv, h, dt, t, speed, yawRate, sim) {
     const M = hv.meshy, R = M.rig, sp = hv.mount ? 0 : (h.moving ? speed : 0) / 1.35;
-    if (hv.mount) { if (R.state !== 'sit' && R.has('sit')) R.go('sit', 0.3); }
-    else if (sim.state === 'victory' && R.has('cheer')) { if (R.state !== 'cheer') R.go('cheer', 0.3); }
+    if (hv.mount) { if (R.lower !== 'sit' && R.has('sit')) R.go('sit', 0.3); }
+    else if (sim.state === 'victory' && R.has('cheer')) { if (R.lower !== 'cheer') R.go('cheer', 0.3); }
     else R.move(sp, 1);
     R.update(dt);
     const a = R.actions[R.state], u = a ? a.time / Math.max(1e-3, a.getClip().duration) : 0;
@@ -1007,6 +1050,7 @@ export class View {
   _setRatModel(v, { geo, map }) {
     const mesh = this.ratMeshes[v], anim = this.ratAnims[v];
     geo.setAttribute('iAnim', anim);
+    geo.setAttribute('iPhys', this.ratPhys[v]);
     mesh.geometry = geo;
     mesh.material = ratMaterial(this.ratUniforms, toonGradient(), map);
     const ink = mesh.userData.ink;
@@ -1015,6 +1059,7 @@ export class View {
       const ig = clusterGeometry(geo, 0.045);
       inkNormals(ig);
       ig.setAttribute('iAnim', anim);
+      ig.setAttribute('iPhys', this.ratPhys[v]);
       ink.geometry = ig;
     }
     (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
@@ -1049,7 +1094,8 @@ export class View {
   _ratDies(e, spent) {
     if (this.ratDying.length >= 400) return;
     const v = e.v === SHIELD && !e.sh ? SHIELDLESS : e.v || 0;
-    this.ratDying.push({ x: e.x, z: e.z, gy: this._gy(e.x, e.z), yaw: e.yaw || 0, dir: e.dir || 1, v, k: 0, dur: spent ? 0.45 : 0.72, spent, puffed: spent });
+    this.ratDying.push({ x: e.x, z: e.z, gy: this._gy(e.x, e.z), yaw: e.yaw || 0, dir: e.dir || 1, v, k: 0, dur: spent ? 0.45 : 0.72, spent, puffed: spent,
+      vx: e.vx || 0, vz: e.vz || 0, vy: e.vy || 0, hy: e.hy || 0 });
   }
   _giantDies(e, spent) {
     const v = this.giantViews.get(e.id);
@@ -1095,7 +1141,7 @@ export class View {
     }
     if (v.rig) {
       // a Meshy skeleton plays its death clip; it lands, lies still and sinks in a puff
-      if (!v.dieStarted) { v.dieStarted = true; v.rig.hold(false); v.rig.die(v.dieDur * 0.6); }
+      if (!v.dieStarted) { v.dieStarted = true; v.rig.hold(false); v.rig.die(v.dieDur * 0.6); if (v.ps) { v.ps.speed = 0; v.ps.turn = 0; v.ps.step = 0; v.ps.jaw = 0.8; v.ps.grip = 0.6; } if (v.mover) v.mover.kick(1); }
       if (!v.downed && k >= 0.42) {
         v.downed = true;
         this.fx.puff(g.position.x, 0, g.position.z, 0xd9c7a8, 2.4);
@@ -1449,6 +1495,11 @@ export class View {
       }
       case 'padAppear': fx.ring(e.x, groundHeight(e.x, e.z), e.z, 1.5, 0xffffff, 0.5); break;
       case 'fortressHit': this.fortHitFlash = 0.25; break;
+      case 'land': {  // a rat thrown by a blast thumps back down and squashes
+        const r = sim.enemies.find((q) => q.id === e.id); if (r) r._sq = Math.min(0.4, 0.12 + e.v * 0.03);
+      }
+        if (this.dustBudget >= 1) { this.dustBudget--; this._lift(e.x, e.z).puff(e.x, 0, e.z, 0xd9c7a8, Math.min(0.9, 0.3 + e.v * 0.06)); this.fx.lift = 0; }
+        break;
       case 'loaded': this.reset(sim); break;
       default: break;
     }
@@ -1478,7 +1529,7 @@ export class View {
     this.ratUniforms.uTime.value = t;
     const fighting = sim.state === 'wave';
     const spawnS = CFG.spawnS;
-    const A = this.alpha ?? 1;
+    const A = this.alpha ?? 1, hills = CFG.hills.length > 0;
     for (const e of sim.enemies) {
       if (e.type === T_GRUNT) {
         const vt = e.v === SHIELD && !(e.shield > 0) ? SHIELDLESS : e.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
@@ -1511,22 +1562,15 @@ export class View {
         } else if (e.v === BOMB && this.sparkBudget >= 1 && Math.random() < 0.05) trick = 2;
         // drawn in between simulation steps, so the crowd glides at any frame rate
         const P = lerpPose(e, A);
-        let ex = P.x, ez = P.z;
-        const yaw = P.yaw, walk = P.walk;
-        // knocked back by a blast: the simulation moves the rat at once; it is drawn flying
-        // back along the road in a hop (a big blast flips it head over heels)
-        if (e._vs === undefined || e.s >= e._vs - 0.02 || dt === 0) { e._vs = e.s; e._kb = 0; }
-        else {
-          e._kb = Math.max(e._kb || 0, e._vs - e.s);
-          e._vs = Math.max(e.s, e._vs - 10 * dt);
-          const prog = 1 - (e._vs - e.s) / e._kb;
-          y += Math.sin(prog * Math.PI) * Math.min(0.9, 0.3 + e._kb * 0.3);
-          pitch -= e._kb > 1.1 ? prog * Math.PI * 2 : Math.sin(prog * Math.PI) * 0.7;
-          road.sample(e._vs, _road); ex = _road.x + _road.nx * e.lat; ez = _road.z + _road.nz * e.lat;
-        }
+        const ex = P.x, ez = P.z, yaw = P.yaw, walk = P.walk, hy = P.hy;
+        // thrown by a blast (the simulation flies it back under gravity): nose up on the
+        // way up, nose down on the way down; a big kick turns it head over heels
+        if (hy > 0) { y += hy; pitch += e.spinV ? e.spin : clampN(-e.vy * 0.07, -0.6, 0.6); }
         const gy = this._gy(ex, ez);
         y += gy;
-        const roll = 0;
+        // it leans into its turns, and on a hill it tilts with the slope
+        const roll = clampN(-e.bank * 0.1, -0.3, 0.3);
+        if (hills) { const hx = Math.sin(yaw) * 0.45, hz = Math.cos(yaw) * 0.45; pitch -= Math.atan2(this._gy(ex + hx, ez + hz) - this._gy(ex - hx, ez - hz), 0.9); }
         if (trick === 1 && this.jetBudget >= 1) {   // flames and smoke out of the jetpack
           this.jetBudget--;
           const bx = ex - Math.sin(yaw) * 0.45 * sc, bz = ez - Math.cos(yaw) * 0.45 * sc;
@@ -1546,6 +1590,25 @@ export class View {
         ra[o + 1] = e.stun > 0 ? -1 : Math.max(0, e.hitT / CFG.hitFlinch);
         ra[o + 2] = e.atGate && fighting ? attackPhase(e.attackT, CFG.grunt.gateRate) : -1;
         ra[o + 3] = 0;
+        // secondary motion: the tail lags out of a turn on a spring and whips back, the
+        // head looks into the turn, and a rat thumping down from a throw squashes
+        const bank = e.bank || 0;
+        if (dt > 0) {
+          const k = Math.min(dt, 0.05);
+          if (bank !== 0 || e._ta || e._tv) {
+            const ta = e._ta || 0, tv = (e._tv || 0) + ((-bank * 0.32 - ta) * 90 - (e._tv || 0) * 10) * k;
+            e._tv = Math.abs(tv) < 1e-4 && Math.abs(ta) < 1e-4 ? 0 : tv;
+            e._ta = clampN(ta + e._tv * k, -0.9, 0.9);
+          }
+          if (e._sq) e._sq = e._sq < 0.005 ? 0 : e._sq * (1 - 9 * k);
+          // the ears: blown back by speed, swung out of turns, bounced by landings and
+          // jolts, on a soft spring so they overshoot and settle
+          const ea = e._ea || 0, et = Math.min(0.45, (e.vs || 0) * 0.07) + Math.abs(bank) * 0.12 + (e._sq || 0) * 1.4;
+          e._ev = (e._ev || 0) + ((et - ea) * 70 - (e._ev || 0) * 7) * k;
+          e._ea = clampN(ea + e._ev * k, -0.3, 0.9);
+        }
+        const pa = this.ratPhys[vt].array;
+        pa[o] = e._ta || 0; pa[o + 1] = clampN(bank * 0.12, -0.45, 0.45); pa[o + 2] = e._sq || 0; pa[o + 3] = e._ea || 0;
         const CR = this.crowd && this.crowd[vt];
         if (CR) this._crowdPose(CR, e, sc, dt, fighting, CR.clip.array, o);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
@@ -1561,7 +1624,7 @@ export class View {
             _s.set(k, k, k); _m.compose(_p, _q, _s); dzm.setMatrixAt(dzn++, _m);
           }
         }
-        if (em > 0.3) { _p.set(ex, gy + 0.06, ez); _s.set(0.85 * k, 1, 1.6 * k); _q.setFromAxisAngle(UP, yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
+        if (em > 0.3) { const sh = k / (1 + hy * 0.5); _p.set(ex, gy + 0.06, ez); _s.set(0.85 * sh, 1, 1.6 * sh); _q.setFromAxisAngle(UP, yaw); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m); }
         // its aura: a glowing ring that breathes (dim while frozen or stunned)
         const AU = vt === SHIELDLESS ? null : RAT_AURA[e.v || 0];
         if (AU && em > 0.5 && an < aMax) {
@@ -1591,20 +1654,43 @@ export class View {
         const ggy = this._gy(gx, gz);   // the ground under it (a hill on Level 2), added once the pose is set
         v.group.rotation.y = gyaw;
         v.group.rotation.x = -u * 0.5;
-        v.group.rotation.z = 0;
+        // on a hillside: a body leans with the slope; a rigged one stays upright and its
+        // feet find the ground (BodyMotion), with only a slight lean
+        if (hills && !(e.fly > 0)) { const hx = Math.sin(gyaw) * sc, hz = Math.cos(gyaw) * sc; v.group.rotation.x -= Math.atan2(this._gy(gx + hx, gz + hz) - this._gy(gx - hx, gz - hz), 2 * sc) * (v.rig ? 0.25 : 0.8); }
+        v.baseY = ggy; v.scaleNow = sc;
+        v.group.rotation.z = clampN(-e.bank * 0.06, -0.12, 0.12);   // a heavy lean into its turns
         v.group.scale.setScalar(sc);
         if (em < 0.2 && Math.random() < 0.3) this.fx.puff(e.x + (Math.random() - 0.5) * 2, 0, e.z + (Math.random() - 0.5) * 2, 0x9b7650, 1.2);
         const fl = e.hitT > 0 ? Math.sin(e.hitT / CFG.hitFlinch * Math.PI) : 0;  // flinch from a hit
         let lean = -0.16 * fl;
         if (v.rig) {
-          // a Meshy skeleton: its clips do the walking, the blows, the flinch and the fall
+          // a Meshy skeleton: its clips do the walking, the blows and the roars
           this._driveRig(v, e, dt, fighting, sc, style);
+          this._partState(v, e, dt, gyaw, sc);
           v.body.rotation.set(-0.06 * fl, 0, 0);
           if (style === 'mole') this._poseMole(v, e, sc, t);
-          // the blow on the gate kicks up a puff of dust, as it always did
+          // footfalls still kick up dust
+          if (!e.atGate && em > 0.5 && this.dustBudget >= 1 && v.rig.state !== 'idle' && !(e.stun > 0)) {
+            const a = v.rig.actions[v.rig.state], d = a.getClip().duration, half = Math.floor((a.time / d) * 4) & 1;
+            if (v.stepSide !== half) {
+              v.stepSide = half; this.dustBudget--;
+              const side = half ? 1 : -1, cx = Math.cos(gyaw), sx2 = -Math.sin(gyaw);
+              this._lift(gx, gz).puff(gx + cx * 0.5 * side * sc, 0, gz + sx2 * 0.5 * side * sc, 0xd9c7a8, 0.6 + 0.3 * sc); this.fx.lift = 0;
+              if (e.type === T_BOSS) this.shake = Math.max(this.shake, 0.12);
+            }
+          }
           if (e.atGate && fighting) {
             const a = attackPhase(e.attackT, CFG.giant.gateRate);
-            if (a > 0.64 && !v.smashed) { v.smashed = true; this._lift(gx, gz).puff(gx + Math.sin(gyaw) * 2 * sc, 0, gz + Math.cos(gyaw) * 2 * sc, 0xd9c7a8, 1.3); this.fx.lift = 0; }
+            if (a > 0.64 && !v.smashed) {
+              v.smashed = true;
+              const hx = gx + Math.sin(gyaw) * 2 * sc, hz = gz + Math.cos(gyaw) * 2 * sc, f = this._lift(gx, gz);
+              f.puff(hx, 0, hz, 0xd9c7a8, 1.3);
+              f.slash(gx + Math.sin(gyaw) * 0.9 * sc, 1.3 * sc, gz + Math.cos(gyaw) * 0.9 * sc, gyaw, 1.25 * sc, style === 'king' ? 0xffe27a : 0xfff2c8);
+              if (style !== 'king') f.crack(hx, hz, 1.1 * sc);
+              if (style === 'baron' || style === 'warlord') { f.shockRing(hx, hz, 3 * sc, style === 'baron' ? 0x9fc8ff : 0xff8a6a); this.shake = Math.max(this.shake, 0.4); }
+              else if (style === 'king') { f.glow(hx, 1.2, hz, 3.2 * sc, 0xffd23a, 0.35); for (let i = 0; i < 8; i++) f.twinkle(hx + (Math.random() - 0.5) * 2.2, 0.5 + Math.random() * 2, hz + (Math.random() - 0.5) * 2.2, 0.5, 0xfff1a0); }
+              this.fx.lift = 0;
+            }
             if (a < 0.3) v.smashed = false;
           }
         } else if (style === 'slime') this._poseSlime(v, e, sc, fighting);
@@ -1612,25 +1698,83 @@ export class View {
         else if (e.stun > 0) {
           // stunned or frozen: hold the pose
         } else if (!e.atGate) {
-          // the heavy stomp it had when the game began
-          const sw = Math.sin(ph);
-          v.legL.rotation.x = sw * 0.55; v.legR.rotation.x = -sw * 0.55;
-          v.armL.rotation.set(-sw * 0.35, 0, 0); v.armR.rotation.set(sw * 0.25 - 0.1, 0, 0);
-          v.body.position.y = Math.abs(Math.cos(ph)) * 0.12;
-          v.body.rotation.z = sw * 0.05; v.body.rotation.y = 0;
-          lean += 0.06;                                                         // heavy forward stomp
+          // a heavy, swaggering walk: hips sway, shoulders roll, the weapon arm swings
+          // wide, the head nods with every stomp and dust puffs up from each footfall
+          const sw = Math.sin(ph), step = Math.abs(Math.cos(ph));
+          v.legL.rotation.x = sw * 0.6; v.legR.rotation.x = -sw * 0.6;
+          v.armL.rotation.set(-sw * 0.45, 0, -0.12 - 0.08 * step);
+          v.armR.rotation.set(sw * 0.4 - 0.25, 0, 0.18 + 0.08 * step);
+          v.body.position.y = step * 0.14;
+          v.body.rotation.z = sw * 0.09;
+          v.body.rotation.y = sw * 0.12;
+          lean += 0.08 + 0.04 * (1 - step);                                     // heavy forward stomp
+          // footfalls: a puff of dust under each foot (bosses shake the ground a little)
+          const stepNow = Math.cos(ph) > 0;
+          if (v.stepSide !== stepNow && em > 0.5 && this.dustBudget >= 1) {
+            this.dustBudget--;
+            const side = stepNow ? 1 : -1, cx = Math.cos(e.yaw), sx2 = -Math.sin(e.yaw);
+            this._lift(e.x, e.z).puff(e.x + cx * 0.5 * side * sc, 0, e.z + sx2 * 0.5 * side * sc, 0xd9c7a8, 0.6 + 0.3 * sc); this.fx.lift = 0;
+            if (e.type === T_BOSS) this.shake = Math.max(this.shake, 0.18);
+          }
+          v.stepSide = stepNow;
+          // now and then a boss stops to roar: head up, arms flung wide
+          if (e.type === T_BOSS && style !== 'mole') {
+            v.roarT = (v.roarT ?? 3 + Math.random() * 4) - dt;
+            if (v.roarT < 0) {
+              const k = Math.min(1, -v.roarT / 1.2), r = Math.sin(k * Math.PI);
+              v.armL.rotation.set(-1.9 * r, 0, -0.9 * r); v.armR.rotation.set(-1.9 * r, 0, 0.9 * r);
+              lean -= 0.35 * r; v.body.position.y += 0.12 * r;
+              if (!v.roared && k > 0.3) { v.roared = true; this._lift(e.x, e.z).ring(e.x, 0, e.z, 2.4 * sc, BOSS_AURA[style] || 0xffffff, 0.7); this.fx.lift = 0; }
+              if (k >= 1) { v.roarT = 6 + Math.random() * 5; v.roared = false; }
+            }
+          }
         } else {
-          // club smash on the gate, landing exactly when the gate takes the hit
+          // the attack on the gate, landing exactly when the gate takes the hit; each fighter has its own move
           const a = fighting ? attackPhase(e.attackT, CFG.giant.gateRate) : 0;
           const up = smooth(0.05, 0.55, a) * (1 - smooth(0.58, 0.66, a));
           const down = smooth(0.58, 0.66, a) * (1 - smooth(0.74, 1, a));
-          v.armR.rotation.set(-2.7 * up + 0.7 * down, 0, 0);
-          v.armL.rotation.set(-0.8 * up + 0.2 * down, 0, 0);
           v.legL.rotation.x = 0.25; v.legR.rotation.x = -0.25;
-          v.body.position.y = 0.1 * up;
           v.body.rotation.z = 0; v.body.rotation.y = 0;
-          lean += -0.14 * up + 0.3 * down;
-          if (down > 0.9 && !v.smashed) { v.smashed = true; this._lift(e.x, e.z).puff(e.x + Math.sin(e.yaw) * 2 * sc, 0, e.z + Math.cos(e.yaw) * 2 * sc, 0xd9c7a8, 1.3); this.fx.lift = 0; }
+          v.armL.rotation.set(0, 0, 0); v.armR.rotation.set(0, 0, 0);
+          let hitFx = 'dust';
+          if (style === 'warlord') {
+            // a wide sideways sweep of the spiked mace, the body twisting into it
+            v.armR.rotation.set(-1.4 * up - 0.6 * down, 0, 1.3 * up - 0.9 * down);
+            v.armL.rotation.set(-0.5 * up, 0, -0.5 * up);
+            v.body.rotation.y = 0.55 * up - 0.7 * down;
+            lean += -0.08 * up + 0.2 * down;
+            v.body.position.y = 0.06 * up;
+            hitFx = 'sparks';
+          } else if (style === 'baron') {
+            // both arms raise the mace high overhead, then a ground-shaking two-handed slam
+            v.armR.rotation.set(-3.0 * up + 0.6 * down, 0, -0.35 * up);
+            v.armL.rotation.set(-3.0 * up + 0.6 * down, 0, 0.35 * up);
+            v.body.position.y = 0.18 * up - 0.1 * down;
+            lean += -0.25 * up + 0.42 * down;
+            hitFx = 'quake';
+          } else if (style === 'king') {
+            // the sceptre is raised to the sky, then thrust at the gate in a burst of gold
+            v.armR.rotation.set(-2.9 * up - 1.2 * down, 0, 0.1);
+            v.armL.rotation.set(-0.4 * up, 0, -0.6 * up);
+            v.body.position.y = 0.14 * up;
+            lean += -0.2 * up + 0.25 * down;
+            hitFx = 'gold';
+          } else {
+            // the giant rat: an overhead club smash
+            v.armR.rotation.x = -2.7 * up + 0.7 * down;
+            v.armL.rotation.x = -0.8 * up + 0.2 * down;
+            v.body.position.y = 0.1 * up;
+            lean += -0.14 * up + 0.3 * down;
+          }
+          if (down > 0.9 && !v.smashed) {
+            v.smashed = true;
+            const hx = e.x + Math.sin(e.yaw) * 2 * sc, hz = e.z + Math.cos(e.yaw) * 2 * sc, f = this._lift(e.x, e.z);
+            f.puff(hx, 0, hz, 0xd9c7a8, 1.3);
+            if (hitFx === 'sparks') for (let i = 0; i < 5; i++) f.twinkle(hx + (Math.random() - 0.5) * 1.6, 0.8 + Math.random() * 1.4, hz + (Math.random() - 0.5) * 1.6, 0.45, 0xffd23a);
+            else if (hitFx === 'quake') { f.shockRing(hx, hz, 3.2 * sc, 0x9fc8ff); this.shake = Math.max(this.shake, 0.5); }
+            else if (hitFx === 'gold') { f.glow(hx, 1.2, hz, 3.2 * sc, 0xffd23a, 0.35); for (let i = 0; i < 8; i++) f.twinkle(hx + (Math.random() - 0.5) * 2.2, 0.5 + Math.random() * 2, hz + (Math.random() - 0.5) * 2.2, 0.5, 0xfff1a0); }
+            this.fx.lift = 0;
+          }
           if (a < 0.3) v.smashed = false;
         }
         if (!v.rig && style !== 'slime' && style !== 'buzzard') {
@@ -1690,6 +1834,14 @@ export class View {
         const d = list[i];
         d.k += dt / d.dur;
         if (d.k >= 1) { list[i] = list[list.length - 1]; list.pop(); continue; }
+        // its momentum carries the body on: it slides to a stop, and falls if it was in the air
+        if (d.vx || d.vz) {
+          d.x += d.vx * dt; d.z += d.vz * dt;
+          const f = Math.exp(-4.5 * dt); d.vx *= f; d.vz *= f;
+          if (d.vx * d.vx + d.vz * d.vz < 0.01) d.vx = d.vz = 0;
+          d.gy = this._gy(d.x, d.z);
+        }
+        if (d.hy > 0) { d.vy -= 22 * dt; d.hy += d.vy * dt; if (d.hy <= 0) { d.hy = 0; d.vy = 0; } }
         if (!d.puffed && d.k >= 0.58) { d.puffed = true; this._lift(d.x, d.z).puff(d.x, 0, d.z, 0xffffff, 1); this.fx.lift = 0; }
         const vt = d.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
         if (gn >= 1400) continue;
@@ -1701,10 +1853,11 @@ export class View {
           if (d.spent) { ss = sc * Math.max(0.01, 1 - d.k); yw += d.k * 10; CR.clip.array.set([crowdRow(B, 'idle', 0, true), 0, 0, 0], o4); }
           else { ss = sc * (d.k < 0.62 ? 1 : Math.max(0.01, 1 - (d.k - 0.62) / 0.33)); CR.clip.array.set([crowdRow(B, 'die', Math.min(1, d.k / 0.6) * B.clips.die.duration, false), 0, 0, 0], o4); }
         }
-        _p.set(d.x, d.gy || 0, d.z); _q.setFromAxisAngle(UP, yw); _s.set(ss, ss, ss); _m.compose(_p, _q, _s);
+        _p.set(d.x, (d.gy || 0) + (d.hy || 0), d.z); _q.setFromAxisAngle(UP, yw); _s.set(ss, ss, ss); _m.compose(_p, _q, _s);
         gm.setColorAt(gn, this.tint.normal);
         const o = gn * 4;
         ra[o] = d.dir; ra[o + 1] = 0; ra[o + 2] = -1; ra[o + 3] = d.spent ? -Math.max(d.k, 0.001) : Math.max(d.k, 0.001);
+        this.ratPhys[vt].array.fill(0, o, o + 4);
         gm.setMatrixAt(gn, _m); rn[vt] = gn + 1;
         const b = (1 - d.k) * sc / 1.1;
         _p.set(d.x, (d.gy || 0) + 0.06, d.z); _s.set(0.85 * b, 1, 1.6 * b); _m.compose(_p, _q, _s); bm.setMatrixAt(bn++, _m);
@@ -1740,7 +1893,7 @@ export class View {
         this.exitMat.opacity = 0.45 + pulse * 0.45;
       }
     }
-    for (const g of this.giantPool) if (g.inUse && g.rig) g.rig.update(dt);
+    for (const g of this.giantPool) if (g.inUse && g.rig) { g.rig.update(dt); const live = g.rig.mixer.timeScale ? dt : 0; if (g.mover) g.mover.update(live, g.ps); if (g.motion && g.dying === undefined) g.motion.update(live, g.ps, hills ? this._gyFn : null, g.baseY ?? 0, g.holder, g.scaleNow || 1); }
     for (const [id, v] of this.giantViews) {
       if (seen.has(id)) continue;
       if (v.dying !== undefined && v.dying < 1) { this._animateGiantDeath(v, dt, t); continue; }
@@ -1751,6 +1904,7 @@ export class View {
       gm.count = rn[i]; gm.instanceMatrix.needsUpdate = true;
       if (gm.instanceColor) gm.instanceColor.needsUpdate = true;
       RA[i].needsUpdate = true;
+      this.ratPhys[i].needsUpdate = true;
       if (this.crowd && this.crowd[i]) this.crowd[i].clip.needsUpdate = true;
     }
     im.count = icn; im.instanceMatrix.needsUpdate = true;
