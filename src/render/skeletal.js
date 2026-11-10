@@ -128,7 +128,7 @@ export class AnimModel {
 // plays on the upper body only while the legs keep stepping at the speed the
 // ground goes by, so a boss staggers or roars without sliding to a halt.
 const LOWER = /^(Hips|(Left|Right)(UpLeg|Leg|Foot|ToeBase))\./;
-const LAYERED = new Set(['hit', 'roar', 'cast']);
+const LAYERED = new Set(['hit', 'stagger', 'roar', 'cast']);   // stagger: Meshy text-to-motion, a heavy hit knocking it off balance
 function splitClip(clip) {
   const lo = clip.tracks.filter((t) => LOWER.test(t.name)), up = clip.tracks.filter((t) => !LOWER.test(t.name));
   return [new THREE.AnimationClip(clip.name + ':lower', clip.duration, lo), new THREE.AnimationClip(clip.name + ':upper', clip.duration, up)];

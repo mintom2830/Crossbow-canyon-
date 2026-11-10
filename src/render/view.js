@@ -656,14 +656,19 @@ export class View {
     v.an = AN;
     if (AN.state === ST.FROZEN) { R.hold(true); return; }          // held in the ice
     R.hold(false);
-    if (AN.state === ST.STUNNED) { R.go('idle', 0.3); R.mixer.timeScale = 0.45; return; }   // dazed: swaying in slow motion
+    // dazed: its stunned loop (Meshy text-to-motion), or its idle swaying in slow motion
+    if (AN.state === ST.STUNNED) { if (R.has('stunned')) R.go('stunned', 0.3); else { R.go('idle', 0.3); R.mixer.timeScale = 0.45; } return; }
     if (atk >= 0) { R.attackAt(atk); return; }                      // anticipation, the blow on the gate's hit, follow-through
     if (e.atGate) { R.go('idle', 0.3); return; }
     // a heavy hit makes it stagger (on the upper body: the legs keep walking); a
     // critical one knocks it off balance for longer; light hits only flinch (BodyMotion)
     v.hitCd = (v.hitCd || 0) - dt;
     const big = (AN.state === ST.HEAVY || AN.state === ST.STAGGER) && was !== AN.state;
-    if (big && v.hitCd <= 0 && !(R.busy() && R.oneShot === 'hit')) { R.play('hit', 0.1, AN.state === ST.STAGGER ? 1.05 : 1.5); v.hitCd = 1.2; if (v.mover) v.mover.kick(AN.state === ST.STAGGER ? 1.2 : 0.8); }
+    if (big && v.hitCd <= 0 && !(R.busy() && (R.oneShot === 'hit' || R.oneShot === 'stagger'))) {
+      // a critical hit: its own stagger clip where it has one (off balance, a step back, recovering)
+      if (AN.state === ST.STAGGER && R.has('stagger')) R.play('stagger', 0.1, 1.15); else R.play('hit', 0.1, AN.state === ST.STAGGER ? 1.05 : 1.5);
+      v.hitCd = 1.2; if (v.mover) v.mover.kick(AN.state === ST.STAGGER ? 1.2 : 0.8);
+    }
     // now and then a boss stops to roar (the clip; the ring goes out at its peak)
     if (e.type === T_BOSS && style !== 'mole' && R.has('roar')) {
       v.roarT = (v.roarT ?? 4 + Math.random() * 5) - dt;
@@ -698,12 +703,12 @@ export class View {
     // the jaw: wide for a roar, a snarl through a blow, open from a hit or as it dies
     P.jaw = R.state === 'roar' ? Math.min(1, Math.sin(Math.min(1, u * 1.15) * Math.PI) * 1.6)
       : R.state === 'attack' ? 0.25 + 0.6 * Math.max(0, Math.sin(Math.min(1, u * 1.3) * Math.PI))
-      : R.state === 'hit' ? 0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
+      : R.state === 'hit' || R.state === 'stagger' ? 0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
       : R.state === 'die' ? 0.8 : R.state === 'run' ? 0.2 : 0;
     // the fingers: a fist through a blow, spread wide in a roar or a hit, curling as it dies
     P.grip = R.state === 'attack' ? 0.3 + 0.7 * Math.max(0, Math.sin(Math.min(1, u * 1.2) * Math.PI))
       : R.state === 'roar' ? -Math.sin(Math.min(1, u * 1.15) * Math.PI)
-      : R.state === 'hit' ? -0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
+      : R.state === 'hit' || R.state === 'stagger' ? -0.7 * Math.sin(Math.min(1, u * 1.5) * Math.PI)
       : R.state === 'die' ? 0.6 : R.state === 'run' ? 0.35 : 0;
   }
 
