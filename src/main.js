@@ -1047,7 +1047,7 @@ function processEvents() {
         else { banner(`Town hall level ${e.level}`, `Town hall health raised to ${CFG.fortressLevels[e.level].hp}`, true); }
         break;
       case 'refund': toast(e.repair ? `+${e.amount} gold back: the upgrade repaired the town hall` : `+${e.amount} gold back from the path you didn't take`); break;
-      case 'fortressHit': audio.fortressHit(); shakeFort(); break;
+      case 'fortressHit': audio.fortressHit(e.by); shakeFort(); break;
       case 'earlyBonus': toast(`+${e.amount} gold for calling the wave early`); break;
       case 'skipped': toast(`Wave ${e.index + 1} skipped · +${e.bonus} gold`); audio.pay(1); break;
       case 'waveStart': {

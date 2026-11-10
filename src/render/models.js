@@ -48,12 +48,18 @@ export const SHIELDLESS = 10;
 // 0 trot · 1 gallop (fast rat) · 2 heavy stomp (armored, shield) · 3 waddle (brood, bomb)
 // 4 sneak (ninja) · 5 hop (ratling)
 export const RAT_GAIT = [0, 1, 2, 2, 0, 3, 5, 3, 4, 0, 2];
+// how each kind attacks the gate (see ratanim.js): 0 lunge and bite · 1 dash, bite and
+// hop back · 2 armoured charge and slam · 3 shield bash · 4 heavy lunge · 5 jump and
+// bite · 6 brace and blow up · 7 spinning strike
+export const RAT_ATTACK = [0, 1, 2, 3, 0, 4, 5, 6, 7, 0, 0];
+// gait and attack ride together in the joint attribute's fourth component
+export const gaitCode = (v) => (RAT_GAIT[v] || 0) + 8 * (RAT_ATTACK[v] || 0);
 // the gait rides in the joint attribute's fourth component; the head and tail
 // sub-parts (and the soft skin) are only on the Meshy rats, so zeros here (every
 // input the rat shader reads is always set: a missing one would read whatever
 // another shader left there)
 function withGait(g, variant) {
-  const n = g.attributes.position.count, piv = g.attributes.aPivot, p4 = new Float32Array(n * 4), gait = RAT_GAIT[variant] || 0;
+  const n = g.attributes.position.count, piv = g.attributes.aPivot, p4 = new Float32Array(n * 4), gait = gaitCode(variant);
   for (let i = 0; i < n; i++) { p4[i * 4] = piv.getX(i); p4[i * 4 + 1] = piv.getY(i); p4[i * 4 + 2] = piv.getZ(i); p4[i * 4 + 3] = gait; }
   g.setAttribute('aPivot', new THREE.BufferAttribute(p4, 4));
   g.setAttribute('aSub', new THREE.BufferAttribute(new Float32Array(n * 4), 4));

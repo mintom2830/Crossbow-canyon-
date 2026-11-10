@@ -835,7 +835,8 @@ export class Sim {
           f.flash = 0.15; f.underAttack = 2.5;
           this.stats.leaked += kind.gateDmg;
           this._repairDirty = true;
-          if (this.time - f.lastHit > 0.22) { this.events.push({ type: 'fortressHit', x: f.x, z: f.z }); f.lastHit = this.time; }
+          // by: who struck (a rat kind's number, or a boss's name), for the drawing and the sound
+          if (this.time - f.lastHit > 0.22) { this.events.push({ type: 'fortressHit', x: f.x, z: f.z, ax: e.x, az: e.z, by: e.type === T_GRUNT ? e.v : e.boss || 'giant' }); f.lastHit = this.time; }
           if (--e.swings <= 0) {
             e.alive = false;
             this.waveKilled++;

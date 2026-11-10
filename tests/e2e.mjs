@@ -1452,13 +1452,15 @@ await test('Meshy rats: served over the web, every rat, the giant rat and the bo
   const gi = await g(page, () => window.__cc.view.giantPool.filter((q) => q.inUse).map((q) => {
     let skin = null; q.group.traverse((o) => { if (!skin && o.isSkinnedMesh && o.name !== 'ink') skin = o; });
     const parts = q.mover ? q.mover.parts : [];
-    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), rig: q.rig ? q.rig.state : null, leg: q.legL.rotation.x,
+    return { boss: q.boss, tex: !!q.mat.map, skin: !!skin, bones: skin ? skin.skeleton.bones.length : 0, ink: !!(skin && skin.userData.ink && skin.userData.ink.isSkinnedMesh), rig: q.rig ? q.rig.state : null, lower: q.rig ? q.rig.lower : null, leg: q.legL.rotation.x,
       parts: parts.length, moved: parts.filter((p) => p.bone.quaternion.angleTo(p.rest) > 0.01).map((p) => p.name) };
   }));
   // the extra parts of a rigged giant move on their own as it walks (ears flop, a cape billows, ...)
   assert(gi.filter((q) => q.rig).every((q) => q.parts >= 2 && q.bones > 24 && q.moved.length >= 1), 'extra parts do not move: ' + JSON.stringify(gi));
   assert(gi.length >= 2 && gi.every((q) => q.tex && q.skin && q.bones >= 6 && q.ink), 'giants not drawn from their skinned models: ' + JSON.stringify(gi));
-  assert(gi.every((q) => q.rig ? ['walk', 'run', 'idle'].includes(q.rig) : Math.abs(q.leg) > 0.05) && gi.some((q) => q.rig === 'walk' || q.rig === 'run' || Math.abs(q.leg) > 0.05), 'giants do not walk: ' + JSON.stringify(gi));
+  // (the Rat Warlord roars as he climbs out: on his upper body, while his legs walk on)
+  const walking = (q) => ['walk', 'run'].includes(q.rig) || (q.rig === 'roar' && ['walk', 'run'].includes(q.lower));
+  assert(gi.every((q) => q.rig ? walking(q) || q.rig === 'idle' : Math.abs(q.leg) > 0.05) && gi.some((q) => walking(q) || Math.abs(q.leg) > 0.05), 'giants do not walk: ' + JSON.stringify(gi));
   // the crowd rats on baked skeletons show walking frames, each at its own point in the stride
   const rows = await g(page, () => { const v = window.__cc.view, out = {}; for (const [i, C] of Object.entries(v.crowd || {})) { const n = v.ratMeshes[i].count, a = C.clip.array; out[i] = { n, rows: [...new Set(Array.from({ length: n }, (_, k) => Math.round(a[k * 4] * 10)))].length }; } return out; });
   for (const [i, q] of Object.entries(rows)) assert(q.n === 0 || q.rows >= Math.min(q.n, 1), `crowd rat ${i} frames: ` + JSON.stringify(q));

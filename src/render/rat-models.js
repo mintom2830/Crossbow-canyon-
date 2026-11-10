@@ -8,7 +8,7 @@
 // the legs, front or back, left or right) and a weight, so the parts bend out of
 // the body smoothly (see the stiffness, aSub.w, in ratanim.js).
 import * as THREE from 'three';
-import { RAT_GAIT } from './models.js';
+import { gaitCode } from './models.js';
 import { gltfGeometry } from './tower-models.js';
 
 // per rat type: yaw turns the model so its nose points +Z; len: its length
@@ -123,7 +123,7 @@ export function ratGeometry(gltf, v) {
     }
   }
   // the stiffness rides in aSub.w and the gait in aPivot.w (see ratanim.js)
-  const piv4 = new Float32Array(n * 4), gait = RAT_GAIT[v] || 0;
+  const piv4 = new Float32Array(n * 4), gait = gaitCode(v);
   for (let i = 0; i < n; i++) { sub[i * 4 + 3] = stiff[i]; piv4[i * 4] = piv[i * 3]; piv4[i * 4 + 1] = piv[i * 3 + 1]; piv4[i * 4 + 2] = piv[i * 3 + 2]; piv4[i * 4 + 3] = gait; }
   geo.setAttribute('aSub', new THREE.BufferAttribute(sub, 4));
   geo.setAttribute('aSubPivot', new THREE.BufferAttribute(subPiv, 3));

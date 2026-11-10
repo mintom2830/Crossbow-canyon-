@@ -321,9 +321,27 @@ export class Audio {
     this._osc('square', 220, 160, t, 0.12, 0.06);
     this._osc('square', 180, 130, t + 0.12, 0.14, 0.06);
   }
-  fortressHit() {
+  // the town hall takes a blow; by: who struck (a rat kind's number or a boss's name)
+  fortressHit(by) {
     if (!this._ok('fhit', 4)) return;
     const t = this.ctx.currentTime;
+    if (by === 2) {                      // armoured charge: a metal clang
+      this._osc('square', 520, 380, t, 0.12, 0.08); this._osc('sine', 1320, 900, t, 0.25, 0.06);
+      this._noise(t, 0.12, 0.14, 'bandpass', 2400, 2);
+    } else if (by === 3) {               // shield bash: a hollow wooden knock
+      this._osc('triangle', 210, 140, t, 0.14, 0.22); this._noise(t, 0.08, 0.14, 'bandpass', 700, 1.2);
+    } else if (by === 7) {               // a bomb going off at the gate
+      this._osc('sine', 70, 28, t, 0.6, 0.45); this._noise(t, 0.55, 0.35, 'lowpass', 520);
+      this._noise(t + 0.03, 0.3, 0.12, 'highpass', 3000, 0.7);
+      return;
+    } else if (typeof by === 'string') { // giant and bosses: a heavy, ground-shaking thud
+      const deep = by === 'king' || by === 'baron';
+      this._osc('sine', deep ? 70 : 85, deep ? 30 : 38, t, deep ? 0.5 : 0.38, 0.42);
+      this._noise(t, deep ? 0.35 : 0.25, 0.26, 'lowpass', deep ? 260 : 340);
+      if (by === 'warlord' || by === 'baron') this._osc('square', 440, 300, t, 0.1, 0.05);   // the mace's iron
+      if (by === 'slime') this._osc('sine', 260, 90, t, 0.22, 0.14);                          // a squelch
+      return;
+    }
     this._osc('sine', 90, 45, t, 0.25, 0.3);
     this._noise(t, 0.15, 0.18, 'lowpass', 300);
   }

@@ -230,14 +230,24 @@ export class SkeletalRig {
 // acceleration (and back when braking) and into turns, and the feet on the ground
 // on a hillside (each leg reaches by inverse kinematics for the ground under its
 // foot; the body comes down when a foot has further to go).
+// per boss, how its gate attack moves its body (BodyMotion): twist of hips and
+// shoulders, how far its weight goes back in the wind-up, how far it drops into the blow
+const ATTACK_BODY = {
+  giant: { twist: 1, back: 0.12, drop: 0.1 },      // the club: plant, pull back, rotate, swing through
+  warlord: { twist: 0.8, back: 0.15, drop: 0.12 }, // wind up the weapon, a powerful forward slam
+  baron: { twist: 0.35, back: 0.32, drop: 0.2 },   // raise the mace, weight back, slam it down
+  king: { twist: 0.2, back: 0.3, drop: 0.28 },     // arms up, gather strength, a ground slam
+  mole: { twist: 0.6, back: 0.1, drop: 0.12 },     // claws: a raking two-handed blow
+};
+const sm = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
 export class BodyMotion {
   constructor(root) {
     const by = (n) => root.getObjectByName(n);
     this.b = { hips: by('Hips'), spine: by('Spine'), spine1: by('Spine01'), spine2: by('Spine02') };
     this.legs = ['Left', 'Right'].map((s) => ({ up: by(s + 'UpLeg'), lo: by(s + 'Leg'), ft: by(s + 'Foot') })).filter((l) => l.up && l.lo && l.ft);
-    this.lean = new Spring(30, 8); this.bank = new Spring(25, 7); this.flinch = new Spring(160, 14); this.t = Math.random() * 10; this.drop = 0;
+    this.lean = new Spring(30, 8); this.bank = new Spring(25, 7); this.flinch = new Spring(160, 14); this.twist = new Spring(90, 12); this.wback = new Spring(90, 12); this.t = Math.random() * 10; this.drop = 0;
   }
-  // st: { speed, accel, turn, flinch, stagger, dazed } in the character's own size; ground(x, z); baseY:
+  // st: { speed, accel, turn, flinch, stagger, dazed, atk, style } in the character's own size; ground(x, z); baseY:
   // the ground under its centre; holder: the object to lower; scale: world per holder unit
   update(dt, st, ground, baseY, holder, scale) {
     if (dt <= 0) return;
@@ -250,9 +260,21 @@ export class BodyMotion {
     // back, a stagger rocks it off balance, a dazed one sways
     const fl = this.flinch.update((st.flinch || 0) * 0.14 + (st.stagger || 0) * 0.22, dt);
     const rock = (st.stagger || 0) * Math.sin(this.t * 13) * 0.12 + (st.dazed ? Math.sin(this.t * 3.1) * 0.09 : 0);
-    if (b.spine) b.spine.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.5 - fl * 0.5, 0, bank * 0.6 + rock)));
-    if (b.spine1) b.spine1.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.3 - breathe * 0.015 - fl * 0.5, 0, bank * 0.4 + rock * 0.6)));
-    if (b.spine2) b.spine2.quaternion.multiply(_q.setFromEuler(_e.set(-breathe * 0.025, 0, 0)));
+    // the gate attack's body work over the clip: anticipation (weight back, hips and
+    // shoulders wind away), the swing through to the impact (at 0.65, the moment the
+    // gate takes the damage), follow-through, recovery. How much each boss twists and
+    // rocks back: a club or axe swings round, a mace or a king's slam lifts and drops.
+    let tw = 0, wb = 0;
+    if (st.atk >= 0) {
+      const a = st.atk, W = ATTACK_BODY[st.style] || ATTACK_BODY.giant;
+      const wind = sm(0.08, 0.55, a) * (1 - sm(0.58, 0.66, a)), thru = sm(0.6, 0.7, a) * (1 - sm(0.8, 1, a));
+      tw = W.twist * (-0.35 * wind + 0.42 * thru);
+      wb = W.back * wind - W.drop * thru;
+    }
+    const twist = this.twist.update(tw, dt), wback = this.wback.update(wb, dt);
+    if (b.spine) b.spine.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.5 - fl * 0.5 - wback * 0.5, twist * 0.5, bank * 0.6 + rock)));
+    if (b.spine1) b.spine1.quaternion.multiply(_q.setFromEuler(_e.set(lean * 0.3 - breathe * 0.015 - fl * 0.5 - wback * 0.3, twist * 0.3, bank * 0.4 + rock * 0.6)));
+    if (b.spine2) b.spine2.quaternion.multiply(_q.setFromEuler(_e.set(-breathe * 0.025 - wback * 0.2, twist * 0.2, 0)));
     // feet on a hillside
     if (!ground || !this.legs.length) return;
     holder.updateMatrixWorld(true);

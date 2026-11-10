@@ -611,7 +611,7 @@ export class View {
     }
     v.inUse = true;
     v.group.visible = true;
-    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; if (v.ps) { v.ps.yaw = undefined; v.ps.turn = 0; } }
+    if (v.rig) { v.rig.hold(false); v.rig.go('walk', 0); v.hitCd = 0; v.spawnRoared = false; if (v.ps) { v.ps.yaw = undefined; v.ps.turn = 0; } }
     v.group.rotation.set(0, 0, 0, 'YXZ');   // yaw, then local pitch for falling over
     v.group.position.y = 0;
     v.body.rotation.set(0, 0, 0); v.body.position.set(0, 0, 0); v.body.scale.set(1, 1, 1);
@@ -1209,15 +1209,20 @@ export class View {
   _poseSlime(v, e, sc, fighting) {
     const ph = e.s * 2.6 + e.phase;
     let sq = Math.sin(ph * 2) * 0.09, lunge = 0;
+    let hop = 0;
     if (e.atGate && fighting) {
+      // compresses, springs forward and slams into the gate (the slam lands with the hit)
       const a = attackPhase(e.attackT, CFG.giant.gateRate);
-      const up = smooth(0.1, 0.55, a) * (1 - smooth(0.6, 0.68, a)), down = smooth(0.6, 0.68, a) * (1 - smooth(0.75, 1, a));
-      sq = 0.22 * up - 0.3 * down; lunge = 0.5 * down;
+      const comp = smooth(0.1, 0.5, a) * (1 - smooth(0.52, 0.58, a));
+      const spring = smooth(0.52, 0.6, a) * (1 - smooth(0.62, 0.66, a));
+      const slam = smooth(0.63, 0.67, a) * (1 - smooth(0.72, 0.95, a));
+      sq = -0.26 * comp + 0.32 * spring - 0.36 * slam;
+      lunge = -0.1 * comp + 0.7 * spring + 0.55 * slam; hop = 0.5 * spring;
     }
     if (e.stun > 0) sq = 0;
     if (e.hitT > 0) sq -= 0.12 * Math.sin(e.hitT / CFG.hitFlinch * Math.PI);
     v.body.scale.set(1 - sq * 0.6, 1 + sq, 1 - sq * 0.6);
-    v.body.position.z = lunge;
+    v.body.position.z = lunge; v.body.position.y = hop;
     v.body.rotation.set(0, 0, Math.sin(ph) * 0.06);
     if (e.born > 0) {
       const u = e.born / 0.5;
@@ -1230,12 +1235,18 @@ export class View {
   // glides down to land at the gate, folds its wings and pecks at it.
   _poseBuzzard(v, e, sc, t, fighting) {
     const air = Math.min(1, e.fly / 1.5);
-    const flap = Math.sin(t * 6.5 + e.phase);
+    // it glides between bursts of wingbeats, beats hard while hovering to drop its rats,
+    // and banks into its turns
+    const hover = e.fly > 1 ? 1 - smooth(0.3, 0.9, e.dropT || 0) : 0;   // the last moments before a drop
+    const glide = (1 - hover) * smooth(0.25, 0.75, Math.sin(t * 0.45 + e.phase));
+    const flap = Math.sin(t * (6.5 + 4 * hover) + e.phase) * (1 - 0.75 * glide);
+    const bank = e._an ? clampN(-e._an.turnRate * 0.25, -0.45, 0.45) : 0;
     v.group.position.y = Math.min(0, v.group.position.y) + e.fly + Math.sin(t * 2.1 + e.phase) * 0.22 * air;   // (below 0: still climbing out of the burrow)
     v.armL.rotation.set(0, 0, (-0.2 - flap * 0.7) * air + 1.2 * (1 - air));
     v.armR.rotation.set(0, 0, (0.2 + flap * 0.7) * air - 1.2 * (1 - air));
     v.body.position.y = -flap * 0.12 * air;
-    v.legL.rotation.x = v.legR.rotation.x = -0.55 * air;   // legs trail behind in flight
+    // legs trail behind in flight, reach forward to land
+    v.legL.rotation.x = v.legR.rotation.x = -0.55 * air + 0.5 * air * (1 - air) * 4 * (e.fly < 2 ? 1 : 0);
     let lean = 0.12 * air;
     if (e.atGate && fighting) {
       const a = attackPhase(e.attackT, CFG.giant.gateRate);
@@ -1244,7 +1255,7 @@ export class View {
       v.armL.rotation.z = 1.2 - 0.9 * up; v.armR.rotation.z = -1.2 + 0.9 * up;   // wings flare as it rears back
     }
     if (e.hitT > 0) lean -= 0.12 * Math.sin(e.hitT / CFG.hitFlinch * Math.PI);
-    v.body.rotation.set(lean, 0, Math.sin(t * 1.3 + e.phase) * 0.08 * air);
+    v.body.rotation.set(lean - 0.15 * hover, 0, Math.sin(t * 1.3 + e.phase) * 0.08 * air + bank * air);
   }
 
   // An arrow that hits a giant or boss stays stuck in it for a moment,
@@ -1314,11 +1325,12 @@ export class View {
   _poseMole(v, e, sc, t) {
     const D = CFG.bosses.mole.dig, deep = 3.9 * sc;
     if (e.dig === 1) {
-      const k = 1 - Math.max(0, e.digT) / D.down;
-      v.group.position.y = -k * k * deep;
-      v.body.rotation.x = 0.55 * k;
-      const c = Math.sin(t * 22) * 0.9;
-      v.armL.rotation.x = -1.3 + c; v.armR.rotation.x = -1.3 - c;
+      // it stops, scratches at the ground, then digs itself under
+      const k = 1 - Math.max(0, e.digT) / D.down, scratch = 1 - smooth(0.22, 0.34, k), sink = smooth(0.3, 1, k);
+      v.group.position.y = -sink * sink * deep;
+      v.body.rotation.x = 0.35 * scratch + 0.55 * sink;
+      const c = Math.sin(t * (scratch > 0.5 ? 13 : 22)) * 0.9;
+      v.armL.rotation.x = scratch > 0.5 ? -0.5 + c * 0.6 : -1.3 + c; v.armR.rotation.x = scratch > 0.5 ? -0.5 - c * 0.6 : -1.3 - c;
       if (Math.random() < 0.5) { this._lift(e.x, e.z).puff(e.x + (Math.random() - 0.5) * 3, 0, e.z + (Math.random() - 0.5) * 3, 0x9b7650, 1.3); this.fx.lift = 0; }
     } else if (e.dig === 3) {
       const k = 1 - Math.max(0, e.digT) / D.up;
@@ -1398,7 +1410,11 @@ export class View {
         break;
       case 'spent':
         fx.puff(e.x, 0, e.z, 0xcfc4d6, e.kind === T_GRUNT ? 0.8 : 1.6);
-        if (e.kind === T_GRUNT && e.v === BOMB) { fx.explosion(e.x, e.z, 2.2, 'fire'); this.shake = Math.max(this.shake, 0.35); }   // a bomb rat blows a hole in the gate
+        if (e.kind === T_GRUNT && e.v === BOMB) {   // a bomb rat blows a hole in the gate: fire, smoke, sparks and a shockwave
+          fx.explosion(e.x, e.z, 2.2, 'fire'); fx.shockRing(e.x, e.z, 2.8, 0xffb060);
+          for (let i = 0; i < 8; i++) fx.twinkle(e.x + (Math.random() - 0.5) * 2, 0.4 + Math.random() * 1.6, e.z + (Math.random() - 0.5) * 2, 0.4, 0xffd23a);
+          this.shake = Math.max(this.shake, 0.45);
+        }
         if (e.kind === T_GRUNT) this._ratDies(e, true); else this._giantDies(e, true);
         break;
       case 'hit': {
@@ -1515,7 +1531,22 @@ export class View {
         break;
       }
       case 'padAppear': fx.ring(e.x, groundHeight(e.x, e.z), e.z, 1.5, 0xffffff, 0.5); break;
-      case 'fortressHit': this.fortHitFlash = 0.25; break;
+      case 'fortressHit': {
+        this.fortHitFlash = 0.25;
+        // where the blow lands (between the attacker and the gate), each kind its own impact
+        if (e.ax !== undefined && typeof e.by === 'number' && this.dustBudget >= 1) {
+          this.dustBudget--;
+          const cx = e.x + (e.ax - e.x) * 0.6, cz = e.z + (e.az - e.z) * 0.6, f = this._lift(cx, cz);
+          if (e.by === 2) {        // an armoured charge: sparks off the iron, and dust
+            for (let i = 0; i < 6; i++) f.twinkle(cx + (Math.random() - 0.5) * 0.9, 0.35 + Math.random() * 0.8, cz + (Math.random() - 0.5) * 0.9, 0.38, i % 2 ? 0xffd23a : 0xfff4c0);
+            f.puff(cx, 0, cz, 0xd9c7a8, 0.7); this.shake = Math.max(this.shake, 0.12);
+          } else if (e.by === 3) { // a shield bash: a burst of wood dust
+            f.puff(cx, 0.3, cz, 0xb08850, 0.75); f.star(cx, 0.6, cz, 0.6, 0xe8c48a, 0.12, 0.35);
+          } else if (e.by !== 7) f.puff(cx, 0, cz, 0xd9c7a8, 0.4);   // a bite: a little dust
+          this.fx.lift = 0;
+        }
+        break;
+      }
       case 'land': {  // a rat thrown by a blast thumps back down and squashes
         const r = sim.enemies.find((q) => q.id === e.id); if (r) r._sq = Math.min(0.4, 0.12 + e.v * 0.03);
       }
@@ -1577,10 +1608,19 @@ export class View {
           const k = 1 - (e.dodgeT - (CFG.ratTypes[NINJA].dodge.every - 0.42)) / 0.42;
           if (k < 1) { y += Math.sin(k * Math.PI) * 0.75; pitch -= k * Math.PI * 2; }
         } else if (e.v === JET && e.boost > 0) {
+          // the jetpack: ignition (a crouch as the engines catch), launch, flight, landing
           const k = 1 - e.boost / CFG.ratTypes[JET].jet.t;
-          y += Math.sin(k * Math.PI) * 0.55; pitch += 0.28 * Math.sin(k * Math.PI);
+          const ign = 1 - smooth(0, 0.12, k), arc = Math.sin(clampN((k - 0.1) / 0.8, 0, 1) * Math.PI);
+          y += arc * 0.6 - 0.08 * ign;
+          pitch += -0.2 * ign + (k < 0.5 ? 0.3 : -0.12) * arc;
           trick = 1;
-        } else if (e.v === BOMB && this.sparkBudget >= 1 && Math.random() < 0.05) trick = 2;
+          if (!e._jetUp && k > 0.1) {   // lift-off: a burst of flame and smoke
+            e._jetUp = true;
+            if (this.dustBudget >= 1) { this.dustBudget--; this._lift(e.x, e.z).puff(e.x, 0, e.z, 0xd9d0c8, 0.6); this.fx.lift = 0; this.fx.glow(e.x, 0.4, e.z, 1.2, 0xff8a24, 0.18); }
+          }
+          if (!e._jetDown && k > 0.9) { e._jetDown = true; e._sq = Math.max(e._sq || 0, 0.25); }   // lands with a squash
+        } else if (e.v === JET && (e._jetUp || e._jetDown)) { e._jetUp = e._jetDown = false; }
+        else if (e.v === BOMB && this.sparkBudget >= 1 && Math.random() < (e.atGate ? 0.3 : 0.05)) trick = 2;   // the fuse fizzes (hard, once it is at the gate)
         // drawn in between simulation steps, so the crowd glides at any frame rate
         const P = lerpPose(e, A);
         const ex = P.x, ez = P.z, yaw = P.yaw, walk = P.walk, hy = P.hy;
@@ -1699,8 +1739,15 @@ export class View {
         const fl = e.hitT > 0 ? Math.sin(e.hitT / CFG.hitFlinch * Math.PI) : 0;  // flinch from a hit
         let lean = -0.16 * fl;
         if (v.rig) {
-          // a Meshy skeleton: its clips do the walking, the blows and the roars
+          // a Meshy skeleton: its clips do the walking, the blows and the roars; the
+          // controller and BodyMotion layer the reactions and the attack's body work on top
           this._driveRig(v, e, dt, fighting, sc, style);
+          // the Rat Warlord roars and raises his weapon as he climbs out
+          if (style === 'warlord' && !v.spawnRoared && em >= 1 && v.rig.has('roar') && !v.rig.busy()) {
+            v.spawnRoared = true; v.rig.play('roar', 0.2, 1.3);
+            this._lift(gx, gz).ring(gx, 0, gz, 3 * sc, BOSS_AURA.warlord, 0.8); this.fx.lift = 0; this.shake = Math.max(this.shake, 0.3);
+          }
+          v.ps.atk = e.atGate && fighting ? attackPhase(e.attackT, CFG.giant.gateRate) : -1; v.ps.style = style;
           this._partState(v, e, dt, gyaw, sc);
           v.body.rotation.set(-0.06 * fl, 0, 0);
           if (style === 'mole') this._poseMole(v, e, sc, t);
@@ -1718,6 +1765,8 @@ export class View {
             const a = attackPhase(e.attackT, CFG.giant.gateRate);
             if (a > 0.64 && !v.smashed) {
               v.smashed = true;
+              if (v.mover) v.mover.kick(1);   // crown, cape, ears and tail jolt with the impact
+              this.shake = Math.max(this.shake, style === 'king' || style === 'baron' ? 0.45 : e.type === T_BOSS ? 0.3 : 0.2);
               const hx = gx + Math.sin(gyaw) * 2 * sc, hz = gz + Math.cos(gyaw) * 2 * sc, f = this._lift(gx, gz);
               f.puff(hx, 0, hz, 0xd9c7a8, 1.3);
               f.slash(gx + Math.sin(gyaw) * 0.9 * sc, 1.3 * sc, gz + Math.cos(gyaw) * 0.9 * sc, gyaw, 1.25 * sc, style === 'king' ? 0xffe27a : 0xfff2c8);
@@ -1728,8 +1777,8 @@ export class View {
             }
             if (a < 0.3) v.smashed = false;
           }
-        } else if (style === 'slime') this._poseSlime(v, e, sc, fighting);
-        else if (style === 'buzzard') this._poseBuzzard(v, e, sc, t, fighting);
+        } else if (style === 'slime') { (e._an || (e._an = new EnemyAnim(e.id))).update(e, dt, e.speed || 1); this._poseSlime(v, e, sc, fighting); }
+        else if (style === 'buzzard') { (e._an || (e._an = new EnemyAnim(e.id))).update(e, dt, e.speed || 1); this._poseBuzzard(v, e, sc, t, fighting); }
         else if (e.stun > 0) {
           // stunned or frozen: hold the pose
         } else if (!e.atGate) {

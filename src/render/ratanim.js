@@ -24,8 +24,10 @@
 //   x  1 left ear, 2 right ear, 3 jaw (0 none)   y  how much it follows that part
 //   z  along the tail, 0 at the root to 1 at the tip (0: a rigid hand-built tail)
 //   w  the stiffness above
-// aPivot.w (per model, see RAT_GAIT in models.js): how that kind of rat moves:
-//   0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop
+// aPivot.w (per model, see gaitCode in models.js): how that kind of rat moves, gait +
+// 8 × attack. Gaits: 0 trot · 1 gallop · 2 heavy stomp · 3 waddle · 4 sneak · 5 hop.
+// Attacks: 0 lunge and bite · 1 dash, bite, hop back · 2 charge and slam · 3 shield bash ·
+// 4 heavy lunge · 5 jump and bite · 6 brace and blow up · 7 spinning strike
 // (The gait and the stiffness ride in spare components so the shader stays well
 // under the 16 vertex inputs many graphics cards allow: the instance matrix alone
 // takes four.)
@@ -56,7 +58,9 @@ export const RAT_POSE_GLSL = [
   "bool attacking = atk >= 0.0 && alive;",
   "if (!alive || still) ph = 0.6;",
   "int part = int(aPart + 0.5);",
-  "int G = int(aPivot.w + 0.5);",
+  "float pw = floor(aPivot.w + 0.5);",
+  "int AS = int(floor(pw / 8.0 + 0.01));",        // how it attacks (RAT_ATTACK in models.js)
+  "int G = int(pw) - AS * 8;",
   "float bw = 1.0 - aSub.w;",
   // the controller's state (enemyanim.js): pace, lean, stagger, get-up
   "float spd = clamp(iState.x, 0.0, 3.0), lean = clamp(iState.y, -1.0, 1.0), stg = clamp(iState.z, 0.0, 1.0), gup = clamp(iState.w, 0.0, 1.0);",
@@ -81,12 +85,21 @@ export const RAT_POSE_GLSL = [
   // knocked off balance: the legs splay; scrambling up after a throw: they paddle
   "a += stg * (part <= 2 ? -0.5 : 0.35) + gup * sin(uTime * 26.0 + float(part) * 1.9) * 0.7;",
   "if (attacking) {",
+  "float wind = smoothstep(0.05, 0.5, atk) * (1.0 - smoothstep(0.58, 0.68, atk));",
+  "if (AS == 3 || AS == 4) {",
+  // rearing up: the front paws come up (the shield with them), then rake down
   "if (part <= 2) {",
   "float ak = part == 2 ? fract(atk + 0.9) : atk;",
   "float up = smoothstep(0.05, 0.5, ak) * (1.0 - smoothstep(0.58, 0.68, ak));",
   "float rake = smoothstep(0.58, 0.68, ak) * (1.0 - smoothstep(0.75, 1.0, ak));",
   "a = -1.5 * up + 0.5 * rake + (part == 1 ? 0.0 : 0.2) * up;",
-  "} else a = 0.25;",
+  "} else a = 0.25 + 0.2 * wind;",        // braced back feet
+  "} else if (AS == 5) {",
+  "a = (part <= 2 ? -0.9 : 0.8) * sin(clamp((atk - 0.35) / 0.3, 0.0, 1.0) * 3.14159);",   // tucked for the jump
+  "} else {",
+  // low to the ground: front paws braced forward, back legs gathered to push off
+  "a = (part <= 2 ? -0.45 : 0.4) * wind + (part <= 2 ? 0.3 : -0.25) * smoothstep(0.58, 0.66, atk) * (1.0 - smoothstep(0.76, 1.0, atk));",
+  "}",
   "}",
   "if (die > 0.0) a = -0.4 + sin(uTime * 34.0 + float(part) * 1.7) * 0.55 * (1.0 - smoothstep(0.3, 0.6, die));",
   "R = rX(a * bw);",
@@ -105,7 +118,11 @@ export const RAT_POSE_GLSL = [
   "float look = still ? 0.0 : sin(uTime * 1.3 + jit * 40.0) * 0.16 * smoothstep(0.4, 1.0, sin(uTime * 0.7 + jit * 23.0));",
   "if (G == 1) pitch -= 0.12;",
   "if (G == 4) { pitch += 0.12; look = still ? 0.0 : sin(uTime * 4.0 + jit * 40.0) * 0.3 * step(0.6, sin(uTime * 1.1 + jit * 9.0)); }",
-  "if (attacking) pitch += -0.35 * smoothstep(0.1, 0.55, atk) * (1.0 - smoothstep(0.58, 0.64, atk)) + 0.55 * smoothstep(0.58, 0.64, atk) * (1.0 - smoothstep(0.72, 0.9, atk));",
+  "if (attacking) {",
+  "float hu = smoothstep(0.1, 0.55, atk) * (1.0 - smoothstep(0.58, 0.64, atk)), hd = smoothstep(0.58, 0.64, atk) * (1.0 - smoothstep(0.72, 0.9, atk));",
+  // rearing kinds lift the head, then bite down; the rest lower it to strike
+  "pitch += (AS == 3 || AS == 4) ? -0.35 * hu + 0.55 * hd : AS == 2 ? 0.45 * hu + 0.25 * hd : 0.3 * hu + 0.4 * hd;",
+  "}",
   "pitch -= 0.5 * sin(hit * 3.14159) + 0.55 * stg;",
   "look += stg * sin(uTime * 16.0) * 0.25;",
   "if (attacking) look = 0.0;",
@@ -156,15 +173,47 @@ export const RAT_POSE_GLSL = [
   "pitchB -= 0.4 * fl;",
   "off.z -= 0.16 * fl;",
   "sc *= vec3(1.0 + 0.14 * fl, 1.0 - 0.2 * fl, 1.0 + 0.08 * fl);",
+  "float spinY = 0.0;",
   "if (attacking) {",
+  // every attack: anticipation (wind-up), the strike landing at 0.65 (the moment the
+  // gate takes the damage), follow-through, recovery
   "float rear = smoothstep(0.05, 0.55, atk) * (1.0 - smoothstep(0.58, 0.66, atk));",
   "float lunge = smoothstep(0.58, 0.66, atk) * (1.0 - smoothstep(0.76, 1.0, atk));",
-  "pitchB += -0.8 * rear + 0.32 * lunge;",
-  "off.z += -0.06 * rear + 0.38 * lunge;",
-  "off.y += 0.05 * rear;",
+  "float rec = smoothstep(0.7, 0.84, atk) * (1.0 - smoothstep(0.88, 1.0, atk));",
+  "float imp = smoothstep(0.62, 0.66, atk) * (1.0 - smoothstep(0.66, 0.78, atk));",
+  "if (AS == 1) {",            // fast: a short dash in, a quick bite, a hop back into its running stance
+  "float dash = smoothstep(0.45, 0.62, atk) * (1.0 - smoothstep(0.7, 0.8, atk));",
+  "float hopB = sin(clamp((atk - 0.7) / 0.25, 0.0, 1.0) * 3.14159);",
+  "pitchB += 0.12 * rear + 0.15 * dash - 0.25 * hopB;",
+  "off.z += -0.05 * rear + 0.5 * dash - 0.3 * hopB; off.y += 0.3 * hopB;",
+  "} else if (AS == 2) {",     // armoured: head down, a step back, then a charge that slams in
+  "float back = smoothstep(0.05, 0.5, atk) * (1.0 - smoothstep(0.52, 0.6, atk));",
+  "float chg = smoothstep(0.52, 0.65, atk) * (1.0 - smoothstep(0.75, 0.95, atk));",
+  "pitchB += 0.3 * back + 0.22 * chg; off.z += -0.25 * back + 0.5 * chg;",
+  "sc *= vec3(1.0 + 0.12 * imp, 1.0 - 0.15 * imp, 1.0 - 0.18 * imp);",
+  "} else if (AS == 3) {",     // shield: rears up behind the raised shield, braces, bashes forward
+  "pitchB += -0.7 * rear + 0.25 * lunge; off.z += -0.1 * rear + 0.42 * lunge; off.y += 0.06 * rear;",
+  "} else if (AS == 4) {",     // brood: a heavy, slower lunge, the sack throwing its weight
+  "pitchB += -0.45 * rear + 0.4 * lunge; off.z += -0.08 * rear + 0.3 * lunge; off.y += 0.03 * rear;",
+  "sc *= vec3(1.0 + 0.08 * imp, 1.0 - 0.1 * imp, 1.0);",
+  "} else if (AS == 5) {",     // ratling: jumps at the gate and bites
+  "float jmp = sin(clamp((atk - 0.35) / 0.3, 0.0, 1.0) * 3.14159);",
+  "off.y += 0.45 * jmp; off.z += 0.5 * smoothstep(0.35, 0.65, atk) * (1.0 - smoothstep(0.8, 1.0, atk)); pitchB -= 0.3 * jmp;",
+  "} else if (AS == 6) {",     // bomb: braces low as the fuse burns down, then the blast
+  "float brace = smoothstep(0.05, 0.6, atk) * (1.0 - smoothstep(0.62, 0.7, atk));",
+  "float blast = smoothstep(0.64, 0.7, atk) * (1.0 - smoothstep(0.8, 1.0, atk));",
+  "off.y -= 0.08 * brace; pitchB += 0.2 * brace - 0.4 * blast; off.z -= 0.25 * blast;",
+  "sc *= vec3(1.0 + 0.06 * brace + 0.2 * blast, 1.0 - 0.1 * brace + 0.15 * blast, 1.0 + 0.06 * brace);",
+  "} else if (AS == 7) {",     // ninja: crouches, then a full spinning strike
+  "spinY = smoothstep(0.4, 0.66, atk) * 6.2832;",
+  "pitchB += 0.15 * rear; off.z += 0.35 * lunge; off.y += 0.12 * sin(smoothstep(0.4, 0.66, atk) * 3.14159);",
+  "} else {",                  // a plain rat: slows, lowers its head, lunges, bites, recoils
+  "pitchB += 0.18 * rear + 0.32 * lunge - 0.2 * rec; off.z += -0.08 * rear + 0.38 * lunge - 0.12 * rec;",
+  "sc *= vec3(1.0, 1.0 - 0.06 * rear, 1.0 + 0.04 * rear);",
+  "}",
   "rollB = 0.0;",
   "}",
-  "mat3 B = rZ(rollB) * rX(pitchB);",
+  "mat3 B = rY(spinY) * rZ(rollB) * rX(pitchB);",
   "vec3 hip = vec3(0.0, 0.12, -0.3);",
   "vec3 r = B * ((q - hip) * sc) + hip + off;",
   "mat3 Rt = B * R * RS;",
@@ -206,7 +255,7 @@ export function ratMaterial(uniforms, gradientMap, map = null) {
       .replace('#include <common>', '#include <common>\nvarying float vFlash;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.96, 0.92) * vFlash;');
   };
-  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v5' : 'rat-anim-toon-v5');
+  mat.customProgramCacheKey = () => (map ? 'rat-anim-toon-tex-v6' : 'rat-anim-toon-v6');
   return mat;
 }
 
