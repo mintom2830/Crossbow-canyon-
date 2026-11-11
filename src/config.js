@@ -485,7 +485,7 @@ const OASIS = {
 // weaves over it three times, on three wooden bridges, through meadows of flowers
 // and leafy trees.
 const GREENWOOD = {
-  id: 4, name: 'Greenwood Vale', theme: 'meadow',
+  id: 4, name: 'Three Bridges Wash', theme: 'canyon',
   roadPoints: [
     [-15, 47.5], [-16, 36], [-17, 23], [-17.5, 9], [-14.5, -1.5], [-7.5, -7.5], [-0.5, -2], [0.5, 9],
     [2, 20], [8.5, 27], [16.5, 26], [20.5, 17.5], [20.5, 8.5], [21.5, -4], [18.5, -15],
@@ -513,15 +513,15 @@ const GREENWOOD = {
   decor: {
     // the river: in through the west wall, out through the east (a bridge wherever the road crosses it)
     stream: [[-46, 6], [-31, 10.5], [-17.5, 9], [-9, 8.6], [0.5, 9], [10.5, 11.5], [20.5, 8.5], [31, 6], [46, 8]],
-    trees: { n: 24, kind: 'leafy' },
-    meadow: 70,   // clumps of wildflowers all over the grass
+    palms: 14,    // palm trees along the river and out in the sand
+    meadow: 30,   // clumps of desert wildflowers
   },
 };
 
 // Level 5: a snowy mountain pass. The road climbs over a white ridge, swings round
 // and comes back over it further north; pines, snowmen and a frozen lake.
 const FROSTPEAK = {
-  id: 5, name: 'Frostpeak Pass', theme: 'snow',
+  id: 5, name: 'Dune Ridge Pass', theme: 'dunes',
   roadPoints: [
     [-48, 21], [-34, 22.5], [-21, 20.5], [-9, 16.5], [1, 15], [11, 16.5], [18.5, 19.5], [23.8, 15],
     [25, 6], [23, -2.5], [17.5, -8], [9, -9.5], [0, -8], [-6.5, -9.5], [-10, -15.5], [-10, -22],
@@ -548,10 +548,10 @@ const FROSTPEAK = {
   moleExit: 0,
   hpMul: 1.12,
   decor: {
-    pond: { x: -3.5, z: 32, rx: 7.2, rz: 3.6, seed: 4.4, kind: 'ice' },
+    pond: { x: -3.5, z: 32, rx: 7.2, rz: 3.6, seed: 4.4 },
     peaks: [{ x: 0.5, z: 3.5, r: 3.1, h: 6.5 }],   // the rocky summit of the ridge, between the two crossings
-    trees: { n: 22, kind: 'pine' },
-    snowmen: [{ x: 7.5, z: 32.5, rot: 0.6 }, { x: 22.5, z: -17, rot: -2.4 }, { x: -24.5, z: 4.5, rot: 1.2 }],
+    palms: 10,
+    camels: [{ x: 7.5, z: 32.5, rot: 0.6 }, { x: 22.5, z: -17, rot: -2.4 }],
   },
 };
 
@@ -599,7 +599,7 @@ const MESAS = {
 // in the middle of the map and spiral outwards round it, over ash and past cracks
 // of glowing lava, all the way to the town.
 const CINDER = {
-  id: 7, name: 'Cinder Crater', theme: 'lava',
+  id: 7, name: 'Cinder Crater', theme: 'scorched',
   roadPoints: [
     [1.5, 12], [6.5, 8.5], [8.5, 1], [5.5, -5.5], [-2.5, -8], [-10.5, -6], [-17, 1.5], [-18, 12.5],
     [-13, 22], [-2, 26.5], [11, 25], [21.5, 17], [26, 4.5], [23.5, -9.5], [15, -20], [1.5, -24.5],

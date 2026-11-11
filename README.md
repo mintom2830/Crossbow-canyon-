@@ -162,20 +162,21 @@ A desert oasis in the middle of the canyon:
 
 ### Levels 4 to 7
 
-Four more maps, each with its own road, look (ground, cliffs, plants and sky) and landmarks. The farmer walks round every landmark, and no build pad lands on one.
+Four more desert maps, each with its own road, shade of desert (sand, cliffs and sky) and landmarks. The farmer walks round every landmark, and no build pad lands on one.
 
-| | Level 4: Greenwood Vale | Level 5: Frostpeak Pass | Level 6: Sunset Mesas | Level 7: Cinder Crater |
+| | Level 4: Three Bridges Wash | Level 5: Dune Ridge Pass | Level 6: Sunset Mesas | Level 7: Cinder Crater |
 |---|---|---|---|---|
-| Look | a green valley under a blue sky | snow and a pale winter sky | deep red rock in a low orange sun | ash and black rock under a red sky |
-| Road | in from the south, weaving north and south across a river | in from the west, over a snowy ridge, round and back over it | in from the north-east, hooking round three mesas | starts under a volcano in the middle and spirals outwards |
+| Look | the red canyon, with a river running through it | pale wind-blown dunes under a hot white sky | deep red rock in a low orange sun | a desert burnt dark round its volcano |
+| Road | in from the south, weaving north and south across the river | in from the west, over a sand ridge, round and back over it | in from the north-east, hooking round three mesas | starts under a volcano in the middle and spirals outwards |
 | Road length | 193 | 153 | 168 | 186 |
-| Landmarks | a river with **three wooden bridges**, 24 leafy trees (some in blossom), wildflowers | a **ridge** the road climbs twice with a rocky summit, 22 snowy pines, three snowmen, a **frozen lake** | **three mesas** (six of the ten tower spots stand on their rims), two stone arches, a **ruined temple** on the biggest mesa, broken columns | a **volcano** with a lava crater, smoke and lava running down it, a pool of lava, glowing cracks, burnt trees |
+| Landmarks | a river with **three wooden bridges**, palms, desert wildflowers | a **ridge** the road climbs twice with a rocky summit, an **oasis pool** ringed with palms, two camels, cacti | **three mesas** (six of the ten tower spots stand on their rims), two stone arches, a **ruined temple** on the biggest mesa, broken columns | a **volcano** with a lava crater, smoke and lava running down it, a pool of lava, glowing cracks, burnt trees |
 | Rat health | ×1.35 | ×1.12 | ×1 | ×1.5 |
 
 - **Cinder Crater's burrow is in the middle of the map.** The rats climb out at the foot of the volcano and wind one and a quarter times round it, so towers between the inner and outer ring cover the road twice.
 - **Rat health** is set per map so each plays about as hard as Levels 2 and 3: a long road or towers that cover two stretches get tougher rats.
 - **Balance (checked by the bot players):** on every one of the four, an efficient crossbow player wins Normal, a distracted one still wins, and never upgrading loses by wave 9. Cannons win Hard with 3 stars, and Easy is 3 stars.
 - **The map cards** for these four are pictures of the maps themselves, taken from the game.
+- The scenery code can also draw a green meadow, snow (pines, snowmen, a frozen lake) and an ash-black lava land (`THEMES` in `src/render/env.js`); no map uses those looks now.
 
 Saves remember their map: **Continue** and **Retry wave** reopen the game on the map it was played on, whatever is picked on the title screen, and the title shows each map's own best result.
 
@@ -716,7 +717,7 @@ CHROMIUM_PATH=/path/to/chrome npm run test:e2e   # use a Chromium you already ha
 - Weapon skins: classic is free and unpainted; at least five more cost diamonds, each with its own colours.
 - Rat Bestiary: every enemy has a painted portrait built into the page, an aura colour and its ability badges, and the Quick Counter Guide lists eight kinds of enemy.
 - Level 3's oasis: the road keeps clear of the pool, crosses the stream exactly once (the bridge) and passes the pool on all four sides; the arch's pillars, the palms and the camels stand off the road and out of the water; every tower spot and pad is on dry ground clear of the landmarks; the farmer stops at the pool's edge and walks round the arch's pillars.
-- Levels 4 to 7: every tower spot and pad stands on open ground clear of the road, water and landmarks; the road never runs into itself; the farmer walks round landmarks. Greenwood Vale's road crosses the river three times; Frostpeak Pass's crosses the ridge twice and the farmer can't walk onto the ice; Sunset Mesas has three mesas, two arches and a temple, with most towers on the mesas; Cinder Crater's road starts under the volcano and spirals more than once round it, and the rats come out at its foot. Balance on all four: the bot and a distracted player win Normal, no upgrades loses by wave 9, cannons win Hard with 3 stars, Easy is 3 stars.
+- Levels 4 to 7: every tower spot and pad stands on open ground clear of the road, water and landmarks; the road never runs into itself; the farmer walks round landmarks. Three Bridges Wash's road crosses the river three times; Dune Ridge Pass's crosses the ridge twice and the farmer can't walk into its pool; Sunset Mesas has three mesas, two arches and a temple, with most towers on the mesas; Cinder Crater's road starts under the volcano and spirals more than once round it, and the rats come out at its foot. Balance on all four: the bot and a distracted player win Normal, no upgrades loses by wave 9, cannons win Hard with 3 stars, Easy is 3 stars.
 - Level 3 balance: the bot wins Normal with 1–2 stars, a distracted player still wins, no upgrades falls by wave 8 and idling by wave 3; cannons win Hard with 3 stars, crossbows alone do not comfortably hold Hard, and Easy is 3 stars.
 - Aiming: crossbows and cannons turn round to face the rats before they shoot, and never fire more than about 25° off their target. Arrows close in on the one rat they were fired at. Cannonballs rise above the barrel, land on their aim point and catch groups.
 - Rat types: each kind shows up first in its own wave (fast 2, armored 3, shield 4, healer 6, brood 7, bomb 9, ninja 12, jetpack 14) with the right speed and health.

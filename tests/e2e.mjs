@@ -530,7 +530,7 @@ await test('Levels 4 to 7: each map opens from the sliding picker with its own l
   const byLevel = {}; for (let i = 1; i <= 6; i++) byLevel[i] = { cleared: true, bestWave: 16, bestStars: 2 };
   await setStorageAndReload(page, 'crossbow-canyon:progress:v1', JSON.stringify({ diamonds: 0, byLevel }));
   assert((await page.$$('[data-level]')).length === 7, 'seven map cards');
-  const want = { 4: ['Greenwood Vale', 'G1'], 5: ['Frostpeak Pass', 'P1'], 6: ['Sunset Mesas', 'M1'], 7: ['Cinder Crater', 'V1'] };
+  const want = { 4: ['Three Bridges Wash', 'G1'], 5: ['Dune Ridge Pass', 'P1'], 6: ['Sunset Mesas', 'M1'], 7: ['Cinder Crater', 'V1'] };
   const inView = (id) => page.evaluate((lv) => { const r = document.getElementById('levelPick').getBoundingClientRect(), c = document.querySelector('[data-level="' + lv + '"]').getBoundingClientRect(); return c.left >= r.left - 2 && c.right <= r.right + 2; }, id);
   for (const L of [4, 5, 6, 7]) {
     // the arrow slides the row along until the card is in view
@@ -545,8 +545,8 @@ await test('Levels 4 to 7: each map opens from the sliding picker with its own l
   }
   // every theme has its own sky
   const skies = new Set();
-  for (const L of [1, 4, 5, 6, 7]) { await g(page, (id) => { window.__cc.switchLevel(id); }, L); skies.add(await g(page, () => window.__cc.view.scene.background.getHex())); }
-  assert(skies.size === 5, 'the themes should each have their own sky: ' + skies.size);
+  for (const L of [1, 5, 6, 7]) { await g(page, (id) => { window.__cc.switchLevel(id); }, L); skies.add(await g(page, () => window.__cc.view.scene.background.getHex())); }
+  assert(skies.size === 4, 'the desert themes should each have their own sky: ' + skies.size);
   for (const L of [4, 5, 6, 7]) {
     await g(page, (id) => { window.__cc.goTitle(); window.__cc.switchLevel(id); }, L);
     await g(page, () => { window.__cc.startGame(); });

@@ -55,6 +55,27 @@ export const THEMES = {
     cacti: 7,
     sky: { DAY: { sky: 0xffe2c2, gnd: 0x9a5a40, sun: 0xffe0b8, bg: 0xf0a868 }, DUSK: { sky: 0xffb890, gnd: 0x80453a, sun: 0xffa870, bg: 0xe58858 }, NIGHT: { sky: 0xc8a0c0, gnd: 0x4e3048, sun: 0xffa888, bg: 0xa85a60 } },
   },
+  // pale wind-blown dunes under a hot white sky (Level 5)
+  dunes: {
+    pal: {
+      sand: 0xf2d08a, sandDark: 0xe0b76a, sandLight: 0xfbe4ae, olive: 0xc9a85a,
+      cliff: 0xcf8a4a, cliffDark: 0xa5662f, cliffLight: 0xe6ab6a, cliffTop: 0xf3cf8e, cliffMid: 0xd99a55,
+      rockA: 0xd49a5a,
+    },
+    cacti: 12,
+    sky: { DAY: { sky: 0xfffaf0, gnd: 0xa88455, bg: 0xf3d6a0 }, DUSK: { bg: 0xeab080 }, NIGHT: { bg: 0xc0806a } },
+  },
+  // a desert burnt dark round its volcano: baked red-brown sand and sooty rock (Level 7)
+  scorched: {
+    pal: {
+      sand: 0xc98a52, sandDark: 0xa86c3e, sandLight: 0xdfa468, olive: 0x8a5a38, wet: 0x3a221a,
+      road: 0xf0d6a6, roadEdge: 0xb98a52, roadInk: 0x5a3320,
+      cliff: 0x8a3f2c, cliffDark: 0x54261f, cliffLight: 0xa85a3a, cliffTop: 0xc98250, cliffMid: 0x763428,
+      bushA: 0x6a4a34, bushB: 0x8a6a3e, rockA: 0x4a3530, rockB: 0x6a4a40,
+    },
+    cacti: 5,
+    sky: { DAY: { sky: 0xffe4c8, gnd: 0x8a4a34, sun: 0xffe6c8, bg: 0xd98a58 }, DUSK: { sky: 0xffb48c, gnd: 0x70382e, bg: 0xc46a44 }, NIGHT: { sky: 0xd098a0, gnd: 0x4a242c, bg: 0x8a4038 } },
+  },
   // ash and black rock under a red sky
   lava: {
     pal: {
@@ -403,7 +424,7 @@ export function buildEnvironment(scene, quality) {
     const s = rng.range(0.3, 0.8);
     st.add(P.dod(s, 0), rng() < 0.6 ? TP.rockA : TP.rockB, { x: p[0], y: p[2] + s * 0.35, z: p[1], sy: 0.6, ry: rng() * 6, jitter: 0.12, rng });
     if (CFG.theme === 'snow' && s > 0.45) st.add(P.dod(s * 0.8, 0), 0xffffff, { x: p[0], y: p[2] + s * 0.62, z: p[1], sy: 0.3, ry: rng() * 6 });   // snow on the bigger rocks
-    if (CFG.theme === 'lava' && i % 5 === 0) st.add(P.ico(s * 0.32, 0), 0xff8a2a, { x: p[0] + s * 0.5, y: p[2] + 0.12, z: p[1] + s * 0.3 });   // a glowing ember beside it
+    if ((CFG.theme === 'lava' || CFG.theme === 'scorched') && i % 5 === 0) st.add(P.ico(s * 0.32, 0), 0xff8a2a, { x: p[0] + s * 0.5, y: p[2] + 0.12, z: p[1] + s * 0.3 });   // a glowing ember beside it
   }
   for (let i = 0; i < (TH.cacti ?? 9); i++) { // desert cacti
     const p = placeProp(5.5, 4); if (!p) continue;
@@ -637,7 +658,6 @@ function buildOasis(st, D, rng, group) {
   const P = D.pond, lay = oasisLayout() || { arches: [], pillars: [], palms: [], solids: [] };
   const kind = P ? P.kind || 'water' : 'water';
   WATER = { ...WATERS[kind] };
-  if (CFG.theme === 'meadow') WATER.bank = 0x9c8a52;   // a river's muddy banks in the grass
   const flat = (pts, y, color) => {
     const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
     const g = new THREE.ShapeGeometry(shape, 1);
@@ -819,7 +839,8 @@ function buildOasis(st, D, rng, group) {
   // ---- palm trees: ringed trunks curving up to a crown of drooping fronds and coconuts
   for (const p of lay.palms) {
     const segs = 7, dxl = Math.cos(p.lean), dzl = Math.sin(p.lean);
-    const at = (t) => { const off = p.tilt * p.h * Math.pow(t, 1.6); return [p.x + dxl * off, t * p.h, p.z + dzl * off]; };
+    const py = groundHeight(p.x, p.z) - 0.05;   // (standing on the slope, on a map with a hill)
+    const at = (t) => { const off = p.tilt * p.h * Math.pow(t, 1.6); return [p.x + dxl * off, py + t * p.h, p.z + dzl * off]; };
     for (let i = 0; i < segs; i++) {
       const t0 = i / segs, t1 = (i + 1) / segs, [x0, y0, z0] = at(t0), [x1, y1, z1] = at(t1);
       const th = Math.atan(p.tilt * 1.6 * Math.pow((t0 + t1) / 2, 0.6));
@@ -844,7 +865,8 @@ function buildOasis(st, D, rng, group) {
   // ---- camels resting by the water, one with a striped saddle blanket
   (D.camels || []).forEach((c, ci) => {
     const put = (lx, lz) => { const [dx, dz] = turnXZ(lx, lz, c.rot); return [c.x + dx, c.z + dz]; };
-    const add = (geo, col, lx, y, lz, o = {}) => { const [x, z] = put(lx, lz); st.add(geo, col, { x, y, z, ...o, ry: c.rot + (o.ry || 0), order: 'YXZ' }); };
+    const cy = groundHeight(c.x, c.z);
+    const add = (geo, col, lx, y, lz, o = {}) => { const [x, z] = put(lx, lz); st.add(geo, col, { x, y: y + cy, z, ...o, ry: c.rot + (o.ry || 0), order: 'YXZ' }); };
     const fur = 0xc89558, furDark = 0xa8763f;
     add(P_.sph(1, 12, 8), fur, 0, 0.55, 0, { sx: 0.72, sy: 0.52, sz: 1.15 });
     add(P_.sph(0.55, 10, 7), furDark, 0, 1.05, -0.1, { sx: 0.95, sy: 0.85, sz: 1.1 });
@@ -951,7 +973,7 @@ function buildLandmarks(st, D, lay, rng) {
         st.add(P.cyl(r * 0.62, r, h, 7), [TP.cliff, TP.cliffLight, TP.cliffMid][k], { x, y: y + h / 2, z, ry: k * 1.3 + lx, jitter: 0.3, jitterY: 0.12, rng, shadeY: [0.72, 1.06] });
         y += h; r *= 0.62;
       }
-      st.add(P.cone(r * 1.5, H * 0.3, 7), 0xffffff, { x, y: y + H * 0.1, z, ry: lx * 3, jitter: 0.12, rng });
+      st.add(P.cone(r * 1.5, H * 0.3, 7), CFG.theme === 'snow' ? 0xffffff : TP.cliffTop, { x, y: y + H * 0.1, z, ry: lx * 3, jitter: 0.12, rng });
     }
   }
   // ---- the volcano: a cone of black rock, lava glowing in its crater and running down its sides
@@ -1039,7 +1061,7 @@ function buildLandmarks(st, D, lay, rng) {
     const x = rng.range(W.minX + 1.5, W.maxX - 1.5), z = rng.range(-25, W.maxZ - 1.5);
     if (!free(x, z, 0.9, 3.6)) continue;
     const y = gy(x, z), col = WILDFLOWERS[Math.floor(rng() * WILDFLOWERS.length)];
-    st.add(P.ico(0.3, 0), 0x5f9a3e, { x, y: y + 0.05, z, sy: 0.35, ry: rng() * 6 });
+    st.add(P.ico(0.3, 0), 0x86a650, { x, y: y + 0.05, z, sy: 0.35, ry: rng() * 6 });
     for (let k = 0; k < 6; k++) {
       const b = (k / 6) * Math.PI * 2 + rng(), rr = 0.12 + rng() * 0.2;
       st.add(P.ico(0.075 + rng() * 0.03, 0), k === 5 ? WILDFLOWERS[Math.floor(rng() * WILDFLOWERS.length)] : col, { x: x + Math.cos(b) * rr, y: y + 0.17 + rng() * 0.08, z: z + Math.sin(b) * rr });

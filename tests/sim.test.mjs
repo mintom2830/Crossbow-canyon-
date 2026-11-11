@@ -1574,21 +1574,21 @@ test('Levels 4 to 7: every tower spot and pad stands on open ground, clear of th
     }
   });
 });
-test('Levels 4 to 7: three bridges over the river, a frozen lake by the ridge, mesas with a temple and two arches, a volcano the rats come out from under', () => {
+test('Levels 4 to 7 (all deserts): three bridges over the river, an oasis by the dune ridge, mesas with a temple and two arches, a volcano the rats come out from under', () => {
   try {
     setLevel(4);
     let crossings = 0, wet = false;
     for (let i = 0; i < road.count; i++) { const w = streamDistance(road.px[i], road.pz[i]) < STREAM_HALF; if (w && !wet) crossings++; wet = w; }
-    assert(CFG.theme === 'meadow' && crossings === 3, `Greenwood Vale: the road crosses the river ${crossings} times`);
-    assert(oasisLayout().trees.length === CFG.decor.trees.n && oasisLayout().trees.every((t) => t.kind === 'leafy'), 'not every tree found room');
+    assert(CFG.theme === 'canyon' && crossings === 3, `Three Bridges Wash: the road crosses the river ${crossings} times`);
+    assert(oasisLayout().palms.length === CFG.decor.palms, 'not every palm found room');
     setLevel(5);
-    assert(CFG.theme === 'snow' && CFG.decor.pond.kind === 'ice' && CFG.hills.length === 1, 'Frostpeak Pass: ridge and frozen lake');
+    assert(CFG.theme === 'dunes' && CFG.decor.pond && CFG.hills.length === 1 && oasisLayout().palms.length === CFG.decor.palms, 'Dune Ridge Pass: ridge and oasis');
     let over = 0, up = false;
     for (let i = 0; i < road.count; i++) { const h = hillHeight(road.px[i], road.pz[i]) > 1.2; if (h && !up) over++; up = h; }
     assert(over === 2, `the road should cross the ridge twice (${over})`);
     const P = CFG.decor.pond, s5 = new Sim({ seed: 1 });
     s5.hero.x = P.x; s5.hero.z = P.z - P.rz - 1.5; s5.setInput(0, 1); run(s5, 3);
-    assert(pondDepth(s5.hero.x, s5.hero.z) < 0, 'the farmer walked onto the ice');
+    assert(pondDepth(s5.hero.x, s5.hero.z) < 0, 'the farmer walked into the pool');
     setLevel(6);
     const l6 = oasisLayout();
     assert(CFG.theme === 'mesa' && CFG.plateaus.length === 3 && l6.arches.length === 2 && l6.pillars.length === 4, 'Sunset Mesas: three mesas, two arches');
@@ -1597,7 +1597,7 @@ test('Levels 4 to 7: three bridges over the river, a frozen lake by the ridge, m
     setLevel(7);
     const C = CFG.decor.cone, o = {};
     road.sample(0, o);
-    assert(CFG.theme === 'lava' && CFG.roadStub === 0 && Math.hypot(o.x - C.x, o.z - C.z) < C.r, 'Cinder Crater: the road should start under the volcano');
+    assert(CFG.theme === 'scorched' && CFG.roadStub === 0 && Math.hypot(o.x - C.x, o.z - C.z) < C.r, 'Cinder Crater: the road should start under the volcano');
     road.sample(CFG.spawnS, o);
     assert(Math.hypot(o.x - C.x, o.z - C.z) > C.r + 1.5, 'the burrow should be clear of the volcano');
     // the road winds more than once round the volcano
