@@ -138,6 +138,18 @@ Each of the three works like an older tower (the Sniper, the Tesla and the Rocke
 - A skin is bought once, and can then be worn by every weapon that offers it. A weapon wearing a skin shows a green dot in the strip.
 - A skin worn before weapons had their own is kept: it goes to every weapon that offers it.
 
+## A gentle first map, and more diamonds on later maps
+
+**Level 1 is the gentle map.** Only **plain rats** and **giant rats** come, and the only boss is the first one, the **Rat Warlord**. He stands in for every other boss, with that boss's health, so the crowd is as big and as tough as before; it just has no fast, armoured, shield, healer, brood, bomb, ninja or jetpack rats and none of the other bosses' tricks. No new-enemy cards pop up on Level 1. Levels 2 to 7 get every kind of rat and every boss (`simpleWaves` and `levelWave` in `src/config.js`).
+
+**The later the map, the more diamonds it pays.** A full clear on Normal:
+
+| Level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| Diamonds | 50 | 75 | 100 | 125 | 150 | 175 | 200 |
+
+Easy pays 60% of that (30 on Level 1) and Hard double (100 on Level 1). The extra is spread over the waves, so a game that falls short still earns its share. The title screen shows what the picked map pays.
+
 ## Seven maps
 
 Pick the map on the title screen (the scene behind the menu switches to it straight away). The row of map cards slides sideways: swipe it, or use the arrows at its ends. Every map leads to the same town and uses the same 16 waves, towers and bosses.

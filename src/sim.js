@@ -1,7 +1,7 @@
 // Crossbow Canyon — deterministic gameplay simulation.
 // No rendering or DOM code lives here, so it runs unchanged in Node for the
 // balance bot and in the browser for the real game.
-import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds, towerMaxLevel, towerUpgradeCost, towerBuildMul } from './config.js';
+import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds, levelWave, towerMaxLevel, towerUpgradeCost, towerBuildMul } from './config.js';
 import { isArsenal, arsenalSpec, WEAK_MUL, baseKind } from './arsenal.js';
 import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf, inWater, oasisLayout, pondEdge } from './world.js';
 
@@ -189,8 +189,8 @@ export class Sim {
   // Difficulty: every enemy's health is scaled by this.
   get hpMul() { return CFG.difficulties[this.difficulty].hp * CFG.levelHp; }
   // Diamonds a wave pays on this difficulty.
-  waveDiamonds(i) { return waveDiamonds(i, this.difficulty); }
-  get diamondsPerClear() { return clearDiamonds(this.difficulty); }
+  waveDiamonds(i) { return waveDiamonds(i, this.difficulty, CFG.level); }
+  get diamondsPerClear() { return clearDiamonds(this.difficulty, CFG.level); }
   get waveProgress() { return this.waveTotal ? this.waveKilled / this.waveTotal : 0; }
   // Day for the first half, sunset deepening through the second half.
   get nightFactor() { return clamp((this.waveIndex - 5) / (CFG.waves.length - 6), 0, 1); }
@@ -241,7 +241,7 @@ export class Sim {
   // ---------------------------------------------------------------- waves
   // Names of the bosses in the wave that is about to start (for the HUD).
   get upcomingBosses() {
-    const w = CFG.waves[this.waveIndex];
+    const w = levelWave(this.waveIndex);
     if (!w || this.state !== 'build') return [];
     return w.giants.filter((g) => g[2]).map((g) => CFG.bosses[g[2] === true ? 'king' : g[2]].name);
   }
@@ -267,7 +267,7 @@ export class Sim {
 
   // Adds a wave's rats to the spawn queue, starting now (waveTime).
   _queueWave(index) {
-    const w = CFG.waves[index];
+    const w = levelWave(index);
     const q = [];
     const speed = CFG.grunt.speed;
     const rows = Math.ceil(w.grunts / w.perRow);
@@ -527,7 +527,7 @@ export class Sim {
 
   // the rats that followed the mole down its tunnel scramble out around it
   _moleRats(e, count) {
-    const w = CFG.waves[Math.min(this.waveIndex, CFG.waves.length - 1)], usable = CFG.roadHalfWidth - 0.55, RT = CFG.ratTypes[0];
+    const w = levelWave(Math.min(this.waveIndex, CFG.waves.length - 1)), usable = CFG.roadHalfWidth - 0.55, RT = CFG.ratTypes[0];
     let n = 0;
     for (let i = 0; i < count; i++) {
       if (this.enemies.length >= MAX_ENEMIES) break;
@@ -552,7 +552,7 @@ export class Sim {
     e.dropT -= dt;
     if (e.dropT > 0) return;
     e.dropT += F.every;
-    const w = CFG.waves[Math.min(this.waveIndex, CFG.waves.length - 1)], usable = CFG.roadHalfWidth - 0.55;
+    const w = levelWave(Math.min(this.waveIndex, CFG.waves.length - 1)), usable = CFG.roadHalfWidth - 0.55;
     let n = 0;
     for (let i = 0; i < F.n; i++) {
       if (this.enemies.length >= MAX_ENEMIES) break;

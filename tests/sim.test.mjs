@@ -2,7 +2,7 @@
 import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING, BOMB, NINJA, JET } from '../src/sim.js';
 import { RAT_GUIDE, firstWave, guideEntry, QUICK_COUNTERS } from '../src/ratguide.js';
 import { existsSync, readFileSync } from 'node:fs';
-import { CFG, cannonSpec, MAPS, towerUpgradeCost, towerBuildMul, towerUnlockCost, skinPalette } from '../src/config.js';
+import { CFG, cannonSpec, MAPS, towerUpgradeCost, towerBuildMul, towerUnlockCost, skinPalette, levelWave, waveDiamonds, clearDiamonds } from '../src/config.js';
 import { ARSENAL, TOWER_KINDS, arsenalSpec, baseKind } from '../src/arsenal.js';
 import { road, plateauSdf, setLevel, groundHeight, hillHeight, pondDepth, streamDistance, STREAM_HALF, inWater, oasisLayout } from '../src/world.js';
 import { runLevel } from '../tools/balance.mjs';
@@ -17,6 +17,9 @@ function test(name, fn) {
   catch (e) { fail++; results.push(`  ✗ ${name}\n      ${e.message}`); }
 }
 function assert(c, msg) { if (!c) throw new Error(msg); }
+// These tests play Level 1 with every kind of rat and boss (as Levels 2 to 7 are played);
+// the test of Level 1's own gentle waves turns them back on for itself.
+CFG.simpleWaves = [];
 const dt = CFG.fixedDt;
 // runs a check on every map (Level 1, Level 2, ...), then goes back to Level 1
 function forLevels(fn) {
@@ -1659,6 +1662,51 @@ test('weapon skins (Shop): classic is free, the rest cost diamonds and each has 
   assert(paid.length >= 5, 'at least five skins to buy');
   for (const [k, v] of paid) assert(v.cost > 0 && v.colors && v.colors.length === 3 && v.name && v.blurb, 'skin ' + k);
   assert(new Set(paid.map(([, v]) => v.colors.join())).size === paid.length, 'every skin looks different');
+});
+
+test('Level 1 is the gentle map: only plain rats, giant rats and the Rat Warlord come; the other maps get every kind', () => {
+  try {
+    CFG.simpleWaves = [1];
+    for (let wi = 0; wi < CFG.waves.length; wi++) {
+      const sim = new Sim({ seed: 4 }); sim.waveIndex = wi; sim.callWave();
+      const kinds = new Set(sim.spawnQueue.filter((q) => q.type === T_GRUNT).map((q) => q.v));
+      assert([...kinds].join() === '0', `Level 1 wave ${wi + 1} should be plain rats only: ${[...kinds].join()}`);
+      const bosses = new Set(sim.spawnQueue.filter((q) => q.boss).map((q) => q.boss));
+      assert([...bosses].every((b) => b === 'warlord'), `Level 1 wave ${wi + 1} has another boss: ${[...bosses].join()}`);
+      const w = levelWave(wi, 1), full = CFG.waves[wi];
+      assert(w.grunts === full.grunts && w.hp === full.hp && w.giants.length === full.giants.length && !w.intro, 'same crowd, no new-enemy card');
+      assert(sim.spawnQueue.length > 0 && sim.spawnQueue.filter((q) => q.type !== T_GRUNT).length === full.giants.length, 'the giants and bosses still come');
+    }
+    // the first boss wave is still the Warlord's, and the last wave is all Warlords
+    assert(levelWave(4, 1).giants.some((g) => g[2] === 'warlord') && levelWave(15, 1).giants.filter((g) => g[2]).every((g) => g[2] === 'warlord'), 'Warlord only');
+    // Level 2 keeps everything
+    setLevel(2);
+    const s2 = new Sim({ seed: 4 }); s2.waveIndex = 6; s2.callWave();
+    assert(new Set(s2.spawnQueue.filter((q) => q.type === T_GRUNT).map((q) => q.v)).size > 3 && levelWave(7).giants.some((g) => g[2] === 'slime'), 'Level 2 should have every kind');
+  } finally { CFG.simpleWaves = []; setLevel(1); }
+});
+test('Level 1 (gentle) balance: an efficient player wins with 3 stars, a distracted one wins, idling still loses', () => {
+  try {
+    CFG.simpleWaves = [1];
+    const b = runLevel('bot', 1);
+    assert(b.result === 'victory' && b.stars === 3, `bot on gentle Level 1: ${b.result} ${b.stars}`);
+    const l = runLevel('lazy', 1);
+    assert(l.result === 'victory', `distracted player lost gentle Level 1 on wave ${l.wave}`);
+    const i = runLevel('idle', 1);
+    assert(i.result === 'defeat', 'idling should still lose');
+  } finally { CFG.simpleWaves = []; }
+});
+test('diamonds grow with the level: a full clear pays 50 on Level 1, 75 on Level 2, 100 on Level 3 ... 200 on Level 7 (Normal)', () => {
+  for (let L = 1; L <= 7; L++) {
+    assert(clearDiamonds('normal', L) === 50 + 25 * (L - 1), `Level ${L} Normal pays ${clearDiamonds('normal', L)}`);
+    assert(clearDiamonds('easy', L) === Math.round(30 * (1 + 0.5 * (L - 1))) && clearDiamonds('hard', L) === 100 + 50 * (L - 1), `Level ${L} Easy / Hard`);
+    for (let i = 0; i < CFG.waves.length; i++) assert(waveDiamonds(i, 'normal', L) >= waveDiamonds(i, 'normal', 1) && Number.isInteger(waveDiamonds(i, 'normal', L)), 'every wave pays a whole number, never less than on Level 1');
+  }
+  try {
+    setLevel(2);
+    const s = new Sim({ seed: 1 });
+    assert(s.diamondsPerClear === 75 && s.waveDiamonds(15) === waveDiamonds(15, 'normal', 2), 'a game on Level 2 pays Level 2 diamonds');
+  } finally { setLevel(1); }
 });
 
 test('three skins per weapon: every tower offers exactly three skins of its own; a tower only wears a skin it offers', () => {

@@ -15,6 +15,7 @@ export const CFG = {
   // huts, town, ...) hold the level being played: Level 1 here, and setLevel()
   // in world.js swaps in another entry of MAPS (end of this file).
   level: 1,
+  simpleWaves: [1],   // levels where only plain rats, giant rats and the Rat Warlord come (levelWave below)
   hills: [],     // smooth sand hills the road can climb (Level 2): centre, radii, height
   decor: null,   // a level's own landmarks (Level 2: the lone tree and the picnic)
   theme: 'canyon',   // the level's look: ground, cliffs, plants and sky (THEMES in render/env.js)
@@ -385,8 +386,36 @@ export const CFG = {
 };
 
 // Diamonds wave i pays on a difficulty ('easy' | 'normal' | 'hard'), and a full clear's total.
-export const waveDiamonds = (i, diff = 'normal') => Math.ceil((CFG.waveDiamonds[i] || 0) * (CFG.difficulties[diff] || CFG.difficulties.normal).diamonds);
-export const clearDiamonds = (diff = 'normal') => CFG.waveDiamonds.reduce((n, _, i) => n + waveDiamonds(i, diff), 0);
+// Diamonds for clearing wave i. Later maps pay more: Level 1 pays the table as it
+// is (50 for a full clear on Normal), and every level after it half as much again
+// (75 on Level 2, 100 on Level 3, ... 200 on Level 7). The level's share is spread
+// over the waves so that the running total is always a whole number of diamonds.
+export const levelDiamondMul = (level = 1) => 1 + 0.5 * (Math.max(1, level) - 1);
+const diffWave = (i, diff) => Math.ceil((CFG.waveDiamonds[i] || 0) * (CFG.difficulties[diff] || CFG.difficulties.normal).diamonds);
+export function waveDiamonds(i, diff = 'normal', level = 1) {
+  const m = levelDiamondMul(level);
+  let before = 0;
+  for (let k = 0; k < i; k++) before += diffWave(k, diff);
+  return Math.round((before + diffWave(i, diff)) * m) - Math.round(before * m);
+}
+export const clearDiamonds = (diff = 'normal', level = 1) => CFG.waveDiamonds.reduce((n, _, i) => n + waveDiamonds(i, diff, level), 0);
+
+// The waves of a level. Level 1 is the gentle first map: only plain rats and giant
+// rats come, and the only boss is the first one, the Rat Warlord (he stands in for
+// every other boss, with that boss's health). The other maps get every kind.
+const simpleCache = new Map();
+export function levelWave(index, level = CFG.level) {
+  const w = CFG.waves[index];
+  if (!w || !CFG.simpleWaves.includes(level)) return w;
+  let s = simpleCache.get(w);
+  if (!s) {
+    const boss = w.giants.some((g) => g[2]);
+    s = { ...w, mix: null, healers: 0, intro: 0, title: boss ? (index === CFG.waves.length - 1 ? 'Final wave: the Rat Warlord and his guard!' : 'Boss wave: the Rat Warlord!') : '',
+      giants: w.giants.map((g) => (g[2] ? [g[0], g[1], 'warlord'] : g)) };
+    simpleCache.set(w, s);
+  }
+  return s;
+}
 
 // Giant rats drop a coin shower that grows with their HP, capped so the
 // late-wave brutes don't flood the economy.

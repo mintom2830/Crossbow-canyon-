@@ -44,6 +44,8 @@ progress.diamonds = Math.max(0, progress.diamonds | 0);
 progress.byLevel = progress.byLevel || {};
 if (!Object.keys(progress.byLevel).length && (progress.bestWave || progress.cleared)) progress.byLevel[1] = { bestWave: progress.bestWave | 0, cleared: !!progress.cleared, bestStars: progress.bestStars | 0, bestDiff: progress.bestDiff || null };
 const levelBest = (id = CFG.level) => progress.byLevel[id] || (progress.byLevel[id] = { bestWave: 0, cleared: false, bestStars: 0, bestDiff: null });
+// (the game's own tests play Level 1 with every kind of rat and boss)
+try { if (localStorage.getItem('crossbow-canyon:fullwaves')) CFG.simpleWaves = []; } catch { /* no storage */ }
 // Maps unlock in order: hold all the waves of one map (on any difficulty) to open the next.
 const levelCleared = (id) => !!(progress.byLevel[id] && progress.byLevel[id].cleared);
 const levelUnlocked = (id) => id <= 1 || levelCleared(id - 1);
@@ -128,7 +130,7 @@ const diffName = (k) => CFG.difficulties[k] ? CFG.difficulties[k].name : 'Normal
 function syncDiffPick() {
   const k = diffKey();
   for (const b of document.querySelectorAll('[data-diff]')) b.setAttribute('aria-checked', String(b.dataset.diff === k));
-  $('diffNote').innerHTML = `<span>${CFG.difficulties[k].blurb} · a full clear pays <b class="gem-txt">${clearDiamonds(k)} diamonds</b></span>`;
+  $('diffNote').innerHTML = `<span>${CFG.difficulties[k].blurb} · a full clear of this map pays <b class="gem-txt">${clearDiamonds(k, CFG.level)} diamonds</b></span>`;
   fitTitle();
 }
 for (const b of document.querySelectorAll('[data-diff]')) {
