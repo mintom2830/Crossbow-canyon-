@@ -2,8 +2,8 @@
 import { Sim, T_GRUNT, T_GIANT, T_BOSS, SHIELD, HEALER, BROOD, RATLING, BOMB, NINJA, JET } from '../src/sim.js';
 import { RAT_GUIDE, firstWave, guideEntry, QUICK_COUNTERS } from '../src/ratguide.js';
 import { existsSync, readFileSync } from 'node:fs';
-import { CFG, cannonSpec, MAPS, towerUpgradeCost, towerBuildMul, towerUnlockCost } from '../src/config.js';
-import { ARSENAL, TOWER_KINDS, arsenalSpec } from '../src/arsenal.js';
+import { CFG, cannonSpec, MAPS, towerUpgradeCost, towerBuildMul, towerUnlockCost, skinPalette } from '../src/config.js';
+import { ARSENAL, TOWER_KINDS, arsenalSpec, baseKind } from '../src/arsenal.js';
 import { road, plateauSdf, setLevel, groundHeight, hillHeight, pondDepth, streamDistance, STREAM_HALF, inWater, oasisLayout } from '../src/world.js';
 import { runLevel } from '../tools/balance.mjs';
 import { makeBot } from '../src/bot.js';
@@ -1661,6 +1661,49 @@ test('weapon skins (Shop): classic is free, the rest cost diamonds and each has 
   assert(new Set(paid.map(([, v]) => v.colors.join())).size === paid.length, 'every skin looks different');
 });
 
+test('three skins per weapon: every tower offers exactly three skins of its own; a tower only wears a skin it offers', () => {
+  const S = CFG.skins, T = CFG.towerSkins;
+  assert(Object.keys(S).length === 10, 'Classic and nine skins');
+  for (const k of TOWER_KINDS) {
+    assert(T[k] && T[k].length === 3 && new Set(T[k]).size === 3, `${k} should offer three different skins`);
+    for (const id of T[k]) assert(id !== 'classic' && S[id] && S[id].colors, `${k}: unknown skin ${id}`);
+    assert(skinPalette(k, T[k][0]) === S[T[k][0]], `${k} should be painted in a skin it offers`);
+    const other = Object.keys(S).find((id) => id !== 'classic' && !T[k].includes(id));
+    assert(skinPalette(k, other) !== S[other], `${k} should not wear ${other}`);
+  }
+  assert(Object.keys(T).length === TOWER_KINDS.length, 'a skin set for every tower and no others');
+  // every skin is offered by some tower, and the sets differ from tower to tower
+  for (const id of Object.keys(S)) if (id !== 'classic') assert(TOWER_KINDS.some((k) => T[k].includes(id)), `no tower offers ${id}`);
+  assert(new Set(TOWER_KINDS.map((k) => [...T[k]].sort().join())).size >= 12, 'the towers should not all offer the same three');
+  // Classic: a tower's built look, or its own colours if it borrows another tower's model
+  assert(skinPalette('crossbow', 'classic') === null && skinPalette('tesla', undefined) === null, 'Classic is unpainted');
+  for (const k of ['ballista', 'storm', 'swarm']) assert(skinPalette(k, 'classic').colors.length === 3, `${k} should have colours of its own`);
+});
+
+test('three more towers: the Ballista pierces a line of rats, the Storm Coil chains far down the crowd, the Swarm Launcher fires a rocket at each of many rats', () => {
+  for (const [k, like] of [['ballista', 'sniper'], ['storm', 'tesla'], ['swarm', 'rocket']]) {
+    assert(ARSENAL[k] && ARSENAL[k].like === like && baseKind(k) === like && baseKind(like) === like, `${k} should work like the ${like}`);
+    assert(ARSENAL[k].levels.length === 6 && ARSENAL[k].cost > 0 && TOWER_KINDS.includes(k), `${k} should be a full tower in the Shop`);
+  }
+  assert(arsenalSpec('ballista', 3).through === 3 && arsenalSpec('ballista', 3).interval < arsenalSpec('sniper', 3).interval && arsenalSpec('ballista', 3).range < arsenalSpec('sniper', 3).range, 'the Ballista: quicker and shorter than the Sniper');
+  // each kills rats in a real wave, at level 1 and level 5
+  for (const k of ['ballista', 'storm', 'swarm']) for (const lv of [1, 5]) {
+    const sim = new Sim({ seed: 5, unlocks: { [k]: true } });
+    const t = sim._placeTower(sim.slots[1], lv, true, k);
+    sim.fortress.hp = sim.fortress.maxHp = 1e6;
+    const before = sim.towers[0].fired;
+    sim.towers[0].cooldown = 1e9;   // the starting crossbow sits this one out
+    sim.callWave();
+    run(sim, 40);
+    assert(t.kind === k && t.level === lv && t.fired > 0 && sim.stats.kills > 0 && sim.towers[0].fired === before, `${k} level ${lv} fired ${t.fired} times and killed ${sim.stats.kills}`);
+  }
+  // the Storm Coil reaches more rats per spark than the Tesla; the Swarm fires more rockets than the Rocket Tower
+  for (let lv = 1; lv <= 5; lv++) {
+    assert(arsenalSpec('storm', lv).chain > arsenalSpec('tesla', lv).chain && arsenalSpec('storm', lv).dmg < arsenalSpec('tesla', lv).dmg, 'storm: more rats, weaker');
+    assert(arsenalSpec('swarm', lv).rockets > arsenalSpec('rocket', lv).rockets && arsenalSpec('swarm', lv).dmg < arsenalSpec('rocket', lv).dmg, 'swarm: more rockets, smaller');
+  }
+});
+
 test('Rat Bestiary: every enemy has a painted portrait, an aura colour and its ability badges; the Quick Counter Guide covers every kind', () => {
   const tpl = readFileSync(new URL('../src/index.template.html', import.meta.url), 'utf8');
   for (const g of RAT_GUIDE) {
@@ -1692,9 +1735,9 @@ const arsSim = (kind, level = 5, slot = 1) => {
 // a rat on the road at the point closest to tower t (offset ds along the road)
 const ratNear = (sim, t, ds = 0, hp = 100, v = 0, lat = 0) => onRoad(sim, v, sim._nearestRoadS(t) + ds, lat, hp);
 
-test('Arsenal: 13 towers, 5 levels each; the stronger the tower the more diamonds and gold it costs', () => {
+test('Arsenal: 16 towers, 5 levels each; the stronger the tower the more diamonds and gold it costs', () => {
   const kinds = Object.keys(ARSENAL);
-  assert(kinds.length === 13 && TOWER_KINDS.length === 15, 'tower count');
+  assert(kinds.length === 16 && TOWER_KINDS.length === 18, 'tower count');
   for (const k of kinds) {
     const A = ARSENAL[k];
     assert(A.levels.length === 6 && A.levels.slice(1).every((L) => L.ab && L.ab[0] && L.ab[1]), `${k}: five levels with abilities`);

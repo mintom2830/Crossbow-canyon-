@@ -30,7 +30,15 @@ if (!progress.skins.includes('classic')) progress.skins.unshift('classic');
 const rideOwned = (k) => !!(CFG.rides[k] && progress.unlocks[k]);
 const skinOwned = (k) => !!CFG.skins[k] && progress.skins.includes(k);
 const currentRide = () => (rideOwned(settings.ride) ? settings.ride : null);
-const currentSkin = () => (skinOwned(settings.skin) ? settings.skin : 'classic');
+// each tower wears its own skin: one of the three it offers that the player owns (else Classic)
+if (!settings.skins || typeof settings.skins !== 'object') {
+  settings.skins = {};
+  // a skin worn before towers had their own goes to every tower that offers it
+  if (settings.skin && settings.skin !== 'classic') for (const k of TOWER_KINDS) if (CFG.towerSkins[k].includes(settings.skin)) settings.skins[k] = settings.skin;
+}
+const towerSkin = (kind) => { const id = settings.skins[kind]; return id && skinOwned(id) && CFG.towerSkins[kind].includes(id) ? id : 'classic'; };
+const currentSkins = () => { const out = {}; for (const k of TOWER_KINDS) { const id = towerSkin(k); if (id !== 'classic') out[k] = id; } return out; };
+let skinTower = 'crossbow';   // the tower whose skins the Shop is showing
 progress.diamonds = Math.max(0, progress.diamonds | 0);
 // best results per map (saves from before Level 2 hold Level 1's results at the top level)
 progress.byLevel = progress.byLevel || {};
@@ -63,7 +71,7 @@ let view;
 try {
   view = new View(canvas, $('labels'), quality);
   view.towerArt = TOWER_ART;
-  view.setSkin(currentSkin());
+  view.setSkins(currentSkins());
 } catch (err) {
   $('loading').textContent = 'This browser could not start 3D graphics (WebGL). Try another browser or turn on hardware acceleration.';
   throw err;
@@ -173,7 +181,7 @@ function switchLevel(id) {
   old.dispose();
   view = new View(canvas, $('labels'), quality, old.renderer);
   view.towerArt = TOWER_ART;
-  view.setSkin(currentSkin());
+  view.setSkins(currentSkins());
   hudCache = {}; tcKey = '';
   needsRender = true;
   return true;
@@ -438,14 +446,25 @@ function refreshShop() {
     $('rideGrid').innerHTML = shopCard({ id: 'none', img: P.get('ride:none', false), name: 'On foot', blurb: 'The farmer runs along at a steady pace.', cost: 0, owned: true, using: !ride, useLabel: 'Walk', usingLabel: 'Walking ✓' })
       + Object.entries(CFG.rides).map(([id, R]) => shopCard({ id, img: P.get('ride:' + id, false), name: R.name, blurb: R.blurb, stat: `Speed +${Math.round((R.speedMul - 1) * 100)}%${R.magnetMul > 1 ? ` · coin reach +${Math.round((R.magnetMul - 1) * 100)}%` : ''}`, cost: R.cost, owned: rideOwned(id), using: ride === id, useLabel: 'Ride', usingLabel: 'Riding ✓' })).join('');
   } else if (shopTab === 'skins') {
-    const skin = currentSkin();
-    $('skinGrid').innerHTML = Object.entries(CFG.skins).map(([id, S]) => shopCard({
-      id, img: P.get('skin:' + id, false), name: S.name, blurb: S.blurb, cost: S.cost, owned: skinOwned(id), using: skin === id, useLabel: 'Equip', usingLabel: 'Equipped ✓',
+    // pick a weapon, then one of its three skins (or Classic)
+    $('skinTowers').innerHTML = TOWER_KINDS.map((k) => `<button type="button" role="radio" data-skin-tower="${k}" aria-checked="${k === skinTower}" class="${towerOwned(k) ? '' : 'locked'}">${TOWER_ART[k] ? `<img alt="" src="${TOWER_ART[k]}" width="40" height="40">` : ''}<span>${towerName(k).replace(/ Tower$/, '')}</span>${towerSkin(k) !== 'classic' ? '<i class="dot"></i>' : ''}</button>`).join('');
+    const skin = towerSkin(skinTower);
+    $('skinNote').textContent = `${towerName(skinTower)}: Classic and three skins of its own.${towerOwned(skinTower) ? '' : ' (Unlock this tower in the Towers tab to build it.)'} A skin you buy can be worn by every tower that offers it.`;
+    $('skinGrid').innerHTML = ['classic', ...CFG.towerSkins[skinTower]].map((id) => { const S = CFG.skins[id]; return shopCard({
+      id, img: P.get('skin:' + skinTower + ':' + id, false), name: S.name, blurb: S.blurb, cost: S.cost, owned: skinOwned(id), using: skin === id, useLabel: 'Equip', usingLabel: 'Equipped ✓',
       swatch: S.colors ? `<span class="swatch">${[...S.colors, S.accent].map((c) => `<i style="background:#${c.toString(16).padStart(6, '0')}"></i>`).join('')}</span>` : '',
-    })).join('');
+    }); }).join('');
   }
   P.flush();
 }
+// the Shop's skins page: which weapon's skins are shown
+document.getElementById('shopScreen').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-skin-tower]');
+  if (!b) return;
+  audio.unlock(); audio.click();
+  skinTower = b.dataset.skinTower;
+  refreshShop();
+});
 // buy and use: rides and skins
 document.getElementById('shopScreen').addEventListener('click', (e) => {
   const buy = e.target.closest('[data-buy]'), use = e.target.closest('[data-use]');
@@ -455,7 +474,7 @@ document.getElementById('shopScreen').addEventListener('click', (e) => {
   const equip = () => {
     if (kind === 'tower') return;
     if (kind === 'ride') { settings.ride = id; if (mode === 'title') sim.ride = currentRide(); }
-    else { settings.skin = id; view.setSkin(currentSkin()); }
+    else { settings.skins[skinTower] = id; view.setSkins(currentSkins()); }
     Save.set('settings', settings);
   };
   audio.unlock();

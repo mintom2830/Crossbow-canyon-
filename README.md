@@ -120,6 +120,24 @@ The horse is chestnut with a dark mane, a white blaze, a blue saddle cloth and s
 
 A skin keeps each part's own light and shade: every colour is matched by its brightness to the skin's dark, middle and light shades, and brightly coloured trim takes the skin's accent colour.
 
+## Three more towers, and three skins for every weapon
+
+**Three more towers** (18 in all), unlocked in the Shop like the rest, five levels each:
+
+| Tower | Diamonds | What it does |
+|---|---|---|
+| **Ballista** | 140 | A giant crossbow. One heavy bolt goes straight through a line of rats (the rat it hits and up to six behind). Quicker than the Sniper with a shorter reach. |
+| **Storm Coil** | 320 | Quick, weak lightning that leaps a long way down the crowd: four rats a spark at level 1, ten at level 5. Clears swarms; poor against one big rat. |
+| **Swarm Launcher** | 380 | Volleys of small homing rockets, each after a rat of its own: three at level 1, eight at level 5. |
+
+Each of the three works like an older tower (the Sniper, the Tesla and the Rocket Tower: `like` in `src/arsenal.js`) with its own stats, and borrows that tower's 3D model in its own colours (`tint`). Their Shop pictures are the older towers' pictures recoloured.
+
+**Three skins per weapon.** In the Shop's *Weapon skins* tab, pick a weapon from the strip along the top, then one of four looks: Classic (as built) or one of the **three skins that weapon offers**.
+- There are nine skins in all: Candy, Jungle, Frost, Golden, Lava, Ocean, Sunset, Royal and Shadow. Each weapon offers its own three of them (`towerSkins` in `src/config.js`); the Tesla's are Frost, Royal and Candy, for example.
+- **Each weapon wears its own skin**, so the crossbows can be Candy while the cannons are Shadow. The arrows and the farmer's pitchfork go with the crossbow.
+- A skin is bought once, and can then be worn by every weapon that offers it. A weapon wearing a skin shows a green dot in the strip.
+- A skin worn before weapons had their own is kept: it goes to every weapon that offers it.
+
 ## Seven maps
 
 Pick the map on the title screen (the scene behind the menu switches to it straight away). The row of map cards slides sideways: swipe it, or use the arrows at its ends. Every map leads to the same town and uses the same 16 waves, towers and bosses.

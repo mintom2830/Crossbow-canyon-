@@ -7,7 +7,7 @@ const KEYS = {
   waveStart: 'crossbow-canyon:wave-start:v1',
 };
 
-export const DEFAULT_SETTINGS = { sfx: true, music: true, quality: 'auto', tutorialDone: false, autoSkip: false, speed: 1, difficulty: 'normal', level: 1, ride: 'none', skin: 'classic' };
+export const DEFAULT_SETTINGS = { sfx: true, music: true, quality: 'auto', tutorialDone: false, autoSkip: false, speed: 1, difficulty: 'normal', level: 1, ride: 'none', skin: 'classic', skins: null };
 export const DEFAULT_PROGRESS = { bestWave: 0, cleared: false, bestStars: 0, games: 0, diamonds: 0, clears: 0, unlocks: { cannon: false, horse: false, cow: false }, skins: ['classic'], byLevel: {} };
 
 export const Save = {

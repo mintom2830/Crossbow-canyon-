@@ -2,7 +2,7 @@
 // No rendering or DOM code lives here, so it runs unchanged in Node for the
 // balance bot and in the browser for the real game.
 import { CFG, giantCoins, cannonSpec, waveDiamonds, clearDiamonds, towerMaxLevel, towerUpgradeCost, towerBuildMul } from './config.js';
-import { isArsenal, arsenalSpec, WEAK_MUL } from './arsenal.js';
+import { isArsenal, arsenalSpec, WEAK_MUL, baseKind } from './arsenal.js';
 import { road, groundHeight, footHeight, hillHeight, makeRng, plateauSdf, inWater, oasisLayout, pondEdge } from './world.js';
 
 export const T_GRUNT = 0, T_GIANT = 1, T_BOSS = 2;
@@ -1180,7 +1180,7 @@ export class Sim {
     const L = arsenalSpec(t.kind, t.level);
     t.cooldown -= dt * t.rateMul;
     t.recoil = Math.max(0, t.recoil - dt * 3);
-    switch (t.kind) {
+    switch (baseKind(t.kind)) {
       case 'spike': this._updateSpike(t, L, dt); break;
       case 'mine': this._updateMineTower(t, L, dt); break;
       case 'ice': case 'crystal': this._updateBolter(t, L, dt); break;

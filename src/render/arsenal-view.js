@@ -4,7 +4,7 @@
 // clouds and the boosts of totems and time warps.
 import * as THREE from 'three';
 import { CFG } from '../config.js';
-import { isArsenal, arsenalSpec } from '../arsenal.js';
+import { isArsenal, arsenalSpec, baseKind } from '../arsenal.js';
 import { groundHeight } from '../world.js';
 import { toon, INK_PX, inkGeometry, inkInstanced } from './toon.js';
 import { applySkin } from './skins.js';
@@ -30,7 +30,7 @@ export class ArsenalView {
     this.view = view;
     const scene = view.scene;
     this.cache = new Map();
-    this.skin = 'classic';
+    this.pal = () => null;   // (kind) => the palette that tower kind is painted in
     const mat = toon();
     this.rocketMesh = instanced(rocketGeometry(), mat, 90, INK_PX.thin);
     this.mineMesh = instanced(mineGeometry(), mat, 160, INK_PX.thin);
@@ -60,22 +60,22 @@ export class ArsenalView {
     const key = kind + level;
     let g = this.cache.get(key);
     if (!g) {
-      const parts = arsenalParts(kind, level);
-      if (this.skin !== 'classic') { applySkin(parts.base, this.skin); applySkin(parts.head, this.skin); }
-      g = { geo: parts, ink: { base: inkGeometry(parts.base, parts.baseGlow), head: inkGeometry(parts.head, parts.headGlow), gun: null } };
+      const parts = arsenalParts(kind, level), p = this.pal(kind);
+      if (p) { applySkin(parts.base, p); applySkin(parts.head, p); }
+      g = { kind, geo: parts, ink: { base: inkGeometry(parts.base, parts.baseGlow), head: inkGeometry(parts.head, parts.headGlow), gun: null } };
       this.cache.set(key, g);
     }
     return g;
   }
-  setSkin(id) {
-    this.skin = id;
-    for (const g of this.cache.values()) { applySkin(g.geo.base, id); applySkin(g.geo.head, id); }
+  setSkins(pal) {
+    this.pal = pal;
+    for (const g of this.cache.values()) { const p = pal(g.kind); applySkin(g.geo.base, p); applySkin(g.geo.head, p); }
   }
 
   // ---------------------------------------------------------------- towers
   // Per-frame animation of one Arsenal tower (called from the view's tower loop).
   animateTower(v, tw, dt, t, kick, ease) {
-    const kind = v.kind, L = arsenalSpec(kind, tw.level);
+    const kind = baseKind(v.kind), L = arsenalSpec(v.kind, tw.level);
     if (TILT.has(kind)) {
       let want = 0;
       const tg = tw.target;

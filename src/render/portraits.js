@@ -4,7 +4,9 @@
 // at it, and the frame is read back into an image (data URL).
 import * as THREE from 'three';
 import { CFG } from '../config.js';
-import { gruntGeometry, gruntInkGeometry, heroParts, mountParts, towerParts } from './models.js';
+import { gruntGeometry, gruntInkGeometry, heroParts, mountParts, towerParts, cannonParts } from './models.js';
+import { arsenalParts } from './arsenal-models.js';
+import { skinPalette } from '../config.js';
 import { inkInstanced, inkNormals, inkUniforms, INK_PX, toon, addInk } from './toon.js';
 import { applySkin } from './skins.js';
 
@@ -71,13 +73,17 @@ export class Portraits {
     }
     // a level 5 crossbow tower painted in a weapon skin (Shop)
     if (key.startsWith('skin:')) {
-      const id = key.slice(5), g = towerParts(5), mat = toon(), glow = new THREE.MeshBasicMaterial({ vertexColors: true });
-      applySkin(g.base, id); applySkin(g.head, id);
+      // skin:<tower>:<skin> (or skin:<skin> for the crossbow)
+      const bits = key.slice(5).split(':'), kind = bits.length > 1 ? bits[0] : 'crossbow', id = bits[bits.length - 1];
+      const g = kind === 'crossbow' ? towerParts(5) : kind === 'cannon' ? cannonParts(3) : arsenalParts(kind, 5), mat = toon(), glow = new THREE.MeshBasicMaterial({ vertexColors: true });
+      const pal = skinPalette(kind, id);
+      applySkin(g.base, pal); applySkin(g.head, pal); if (g.gun) applySkin(g.gun, pal);
       const group = new THREE.Group();
       const base = new THREE.Mesh(g.base, mat), head = new THREE.Mesh(g.head, mat);
       head.position.y = g.headY; head.rotation.y = 0.5;
       addInk(base, INK_PX.unit); addInk(head, INK_PX.unit);
       group.add(base, head);
+      if (g.gun && g.gun.attributes.position) { const gun = new THREE.Mesh(g.gun, mat); gun.position.y = g.headY; gun.rotation.y = 0.5; addInk(gun, INK_PX.unit); group.add(gun); }
       if (g.baseGlow.attributes.position) group.add(new THREE.Mesh(g.baseGlow, glow));
       if (g.headGlow.attributes.position) { const hg = new THREE.Mesh(g.headGlow, glow); hg.position.y = g.headY; hg.rotation.y = 0.5; group.add(hg); }
       group.position.copy(AWAY);

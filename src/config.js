@@ -183,7 +183,7 @@ export const CFG = {
   // falls short still earns some. They add up to diamondsPerClear for a full clear.
   waveDiamonds: [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 20],
   cannonUnlockCost: 100,
-  arsenal: ARSENAL,      // thirteen more towers, unlocked in the Shop (arsenal.js)
+  arsenal: ARSENAL,      // sixteen more towers, unlocked in the Shop (arsenal.js)
   // Rides, bought in the Shop with diamonds: the farmer rides into every game
   // on the one picked, and runs faster on it (speedMul). The cow's bell also
   // pulls coins in from further away (magnetMul).
@@ -200,7 +200,23 @@ export const CFG = {
     jungle: { name: 'Jungle', cost: 40, colors: [0x2c5a1c, 0x5f9a34, 0xc8ec7a], accent: 0xffd23a, blurb: 'Leafy green with sunny yellow.' },
     frost: { name: 'Frost', cost: 60, colors: [0x1e4f80, 0x5ab4e8, 0xeefcff], accent: 0xffffff, blurb: 'Ice blue and snow white.' },
     golden: { name: 'Golden', cost: 80, colors: [0x5a3203, 0xc27a0c, 0xe8a820], accent: 0xffe27a, blurb: 'Solid gold, top to bottom.' },
-    lava: { name: 'Lava', cost: 100, colors: [0x1a1214, 0x4a2c26, 0xff5a10], accent: 0xffb020, blurb: 'Black rock with glowing orange.' },
+    lava: { name: 'Lava', cost: 100, colors: [0x1a1214, 0x4a2c26, 0xff5a10], accent: 0xffb020, glow: true, blurb: 'Black rock with glowing orange.' },
+    ocean: { name: 'Ocean', cost: 35, colors: [0x0e3a4a, 0x1f9aa8, 0xc8f4ee], accent: 0xff8a5a, blurb: 'Deep teal and sea foam with coral trim.' },
+    sunset: { name: 'Sunset', cost: 45, colors: [0x5a1a3a, 0xe8562a, 0xffd27a], accent: 0xff5aa0, blurb: 'Plum, orange and warm yellow.' },
+    royal: { name: 'Royal', cost: 70, colors: [0x2a1450, 0x6a3ac0, 0xe0d0ff], accent: 0xffd23a, blurb: 'Deep purple with gold trim.' },
+    shadow: { name: 'Shadow', cost: 90, colors: [0x101218, 0x3a4050, 0xa8b0c0], accent: 0xe2282c, blurb: 'Black steel with a red edge.' },
+  },
+  // Every weapon has three skins of its own to choose from (besides Classic, its
+  // built look). A skin is bought once and can then be worn by any tower that offers
+  // it; each tower wears its own choice.
+  towerSkins: {
+    crossbow: ['candy', 'golden', 'lava'], cannon: ['shadow', 'golden', 'sunset'],
+    spike: ['shadow', 'frost', 'lava'], mine: ['jungle', 'sunset', 'shadow'], ice: ['frost', 'ocean', 'royal'],
+    poison: ['jungle', 'candy', 'shadow'], flame: ['lava', 'sunset', 'golden'], ballista: ['jungle', 'golden', 'shadow'],
+    sniper: ['shadow', 'ocean', 'golden'], tesla: ['frost', 'royal', 'candy'], mortar: ['jungle', 'shadow', 'lava'],
+    rocket: ['sunset', 'ocean', 'shadow'], storm: ['frost', 'candy', 'golden'], summoner: ['royal', 'jungle', 'candy'],
+    swarm: ['sunset', 'frost', 'lava'], crystal: ['royal', 'ocean', 'candy'], totem: ['lava', 'jungle', 'golden'],
+    warp: ['ocean', 'royal', 'sunset'],
   },
 
   // ---------- Difficulty ----------
@@ -389,6 +405,14 @@ export const towerName = (kind) => (kind === 'cannon' ? 'Cannon Tower' : isArsen
 export const towerMaxLevel = (kind) => (isArsenal(kind) ? ARSENAL_MAX_LEVEL : CFG.maxTowerLevel);
 export const towerUpgradeCost = (kind, level) => (kind === 'cannon' ? CFG.cannon.upgradeCosts[level] : isArsenal(kind) ? arsenalUpgradeCost(kind, level) : CFG.upgradeCosts[level]);
 export const towerBuildMul = (kind) => (kind === 'cannon' ? CFG.cannon.buildCostMul : isArsenal(kind) ? ARSENAL[kind].buildMul : 1);
+// The colours a tower is painted in: the skin it wears, or (wearing Classic) its own
+// tint if it has one (the towers that borrow another's model), or null for its built look.
+export function skinPalette(kind, id) {
+  const S = CFG.skins[id];
+  if (S && S.colors && (CFG.towerSkins[kind] || []).includes(id)) return S;
+  const tint = isArsenal(kind) && ARSENAL[kind].tint;
+  return tint ? (tint._pal || (tint._pal = { colors: tint.slice(0, 3), accent: tint[3] })) : null;
+}
 export const towerUnlockCost = (kind) => (kind === 'cannon' ? CFG.cannonUnlockCost : isArsenal(kind) ? ARSENAL[kind].cost : 0);
 
 // ---------- Maps ----------

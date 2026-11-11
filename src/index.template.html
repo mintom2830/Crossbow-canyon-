@@ -583,6 +583,13 @@ select { border: 2.5px solid var(--ink); }
 .shop-tabs button[aria-selected="true"] { background: linear-gradient(#b27af8, #6a2fc0); color: #ffe27a; }
 .shop-blurb { font-size: 13.5px !important; }
 .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 9px; }
+/* the Shop's skins page: a strip of weapons to pick from (it slides sideways) */
+.skin-towers { display: flex; gap: 7px; overflow-x: auto; padding: 4px 2px 8px; margin-bottom: 4px; scrollbar-width: thin; }
+.skin-towers button { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 74px; padding: 5px 3px 4px; border: 2.5px solid var(--ink); border-radius: 12px; background: rgba(255, 255, 255, 0.5); color: var(--umber); font: 900 11px/1.1 var(--font-body); cursor: pointer; }
+.skin-towers button img { width: 40px; height: 40px; border-radius: 8px; border: 2px solid var(--ink); background: #f2d39a; }
+.skin-towers button[aria-checked="true"] { background: linear-gradient(#fff3c0, #ffd86a); box-shadow: 0 0 0 3px #fff3b0, 0 3px 0 var(--ink); }
+.skin-towers button.locked img { filter: grayscale(0.8) brightness(0.85); }
+.skin-towers button .dot { position: absolute; top: 3px; right: 4px; width: 11px; height: 11px; border-radius: 50%; background: #3aa92e; border: 2px solid var(--ink); }
 .shop-item .btn:disabled { filter: none; opacity: 1; background: linear-gradient(#8ee66a, #3aa92e); color: #fff; }
 .shop-item { display: flex; flex-direction: column; align-items: center; gap: 5px; background: rgba(255, 255, 255, 0.5); border: 2.5px solid var(--ink); border-radius: 14px; padding: 8px 8px 10px; box-shadow: 0 3px 0 rgba(42, 24, 16, 0.85); position: relative; }
 .shop-item.on { background: linear-gradient(#fff3c0, #ffd86a); box-shadow: 0 0 0 3px #fff3b0, 0 0 12px 2px rgba(255, 200, 60, 0.7), 0 3px 0 var(--ink); }
@@ -822,10 +829,12 @@ select { border: 2.5px solid var(--ink); }
       </div>
       <div class="shop-page" data-page="skins" hidden>
         <p class="shop-blurb">Paint every crossbow and cannon, their arrows and the farmer's pitchfork. Skins only change the look.</p>
+        <div class="skin-towers" id="skinTowers" role="radiogroup" aria-label="Weapon"></div>
+        <p class="shop-blurb" id="skinNote"></p>
         <div class="shop-grid" id="skinGrid"></div>
       </div>
       <div class="shop-page" data-page="towers">
-        <p class="shop-blurb">Fifteen towers, five levels or more each. The stronger the tower, the more diamonds it takes to unlock and the more gold it costs to build and upgrade. In a game, pick the tower to build with the <b>Build</b> button (or keys 1–9) before stepping on a pad.</p>
+        <p class="shop-blurb">Eighteen towers, five levels or more each. The stronger the tower, the more diamonds it takes to unlock and the more gold it costs to build and upgrade. In a game, pick the tower to build with the <b>Build</b> button (or keys 1–9) before stepping on a pad.</p>
         <div class="shop-grid towers" id="towerGrid"></div>
       </div>
       <button class="btn" type="button" data-back>Back</button>
@@ -849,7 +858,7 @@ select { border: 2.5px solid var(--ink); }
   <!-- Pause -->
   <!-- Rat guide -->
   <!-- painted portraits of every enemy (Meshy, from the bestiary design): used by the Rat guide and the New enemy card -->
-  <script type="application/json" id="towerArt">{"crossbow":"__ASSET(tower-crossbow.webp)__","cannon":"__ASSET(tower-cannon.webp)__","mortar":"__ASSET(tower-mortar.webp)__","crystal":"__ASSET(tower-crystal.webp)__","tesla":"__ASSET(tower-tesla.webp)__","flame":"__ASSET(tower-flame.webp)__","ice":"__ASSET(tower-ice.webp)__","poison":"__ASSET(tower-poison.webp)__","sniper":"__ASSET(tower-sniper.webp)__","rocket":"__ASSET(tower-rocket.webp)__","mine":"__ASSET(tower-mine.webp)__","spike":"__ASSET(tower-spike.webp)__","summoner":"__ASSET(tower-summoner.webp)__","totem":"__ASSET(tower-totem.webp)__","warp":"__ASSET(tower-warp.webp)__"}</script>
+  <script type="application/json" id="towerArt">{"crossbow":"__ASSET(tower-crossbow.webp)__","cannon":"__ASSET(tower-cannon.webp)__","ballista":"__ASSET(tower-ballista.webp)__","storm":"__ASSET(tower-storm.webp)__","swarm":"__ASSET(tower-swarm.webp)__","mortar":"__ASSET(tower-mortar.webp)__","crystal":"__ASSET(tower-crystal.webp)__","tesla":"__ASSET(tower-tesla.webp)__","flame":"__ASSET(tower-flame.webp)__","ice":"__ASSET(tower-ice.webp)__","poison":"__ASSET(tower-poison.webp)__","sniper":"__ASSET(tower-sniper.webp)__","rocket":"__ASSET(tower-rocket.webp)__","mine":"__ASSET(tower-mine.webp)__","spike":"__ASSET(tower-spike.webp)__","summoner":"__ASSET(tower-summoner.webp)__","totem":"__ASSET(tower-totem.webp)__","warp":"__ASSET(tower-warp.webp)__"}</script>
   <script type="application/json" id="ratArt">{"rat:0":"__ASSET(rat-art-rat-0.webp)__","rat:1":"__ASSET(rat-art-rat-1.webp)__","rat:2":"__ASSET(rat-art-rat-2.webp)__","rat:3":"__ASSET(rat-art-rat-3.webp)__","rat:4":"__ASSET(rat-art-rat-4.webp)__","rat:5":"__ASSET(rat-art-rat-5.webp)__","rat:6":"__ASSET(rat-art-rat-6.webp)__","rat:7":"__ASSET(rat-art-rat-7.webp)__","rat:8":"__ASSET(rat-art-rat-8.webp)__","rat:9":"__ASSET(rat-art-rat-9.webp)__","giant":"__ASSET(rat-art-giant.webp)__","boss:warlord":"__ASSET(rat-art-boss-warlord.webp)__","boss:slime":"__ASSET(rat-art-boss-slime.webp)__","boss:baron":"__ASSET(rat-art-boss-baron.webp)__","boss:mole":"__ASSET(rat-art-boss-mole.webp)__","boss:buzzard":"__ASSET(rat-art-boss-buzzard.webp)__","boss:king":"__ASSET(rat-art-boss-king.webp)__"}</script>
   <div id="guideScreen" class="screen guide-screen" hidden>
     <div class="bestiary">

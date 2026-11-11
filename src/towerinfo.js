@@ -2,7 +2,7 @@
 // farmer, its level and ability, and what the next upgrade costs and adds.
 // Pure data in, data out, so it can be tested without a browser.
 import { CFG, cannonSpec, towerMaxLevel, towerUpgradeCost, towerName } from './config.js';
-import { isArsenal, arsenalSpec } from './arsenal.js';
+import { isArsenal, arsenalSpec, baseKind } from './arsenal.js';
 
 export const CROSSBOW_ABILITIES = [null,
   ['Single Shot', 'One arrow at one rat.'],
@@ -46,7 +46,7 @@ const secs = (v) => (v < 1 ? `${Math.round(v * 100) / 100}s` : `${r1(v)}s`);
 // Stat rows of an Arsenal tower level.
 function arsenalStats(kind, level) {
   const L = arsenalSpec(kind, level);
-  switch (kind) {
+  switch (baseKind(kind)) {
     case 'spike': return [['Damage/s', L.dps], ['Slow', '−' + pct(L.slow)], ['Spike beds', L.fields], ['Bed length', r1(L.r * 2)]];
     case 'mine': return [['Damage', L.dmg], ['Blast', r1(L.r)], ['Mines', L.max], ['Every', secs(L.interval)]];
     case 'ice': case 'crystal': return [['Damage', L.dmg], ['Bolts/s', r1(L.bolts / L.interval)], ['Slow', '−' + pct(L.frost.slow)], ['Range', r1(L.range)]];

@@ -8,6 +8,7 @@
 // A model is fitted to a tower pad (FOOT wide), stood on the ground and,
 // for towers that aim, cut in two at `cut` (share of its height): the part
 // above turns toward the target, the part below stays put.
+import { baseKind } from '../arsenal.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -76,25 +77,46 @@ export class TowerModels {
     this.onLoad = null;      // (kind) => void: a model is ready
     this.misses = 0;         // models that could not be loaded
     this.disabled = typeof window === 'undefined' || (typeof location !== 'undefined' && location.protocol === 'file:');
-    this.skinU = {
-      uSkinOn: { value: 0 }, uSkinGlow: { value: 0 },
-      uSkinDark: { value: new THREE.Color() }, uSkinMid: { value: new THREE.Color() }, uSkinLight: { value: new THREE.Color() }, uSkinAccent: { value: new THREE.Color() },
-    };
+    this.skinUs = new Map();   // tower kind -> its skin uniforms (each kind wears its own skin)
+    this.pal = () => null;
+  }
+  _skinU(kind) {
+    let u = this.skinUs.get(kind);
+    if (!u) {
+      u = {
+        uSkinOn: { value: 0 }, uSkinGlow: { value: 0 },
+        uSkinDark: { value: new THREE.Color() }, uSkinMid: { value: new THREE.Color() }, uSkinLight: { value: new THREE.Color() }, uSkinAccent: { value: new THREE.Color() },
+      };
+      this.skinUs.set(kind, u);
+      this._paint(kind);
+    }
+    return u;
+  }
+  _paint(kind) {
+    const S = this.pal(kind), u = this.skinUs.get(kind);
+    u.uSkinOn.value = S && S.colors ? 1 : 0;
+    if (!u.uSkinOn.value) return;
+    u.uSkinGlow.value = S.glow ? 1 : 0;
+    u.uSkinDark.value.set(S.colors[0]); u.uSkinMid.value.set(S.colors[1]); u.uSkinLight.value.set(S.colors[2]);
+    u.uSkinAccent.value.set(S.accent ?? S.colors[2]);
   }
 
   // The fitted model for a tower kind at a level, or null while it loads (or if there is none).
   get(kind, level) {
+    const own = kind;
+    kind = baseKind(kind);   // (a tower that works like another borrows its model too)
     if (this.disabled || !MODEL_FIT[kind]) return null;
     // its own tier's model, or (for towers with fewer models) the nearest one there is
     const tier = modelTier(level);
     const key = [tier, 2, tier === 1 ? 3 : 1, 3].map((t) => `${kind}-${t}`).find((k) => !SHIPPED || SHIPPED.has(k));
     if (!key) return null;
-    let e = this.cache.get(key);
+    const ck = own === kind ? key : own + ':' + key;   // (its own copy, in its own colours)
+    let e = this.cache.get(ck);
     if (!e) {
       e = { parts: null, failed: false };
-      this.cache.set(key, e);
+      this.cache.set(ck, e);
       this._load(this.base + key + EXT).then((gltf) => {
-        e.parts = this._fit(kind, gltf, +key.slice(-1));
+        e.parts = this._fit(kind, gltf, +key.slice(-1), own);
         e.parts.tier = +key.slice(-1);
         if (this.onLoad) this.onLoad(kind);
       }).catch(() => { e.failed = true; this.misses++; });
@@ -111,19 +133,16 @@ export class TowerModels {
     });
   }
 
-  setSkin(id) {
-    const S = CFG.skins[id], u = this.skinU;
-    u.uSkinOn.value = S && S.colors ? 1 : 0;
-    if (!u.uSkinOn.value) return;
-    u.uSkinGlow.value = id === 'lava' ? 1 : 0;
-    u.uSkinDark.value.set(S.colors[0]); u.uSkinMid.value.set(S.colors[1]); u.uSkinLight.value.set(S.colors[2]);
-    u.uSkinAccent.value.set(S.accent ?? S.colors[2]);
+  setSkins(pal) {
+    this.pal = pal;
+    for (const kind of this.skinUs.keys()) this._paint(kind);
   }
 
-  _material(map) {
+  _material(map, kind) {
+    const U = this._skinU(kind);
     const m = new THREE.MeshToonMaterial({ map, gradientMap: toonGradient(), emissive: 0x2a2018 });
     m.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, this.skinU);
+      Object.assign(sh.uniforms, U);
       sh.fragmentShader = sh.fragmentShader
         .replace('void main() {', 'uniform float uSkinOn;\nuniform float uSkinGlow;\nuniform vec3 uSkinDark;\nuniform vec3 uSkinMid;\nuniform vec3 uSkinLight;\nuniform vec3 uSkinAccent;\nvoid main() {')
         .replace('#include <map_fragment>', '#include <map_fragment>\n' + SKIN_GLSL);
@@ -134,7 +153,7 @@ export class TowerModels {
 
   // One geometry from the model (world transforms applied), stood on the
   // ground, centred and scaled to fit a pad; cut into base and head if it aims.
-  _fit(kind, gltf, tier) {
+  _fit(kind, gltf, tier, own = kind) {
     const fit = { ...MODEL_FIT[kind], ...((MODEL_FIT[kind].tiers || {})[tier] || {}) };
     const { geo, map } = gltfGeometry(gltf);
     if (fit.yaw) geo.rotateY(fit.yaw);
@@ -145,7 +164,7 @@ export class TowerModels {
     geo.scale(s, s, s);
     const H = h * s;
     if (map) { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4; }
-    const mat = this._material(map);
+    const mat = this._material(map, own);
     let base = geo, head = null, headY = 0;
     if (fit.cut) {
       headY = fit.cut * H;

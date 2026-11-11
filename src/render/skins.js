@@ -8,11 +8,13 @@ import { CFG } from '../config.js';
 
 const _c = new THREE.Color(), _o = new THREE.Color(), _h = { h: 0, s: 0, l: 0 };
 const ramps = new Map();
+// id: a skin's name, or a palette { colors: [dark, mid, light], accent, glow } (null: the built look)
 function ramp(id) {
+  if (!id) return null;
   let r = ramps.get(id);
-  if (!r) {
-    const S = CFG.skins[id];
-    r = S && S.colors ? { dark: new THREE.Color(S.colors[0]), mid: new THREE.Color(S.colors[1]), light: new THREE.Color(S.colors[2]), accent: new THREE.Color(S.accent ?? S.colors[2]), glow: id === 'lava' } : null;
+  if (r === undefined) {
+    const S = typeof id === 'string' ? CFG.skins[id] : id;
+    r = S && S.colors ? { dark: new THREE.Color(S.colors[0]), mid: new THREE.Color(S.colors[1]), light: new THREE.Color(S.colors[2]), accent: new THREE.Color(S.accent ?? S.colors[2]), glow: !!S.glow } : null;
     ramps.set(id, r);
   }
   return r;

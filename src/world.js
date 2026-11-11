@@ -198,7 +198,7 @@ export function inWater(x, z, margin = 0) {
 let oasisCache = null;
 export function oasisLayout() {
   const D = CFG.decor;
-  if (!D || !(D.pond || D.arch || D.arches || D.trees || D.ruins || D.columns || D.snowmen || D.peaks || D.cone)) return null;
+  if (!D || !(D.pond || D.arch || D.arches || D.palms || D.trees || D.ruins || D.columns || D.snowmen || D.peaks || D.cone)) return null;
   if (oasisCache && oasisCache.src === D) return oasisCache;
   const out = { src: D, arch: null, arches: [], pillars: [], palms: [], trees: [], columns: [], solids: [] };
   for (const A of D.arches || (D.arch ? [D.arch] : [])) {

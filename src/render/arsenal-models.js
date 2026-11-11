@@ -7,6 +7,7 @@
 //
 // Returns the same shape as towerParts(): { base, head, baseGlow, headGlow,
 // headY, crystal (where the glow sprite sits on the head, or null), glowColor }.
+import { baseKind } from '../arsenal.js';
 import { GB, P } from './geo.js';
 
 const C = {
@@ -342,6 +343,7 @@ function headFor(kind, level, head, glow, look) {
 }
 
 export function arsenalParts(kind, level) {
+  kind = baseKind(kind);
   const look = ARSENAL_LOOK[kind];
   const base = new GB(), head = new GB(), baseGlow = new GB(), headGlow = new GB();
   const H = look.base === 'frame' ? frameBase(base, baseGlow, level, look) : plinthBase(base, baseGlow, level, look);

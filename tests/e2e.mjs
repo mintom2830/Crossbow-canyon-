@@ -1283,7 +1283,7 @@ await test('Shop: the cannon costs 100 diamonds; a horse (50) carries the farmer
   assert(xb.length === 7 && xb[0].includes('Single Shot') && xb[5].includes('Frost Arrows') && xb[6].includes('Crystal Storm'), 'crossbow ability list missing');
   // all fifteen towers, each with its Meshy picture, the dearer ones further down
   const cards = await page.$$eval('#towerGrid .shop-item', (els) => els.map((e) => e.dataset.item));
-  assert(cards.length === 15 && cards[0] === 'crossbow' && cards[1] === 'cannon' && cards[2] === 'spike' && cards[14] === 'warp', 'tower cards: ' + cards);
+  assert(cards.length === 18 && cards[0] === 'crossbow' && cards[1] === 'cannon' && cards[2] === 'spike' && cards[17] === 'warp', 'tower cards: ' + cards);
   await page.waitForFunction(() => [...document.querySelectorAll('#towerGrid img')].every((i) => i.naturalWidth > 0), null, { timeout: 20000 });
   assert((await page.textContent('[data-buy="warp"]')).includes('500'), 'the Time Warp should cost 500');
   assert(await page.isDisabled('[data-buy="cannon"]'), 'unlock button should be disabled with 0 diamonds');
@@ -1329,8 +1329,20 @@ await test('Shop: the cannon costs 100 diamonds; a horse (50) carries the farmer
   await page.waitForFunction(() => window.__cc.screen === 'shopScreen');
   p = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:progress:v1')));
   st = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:settings:v1')));
-  assert(p.diamonds === 50 && p.skins.includes('candy') && st.skin === 'candy' && (await g(page, () => window.__cc.view.skin)) === 'candy', 'candy skin not bought and worn');
+  assert(p.diamonds === 50 && p.skins.includes('candy') && st.skins.crossbow === 'candy' && (await g(page, () => window.__cc.view.skins.crossbow)) === 'candy', 'candy skin not bought and worn by the crossbow');
   assert(await page.isDisabled('[data-buy="lava"]'), 'Lava (100) should be out of reach with 50 diamonds');
+  // every weapon has Classic and three skins of its own; the crossbow's are not the Tesla's
+  assert((await page.$$('#skinTowers [data-skin-tower]')).length === 18 && (await page.$$('#skinGrid .shop-item')).length === 4, 'eighteen weapons, four cards each');
+  await page.click('[data-skin-tower="tesla"]');
+  const tesla = await page.$$eval('#skinGrid .shop-item', (els) => els.map((e) => e.dataset.item));
+  assert(tesla.join() === 'classic,frost,royal,candy', 'the Tesla should offer its own three skins: ' + tesla.join());
+  // Candy is already owned, so the Tesla can wear it at once; the cannon wears nothing new
+  await page.click('[data-use="candy"]');
+  st = await g(page, () => JSON.parse(localStorage.getItem('crossbow-canyon:settings:v1')));
+  assert(st.skins.tesla === 'candy' && st.skins.crossbow === 'candy' && !st.skins.cannon, 'each tower should wear its own skin: ' + JSON.stringify(st.skins));
+  await page.waitForFunction(() => [...document.querySelectorAll('#skinGrid img')].every((i) => i.naturalWidth > 0), null, { timeout: 20000 });
+  await page.screenshot({ path: SHOTS + '/shop-skins-tesla.png' });
+  await page.click('[data-skin-tower="crossbow"]');
   await page.screenshot({ path: `${SHOTS}/shop-skins.png` });
   // in a game: the farmer rides the horse, 50% faster, and the towers wear the skin
   await page.click('#shopScreen [data-back]');

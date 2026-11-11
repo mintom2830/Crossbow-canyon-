@@ -1,4 +1,4 @@
-// The Arsenal: thirteen more towers on top of the Crossbow and the Cannon,
+// The Arsenal: sixteen more towers on top of the Crossbow and the Cannon,
 // following the user's "Weapon & Tower Arsenal" sheet. Each one is unlocked
 // in the Shop with diamonds and has five levels.
 //
@@ -193,10 +193,57 @@ export const ARSENAL = {
       { range: 10, r: 10, slow: 0.6, haste: 0.5, rewind: { every: 8, dist: 4 }, stop: { every: 8, t: 1.5, boss: 0.5 }, ab: ['Time Loop', 'Slows by 60%, hastes towers by 50%, and every 8 s stops time for the rats in its area.'] },
     ],
   },
+  // ---- Three more towers. Each works like one of the towers above (like:
+  // its attack, model and sounds) with its own stats and its own colours (tint:
+  // dark, middle, light, trim), so it plays and looks like a tower of its own.
+  // ---- Ballista: a giant crossbow. One heavy bolt that goes straight through a
+  // line of rats; quicker than the Sniper, shorter reach, no headshots.
+  ballista: {
+    name: 'Ballista', cost: 140, buildMul: 1.15, upMul: 1.15, type: 'Pierce', color: '#d9a05a', like: 'sniper',
+    tint: [0x4a2c14, 0x9a6230, 0xe8c88a, 0xc8ccd4],
+    blurb: 'A giant crossbow: one heavy bolt that flies straight through a line of rats.',
+    levels: [null,
+      { range: 14, interval: 1.5, dmg: 40, armorPierce: 0.5, head: { chance: 0, mul: 1 }, through: 1, turn: 5, ab: ['Heavy Bolt', 'A big bolt that goes through the rat it hits and the one behind.'] },
+      { range: 14.5, interval: 1.4, dmg: 60, armorPierce: 0.6, head: { chance: 0, mul: 1 }, through: 2, turn: 5.5, ab: ['Barbed Bolt', 'Hits harder and goes through two more rats.'] },
+      { range: 15, interval: 1.3, dmg: 85, armorPierce: 0.7, head: { chance: 0, mul: 1 }, through: 3, turn: 6, ab: ['Windlass', 'Winds faster; the bolt goes through three more rats.'] },
+      { range: 16, interval: 1.15, dmg: 120, armorPierce: 0.8, head: { chance: 0, mul: 1 }, through: 4, turn: 6.5, ab: ['Steel Bolt', 'Much more damage, through four more rats.'] },
+      { range: 17, interval: 1.0, dmg: 165, armorPierce: 1, head: { chance: 0.2, mul: 2 }, through: 6, mark: 2, turn: 7, ab: ['Siege Bolt', 'Through six more rats, ignores armour, and one bolt in five strikes for double.'] },
+    ],
+  },
+  // ---- Storm Coil: weak, very fast lightning that jumps a long way down the
+  // crowd. Clears swarms of small rats; poor against one big one.
+  storm: {
+    name: 'Storm Coil', cost: 320, buildMul: 1.45, upMul: 1.45, type: 'Electric', color: '#c8a0ff', like: 'tesla',
+    tint: [0x2a1c50, 0x6a48c8, 0xd8c8ff, 0xffe45a],
+    blurb: 'A crackling storm: quick, weak lightning that leaps far down the whole crowd.',
+    levels: [null,
+      { range: 11, interval: 0.5, dmg: 9, chain: 4, jump: 4, falloff: 0.92, ab: ['Static', 'Quick sparks that jump to four rats.'] },
+      { range: 11.5, interval: 0.45, dmg: 13, chain: 5, jump: 4.2, falloff: 0.92, ab: ['Crackle', 'Faster, and five rats a spark.'] },
+      { range: 12, interval: 0.4, dmg: 18, chain: 6, jump: 4.4, falloff: 0.93, ab: ['Forked Lightning', 'Six rats a spark.'] },
+      { range: 12.5, interval: 0.36, dmg: 24, chain: 8, jump: 4.7, falloff: 0.94, stun: 0.12, ab: ['Thunderhead', 'Eight rats a spark, each jolted for an instant.'] },
+      { range: 13.5, interval: 0.3, dmg: 32, chain: 10, jump: 5, falloff: 0.95, stun: 0.15, overload: { every: 4, dmg: 90, stun: 0.6 }, ab: ['Tempest', 'Ten rats a spark, and every 4 s lightning strikes every rat in range.'] },
+    ],
+  },
+  // ---- Swarm Launcher: volleys of many small homing rockets, each after its own rat.
+  swarm: {
+    name: 'Swarm Launcher', cost: 380, buildMul: 1.55, upMul: 1.55, type: 'Explosive', color: '#ffd24a', like: 'rocket',
+    tint: [0x2c3a1c, 0x6a8a3a, 0xd8e8a0, 0xffb020],
+    blurb: 'Fires a swarm of small homing rockets, every one after a rat of its own.',
+    levels: [null,
+      { range: 13, interval: 2.2, dmg: 22, r: 1.2, rockets: 3, speed: 16, turn: 6, ab: ['Rocket Swarm', 'Three small rockets, each chasing its own rat.'] },
+      { range: 13.5, interval: 2.1, dmg: 30, r: 1.25, rockets: 4, speed: 17, turn: 6.5, ab: ['Fourth Tube', 'Four rockets a volley.'] },
+      { range: 14, interval: 2.0, dmg: 40, r: 1.3, rockets: 5, speed: 18, turn: 7, ab: ['Fifth Tube', 'Five rockets a volley.'] },
+      { range: 15, interval: 1.9, dmg: 52, r: 1.4, rockets: 6, speed: 19, turn: 7.5, ab: ['Hornet Rockets', 'Six rockets that hit harder.'] },
+      { range: 16, interval: 1.7, dmg: 68, r: 1.5, rockets: 8, speed: 20, turn: 8, ab: ['Sky Full of Rockets', 'Eight rockets a volley, faster.'] },
+    ],
+  },
 };
+
 
 // Every tower in the Shop's order: the two classics, then by price.
 export const TOWER_KINDS = ['crossbow', 'cannon', ...Object.keys(ARSENAL).sort((a, b) => ARSENAL[a].cost - ARSENAL[b].cost)];
+// the tower a tower works like (its own kind, for all but the three that borrow another's attack and model)
+export const baseKind = (kind) => (ARSENAL[kind] && ARSENAL[kind].like) || kind;
 export const isArsenal = (kind) => Object.prototype.hasOwnProperty.call(ARSENAL, kind);
 export const arsenalSpec = (kind, level) => ARSENAL[kind].levels[level];
 export const arsenalUpgradeCost = (kind, level) => Math.round((UPGRADE_BASE[level] * ARSENAL[kind].upMul) / 5) * 5;

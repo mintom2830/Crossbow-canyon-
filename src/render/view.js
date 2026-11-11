@@ -1,6 +1,7 @@
 // Renders the simulation: camera, lights, units, structures, pads, labels.
 import * as THREE from 'three';
-import { CFG } from '../config.js';
+import { CFG, skinPalette } from '../config.js';
+import { baseKind } from '../arsenal.js';
 import { groundHeight, hillHeight, road } from '../world.js';
 import { T_GRUNT, T_BOSS, SHIELD, BOMB, NINJA, JET } from '../sim.js';
 import { buildEnvironment, themeOf } from './env.js';
@@ -371,7 +372,7 @@ export class View {
     // already standing switches to its model as soon as it arrives
     this.models = new TowerModels();
     this._loadRatModels();
-    this.models.onLoad = (kind) => { for (const v of this.towerViews.values()) if (v.kind === kind) { v.level = -1; v.keepPop = true; } this.shadowDirty = true; };
+    this.models.onLoad = (kind) => { for (const v of this.towerViews.values()) if (baseKind(v.kind) === kind) { v.level = -1; v.keepPop = true; } this.shadowDirty = true; };
     this.fortressGeo = [null, fortressGeometry(1), fortressGeometry(2), fortressGeometry(3)];
     const F = CFG.fortress;
     this.fortress = new THREE.Mesh(this.fortressGeo[1], this.structMat);
@@ -546,18 +547,27 @@ export class View {
     return (hv.mounts[kind] = { group, head, tail, legs, seat: parts.seat });
   }
   // Paint the towers, their arrows and the farmer's pitchfork in a weapon skin
-  setSkin(id) {
-    id = CFG.skins[id] ? id : 'classic';
-    if (this.skin === id) return;
-    this.skin = id;
-    for (const set of [this.towerGeo, this.cannonGeo, this.rapidGeo]) for (const g of set) if (g) { applySkin(g.base, id); applySkin(g.head, id); if (g.gun) applySkin(g.gun, id); }
-    this.ars.setSkin(id);
-    this.models.setSkin(id);
-    applySkin(this.hero.fork.geometry, id);
+  // skins: { towerKind: skinName } (a tower not named wears Classic). The arrows and
+  // the pitchfork go with the crossbow.
+  setSkins(skins = {}) {
+    const key = JSON.stringify(skins);
+    if (this.skinKey === key) return;
+    this.skinKey = key;
+    this.skins = { ...skins };
+    this.skin = skins.crossbow || 'classic';
+    const pal = (kind) => skinPalette(kind, skins[kind]);
+    const paint = (sets, p) => { for (const set of sets) for (const g of set) if (g) { applySkin(g.base, p); applySkin(g.head, p); if (g.gun) applySkin(g.gun, p); } };
+    paint([this.towerGeo], pal('crossbow'));
+    paint([this.cannonGeo, this.rapidGeo], pal('cannon'));
+    this.ars.setSkins(pal);
+    this.models.setSkins(pal);
+    const xb = pal('crossbow');
+    applySkin(this.hero.fork.geometry, xb);
     if (!this.boltBase) this.boltBase = this.boltColors.map((c) => c.clone());
-    this.boltColors.forEach((c, i) => { const b = this.boltBase[i]; if (id === 'classic' || i >= 6) c.copy(b); else skinColor(id, 0.95, 0.95, 0.95, c); });
+    this.boltColors.forEach((c, i) => { const b = this.boltBase[i]; if (!xb || i >= 6) c.copy(b); else skinColor(xb, 0.95, 0.95, 0.95, c); });
     this.shadowDirty = true;
   }
+  setSkin(id) { this.setSkins(id && id !== 'classic' ? { crossbow: id, cannon: id } : {}); }
 
   // -------------------------------------------------------------- giants
   _getGiant(style) {
