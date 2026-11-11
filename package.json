@@ -1,0 +1,21 @@
+{
+  "name": "crossbow-canyon",
+  "version": "1.0.0",
+  "description": "Crossbow Canyon: a 3D crowd tower-defense browser game. Collect coins, build crossbows, hold the keep.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node build.mjs && npx --yes serve dist -l 8080",
+    "test": "node tests/sim.test.mjs && node tests/anim.test.mjs",
+    "test:e2e": "node build.mjs && node tests/e2e.mjs",
+    "balance": "node tools/balance.mjs bot && node tools/balance.mjs lazy && node tools/balance.mjs noup 1 && node tools/balance.mjs idle 1"
+  },
+  "dependencies": {
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.56.0"
+  }
+}
