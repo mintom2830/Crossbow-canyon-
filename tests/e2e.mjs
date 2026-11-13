@@ -90,7 +90,7 @@ async function test(name, fn) {
   if (ONLY && !ONLY.test(name)) return;
   const t0 = Date.now();
   try { await fn(); pass++; lines.push(`  ✓ ${name} (${((Date.now() - t0) / 1000).toFixed(1)}s)`); }
-  catch (e) { fail++; lines.push(`  ✗ ${name}\n      ${e.message.split('\n')[0]}`); }
+  catch (e) { fail++; lines.push(`  ✗ ${name}\n      ${process.env.FULLERR ? e.message.slice(0, 1500) : e.message.split('\n')[0]}`); }
   finally { for (const c of openContexts) await c.close().catch(() => {}); openContexts.clear(); }
 }
 
@@ -554,6 +554,7 @@ await test('Levels 4 to 7: each map opens from the sliding picker with its own l
     const r = await g(page, () => {
       const c = window.__cc, s = c.sim;
       s.fortress.hp = s.fortress.maxHp = 99999; s.callWave(); c.advance(25);
+      c.view.overview = c.view.overviewWant = 1;   // the whole map in view (rats out of sight are not drawn)
       return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res({ slot: s.slots[0].id, rats: s.enemies.length, far: Math.max(...s.enemies.map((e) => e.s)), drawn: c.view.gruntMesh.count }))));
     });
     assert(r.slot === want[L][1] && r.rats > 5 && r.far > 40 && r.drawn > 5, 'Level ' + L + ' did not play: ' + JSON.stringify(r));
@@ -683,6 +684,7 @@ await test('rat animations: burrow spawn, walk cycle, gate attack, defeat flip a
   // walking: every rat on screen gets its own walk phase from the distance it covered
   const walk = await g(page, () => {
     const c = window.__cc, s = c.sim;
+    c.view.cullRats = false;   // (this test looks at the rats all along the road, in sight or not)
     s.towers.length = 0; for (const sl of s.slots) sl.tower = null;
     s.fortress.hp = s.fortress.maxHp = 99999; s.waveIndex = 2; s.callWave(); c.advance(8);
     return new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -1184,6 +1186,7 @@ await test('satisfying effects: towers recoil and spring back, arrows burst and 
   // a fight: crossbows on a wave with giants (the frames below are stepped by hand, so they are exact)
   const r = await g(page, () => {
     const c = window.__cc, s = c.sim, v = c.view;
+    v.cullRats = false;   // (this test reads a rat's drawn copy by its place in the crowd, in sight or not)
     s.fortress.hp = s.fortress.maxHp = 1e5;
     for (const i of [1, 3, 4]) s._placeTower(s.slots[i], 5, true, 'crossbow');
     s.slots[0].tower.level = 5;
@@ -1757,6 +1760,68 @@ await test('phone landscape: layout fits and the game keeps running after rotati
   assert(Math.round(cv.width) === 390 && Math.round(cv.height) === 844, 'canvas did not resize');
   const t0 = await g(page, () => window.__cc.sim.time);
   await page.waitForFunction((t0) => window.__cc.sim.time > t0, t0, { timeout: 10000 });
+  await ctx.close();
+});
+
+await test('smoothness: every shader and picture is ready before play (none is built during boss waves or when towers go up), rats out of sight are not drawn, and auto detail lowers the resolution without rebuilding anything', async () => {
+  const { ctx, page, errors } = await open('desktop', { sfx: false, music: false, quality: 'auto', tutorialDone: true }, null, await httpURL());
+  const kinds = ['tesla', 'crystal', 'ice', 'storm', 'swarm', 'ballista'];
+  await setStorageAndReload(page, 'crossbow-canyon:progress:v1', JSON.stringify({ diamonds: 0, unlocks: Object.fromEntries([['cannon', true], ...kinds.map((k) => [k, true])]), byLevel: { 1: { cleared: true, bestWave: 16, bestStars: 2 } } }));
+  // the models arrive while the menu is up, and the shaders are built as they do
+  await page.waitForFunction(() => { const v = window.__cc.view; return (v.giantModelsLoaded || new Set()).size >= 7 && (v.ratModelsLoaded || new Set()).size >= 8 && v.warmCount >= 2; }, null, { timeout: 60000 });
+  // (the towers' models load one after another while the menu is up)
+  await page.waitForFunction((n) => { const v = window.__cc.view, es = [...v.models.cache.values()]; return es.length >= n && es.every((e) => e.parts || e.failed); }, kinds.length * 2, { timeout: 60000 });
+  await page.waitForTimeout(1500);
+  await page.click('#playBtn');
+  await page.waitForFunction(() => window.__cc.mode === 'play');
+  await page.waitForTimeout(800);
+  const before = await g(page, () => { window.__progs0 = new Set(window.__cc.view.renderer.info.programs); return window.__cc.view.renderer.info.programs.length; });
+  // towers of many kinds and levels go up, then boss waves come (every boss in the last one)
+  await g(page, (kinds) => {
+    const c = window.__cc, s = c.sim;
+    s.fortress.hp = s.fortress.maxHp = 1e6;
+    s._placeTower(s.slots[1], 7, true, 'crossbow');
+    s._placeTower(s.slots[2], 6, true, 'cannon');
+    kinds.forEach((k, i) => s._placeTower(s.slots[3 + i], 5, true, k));
+  }, kinds);
+  await page.waitForTimeout(1500);
+  let bosses = 0;
+  for (const w of [5, 16]) {
+    bosses = Math.max(bosses, await g(page, (w) => {
+      const c = window.__cc, s = c.sim, seen = new Set();
+      s.spawnQueue.length = 0; for (const e of s.enemies) e.alive = false; s.enemies.length = 0; s.state = 'build';   // (the wave before is cleared away)
+      s.waveIndex = w - 1; if (!s.callWave()) return -1;
+      for (let k = 0; k < 14; k++) { c.advance(3); for (const e of s.enemies) if (e.type === 2) { seen.add(e.boss); e.hp = e.maxHp = 1e7; } }   // (tough: they stay on the road to be drawn)
+      return seen.size;
+    }, w));
+    await g(page, () => { window.__cc.view.overview = window.__cc.view.overviewWant = 1; });   // everything in view
+    await page.waitForTimeout(1500);
+    await g(page, () => { window.__cc.view.overview = window.__cc.view.overviewWant = 0; });
+    await page.waitForTimeout(600);
+  }
+  const after = await g(page, () => ({ programs: window.__cc.view.renderer.info.programs.length, bossesSeen: 0, fresh: (() => { const v = window.__cc.view, R = v.renderer, f = R.info.programs.filter((q) => !window.__progs0.has(q)), who = []; v.scene.traverse((o) => { const m = o.material; if (m && !Array.isArray(m)) { const pr = R.properties.get(m).currentProgram; if (pr && f.includes(pr)) who.push(o.type + ':' + (o.name || '') + ':' + m.type + (m.map ? ':map' : '') + (o.isInstancedMesh ? ':inst' : '') + (o.isSkinnedMesh ? ':skin' : '') + ':' + (o.parent && o.parent.name || '')); } }); return [...new Set(who)].slice(0, 8); })(), bosses: new Set(window.__cc.sim.enemies.filter((e) => e.type === 2).map((e) => e.boss)).size }));
+  assert(bosses >= 3, 'the last wave should bring bosses: ' + bosses);
+  assert(after.programs === before, `shaders were built during play: ${before} before, ${after.programs} after: ${after.fresh.join(' | ')}`);
+  // rats out of the camera's view are not drawn; zoomed out to the whole map they all are
+  const cull = await g(page, () => new Promise((res) => {
+    const c = window.__cc, v = c.view, s = c.sim;
+    c.teleport(s.fortress.x, s.fortress.z + 6);
+    v.overview = v.overviewWant = 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const near = { culled: v.ratsCulled, drawn: v.ratMeshes.reduce((n, m) => n + m.count, 0) };
+      v.overview = v.overviewWant = 1;
+      requestAnimationFrame(() => requestAnimationFrame(() => res({ near, all: { culled: v.ratsCulled, drawn: v.ratMeshes.reduce((n, m) => n + m.count, 0) }, rats: s.enemies.filter((e) => e.type === 0).length })));
+    }));
+  }));
+  assert(cull.rats > 40 && cull.near.culled > cull.rats * 0.5 && cull.all.drawn > cull.near.drawn + 40 && cull.all.culled < cull.near.culled, 'culling: ' + JSON.stringify(cull));
+  // auto detail: slow frames lower the resolution step by step, and nothing is rebuilt
+  const ad = await g(page, () => {
+    const c = window.__cc, v = c.view, p0 = v.renderer.info.programs.length, r0 = v.renderer.getPixelRatio();
+    const changed = v.setRenderScale(0.7);
+    return { changed, r0, r1: v.renderer.getPixelRatio(), programs: v.renderer.info.programs.length - p0, quality: c.quality };
+  });
+  assert(ad.changed && Math.abs(ad.r1 - ad.r0 * 0.7) < 0.02 && ad.programs === 0, 'render scale: ' + JSON.stringify(ad));
+  assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });
 

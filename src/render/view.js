@@ -73,6 +73,7 @@ const _zq = new THREE.Quaternion(), _ZAX = new THREE.Vector3(0, 0, 1);
 const _e2q = (a) => _zq.setFromAxisAngle(_ZAX, a);   // a spin in the picture plane
 // toon lighting: a clean, near-white key light so the flat colours read true;
 // the hemisphere fills the shadow band with a cool sky / warm ground tint
+const _cullM = new THREE.Matrix4(), _cullS = new THREE.Sphere();   // (the frustum test for small rats)
 const DAY = { sky: 0xfff6ea, gnd: 0x9a6a4a, hemi: 1.05, sun: 0xfff8ec, sunI: 2.3, bg: 0xeec088 };
 const DUSK = { sky: 0xffc7a0, gnd: 0x86503f, hemi: 1.05, sun: 0xffbf86, sunI: 2.1, bg: 0xe8a470 };
 const NIGHT = { sky: 0xc8b0c8, gnd: 0x4e3550, hemi: 1.0, sun: 0xffb68a, sunI: 1.65, bg: 0xbc7466 };
@@ -372,7 +373,8 @@ export class View {
     // already standing switches to its model as soon as it arrives
     this.models = new TowerModels();
     this._loadRatModels();
-    this.models.onLoad = (kind) => { for (const v of this.towerViews.values()) if (baseKind(v.kind) === kind) { v.level = -1; v.keepPop = true; } this.shadowDirty = true; };
+    this._warmSoon();
+    this.models.onLoad = (kind) => { this._warmSoon(); for (const v of this.towerViews.values()) if (baseKind(v.kind) === kind) { v.level = -1; v.keepPop = true; } this.shadowDirty = true; };
     this.fortressGeo = [null, fortressGeometry(1), fortressGeometry(2), fortressGeometry(3)];
     const F = CFG.fortress;
     this.fortress = new THREE.Mesh(this.fortressGeo[1], this.structMat);
@@ -475,19 +477,49 @@ export class View {
 
   applyPixelRatio() {
     const cap = this.quality === 'high' ? 2 : this.quality === 'medium' ? 1.5 : 1;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap));
+    // renderScale: auto detail draws at a lower resolution while frames run slow
+    this.renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap) * (this.renderScale ?? 1)));
+  }
+  // Draw at a share k of the full resolution (0.5 to 1). Nothing is rebuilt, so it
+  // changes without a hitch. Returns whether it changed.
+  setRenderScale(k) {
+    k = Math.max(0.5, Math.min(1, k));
+    if (Math.abs(k - (this.renderScale ?? 1)) < 0.01) return false;
+    this.renderScale = k;
+    this.applyPixelRatio();
+    this.resize();
+    return true;
   }
 
   setQuality(q) {
     // pixel ratio and shadows can change live; antialias needs a reload (handled by main)
+    const shadowsWere = this.quality !== 'low';
     this.quality = q;
     this.applyPixelRatio();
     const sh = q !== 'low';
-    this.renderer.shadowMap.enabled = sh;
-    this.sun.castShadow = sh;
-    this.scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+    if (sh !== shadowsWere) {
+      // shadows on or off: every shader is rebuilt, all at once now rather than one by one as things are drawn
+      this.renderer.shadowMap.enabled = sh;
+      this.sun.castShadow = sh;
+      this.scene.traverse((o) => { if (o.material) { for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true; } });
+      this.warmShaders();
+    }
     this.shadowDirty = true;
     this.resize();
+  }
+  // The Meshy models of the towers the player can build are loaded while the menu is
+  // up, one every so often, rather than the first time one is built in a game.
+  preloadTowers(kinds) {
+    const want = [];
+    for (const k of kinds) for (const L of [1, 3, 5]) want.push([k, L]);
+    const next = () => {
+      if (this.disposed || !want.length) return;
+      const [k, L] = want.shift();
+      this.models.get(k, L);
+      setTimeout(next, 250);
+    };
+    clearTimeout(this._preT);
+    this._preT = setTimeout(next, 600);
   }
 
   resize() {
@@ -960,6 +992,7 @@ export class View {
     if (ink) { inkNormals(geo); ink.geometry = geo; ink.material = inkMaterial(INK_PX.rat, { pose: crowdInkPose(bake) }); }
     (this.crowd || (this.crowd = {}))[v] = { bake, clip, fit: ANIM_FIT['rat-' + v], loop: bake.model.loop };
     (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
+    this._warmSoon();
   }
   // Which frame of its clips a crowd rat shows: walking or running with its feet on the
   // ground (the stride follows the distance walked), its bite or staff blow landing on
@@ -1000,6 +1033,7 @@ export class View {
     this.models._load(this.models.base + 'anim-farmer' + MODEL_EXT).then((gltf) => this._setHeroModel(new AnimModel(gltf, 'farmer'))).catch(() => { this.models.misses++; });
   }
   _setHeroModel(model) {
+    this._warmSoon();
     const hv = this.hero, inst = model.instance(INK_PX.unit);
     inst.holder.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     inst.holder.updateMatrixWorld(true);
@@ -1082,6 +1116,7 @@ export class View {
         const boss = style === 'giant' ? false : style;
         this.giantPool = this.giantPool.filter((g) => { if (g.inUse || g.boss !== boss) return true; this.scene.remove(g.group); g.label.remove(); return false; });
         (this.giantModelsLoaded || (this.giantModelsLoaded = new Set())).add(style);
+        this._warmSoon();
       }).catch(() => { this.models.misses++; });
     }
   }
@@ -1103,6 +1138,7 @@ export class View {
       ink.geometry = ig;
     }
     (this.ratModelsLoaded || (this.ratModelsLoaded = new Set())).add(v);
+    this._warmSoon();
   }
 
   // An Arsenal tower drawn with its Meshy 3D model. Levels 2 and 4 use the
@@ -1123,7 +1159,7 @@ export class View {
     v.head.position.y = m.headY * k;
     v.charge.visible = false;
     v.aura.visible = !!m.aura;
-    if (m.aura) { v.aura.position.set(...m.aura); v.aura.material.color.set(ARSENAL_LOOK[v.kind].glow || 0xffffff); }
+    if (m.aura) { v.aura.position.set(...m.aura); v.aura.material.color.set((ARSENAL_LOOK[baseKind(v.kind)] || {}).glow || 0xffffff); }
     v.level = level;
     if (!v.keepPop) v.pop = 0;
     v.keepPop = false;
@@ -1601,6 +1637,14 @@ export class View {
     const fighting = sim.state === 'wave';
     const spawnS = CFG.spawnS;
     const A = this.alpha ?? 1, hills = CFG.hills.length > 0;
+    // small rats out of the camera's view are not drawn (nor animated): with the camera
+    // on the farmer that is most of a big crowd, and a tablet's time is better spent
+    // on the ones in sight
+    const fr = this._frustum || (this._frustum = new THREE.Frustum());
+    this.camera.updateProjectionMatrix();
+    fr.setFromProjectionMatrix(_cullM.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    const cull = this.cullRats !== false;
+    let culled = 0;
     for (const e of sim.enemies) {
       if (e.type === T_GRUNT) {
         const vt = e.v === SHIELD && !(e.shield > 0) ? SHIELDLESS : e.v || 0, gm = RM[vt], ra = RA[vt].array, gn = rn[vt];
@@ -1643,6 +1687,10 @@ export class View {
         // drawn in between simulation steps, so the crowd glides at any frame rate
         const P = lerpPose(e, A);
         const ex = P.x, ez = P.z, yaw = P.yaw, walk = P.walk, hy = P.hy;
+        if (cull) {
+          _cullS.center.set(ex, (hills ? this._gy(ex, ez) : 0) + hy + 0.6, ez); _cullS.radius = 2.6 * sc + Math.max(0, y);
+          if (!fr.intersectsSphere(_cullS)) { culled++; continue; }
+        }
         // thrown by a blast (the simulation flies it back under gravity): nose up on the
         // way up, nose down on the way down; a big kick turns it head over heels
         if (hy > 0) { y += hy; pitch += e.spinV ? e.spin : clampN(-e.vy * 0.07, -0.6, 0.6); }
@@ -1997,6 +2045,7 @@ export class View {
         this.exitMat.opacity = 0.45 + pulse * 0.45;
       }
     }
+    this.ratsCulled = culled;
     for (const g of this.giantPool) if (g.inUse && g.rig) { g.rig.update(dt); const live = g.rig.mixer.timeScale ? dt : 0; if (g.mover) g.mover.update(live, g.ps); if (g.motion && g.dying === undefined) g.motion.update(live, g.ps, hills ? this._gyFn : null, g.baseY ?? 0, g.holder, g.scaleNow || 1); }
     for (const [id, v] of this.giantViews) {
       if (seen.has(id)) continue;
@@ -2391,6 +2440,9 @@ export class View {
   // Frees this map's meshes, materials and textures (a new map is about to replace it).
   // The renderer itself stays: the next View draws with it.
   dispose() {
+    this.disposed = true;
+    clearTimeout(this._warmT); clearTimeout(this._preT);
+    if (this._warmGroup) { this.scene.remove(this._warmGroup); for (const o of this._warmGroup.children) if (o.isSprite) o.material.dispose(); }   // (the models it holds belong to their towers)
     this.scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
       const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
@@ -2422,10 +2474,14 @@ export class View {
 
   _placeLabel(el, x, y, z) {
     _v.set(x, y, z).project(this.camera);
-    if (_v.z > 1 || _v.x < -1.2 || _v.x > 1.2 || _v.y < -1.2 || _v.y > 1.2) { el.style.visibility = 'hidden'; return; }
-    el.style.visibility = '';
-    const sx = (_v.x * 0.5 + 0.5) * this.width, sy = (-_v.y * 0.5 + 0.5) * this.height;
-    el.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
+    // (the page is only touched when a label really moves: style writes cost a tablet dearly)
+    const off = _v.z > 1 || _v.x < -1.2 || _v.x > 1.2 || _v.y < -1.2 || _v.y > 1.2;
+    if (off !== el._off) { el.style.visibility = off ? 'hidden' : ''; el._off = off; }
+    if (off) return;
+    const sx = Math.round((_v.x * 0.5 + 0.5) * this.width * 2) / 2, sy = Math.round((-_v.y * 0.5 + 0.5) * this.height * 2) / 2;
+    if (sx === el._sx && sy === el._sy) return;
+    el._sx = sx; el._sy = sy;
+    el.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -100%)`;
   }
 
   _offscreenIndicator(f) { this._edgeArrow(this.offArrow, f.x, f.z, f.underAttack > 0); }
@@ -2496,6 +2552,58 @@ export class View {
     const sh = this.shake * this.shake * (this.calmMotion && this.calmMotion.matches ? 0.08 : 0.6);
     cam.position.set(this.camTarget.x + (Math.random() - 0.5) * sh, this.camTarget.y + d * sinP, this.camTarget.z + d * cosP + (Math.random() - 0.5) * sh);
     cam.lookAt(this.camTarget.x, this.camTarget.y, this.camTarget.z);
+  }
+
+  // ------------------------------------------------------ smoothness
+  // three.js compiles a material's shader the first time something using it is
+  // drawn, and that freezes the frame (for a good part of a second on a tablet or a
+  // phone): the first boss, the first crystal tower, a landmark coming into view.
+  // So every shader is compiled ahead of time, while the menu is up: the whole
+  // scene (hidden things too) when it is built and again whenever a model arrives,
+  // with one giant rat and one of every boss built and waiting in the pool, and a
+  // tower's glow sprite and its Meshy model's material.
+  _warmSoon() {
+    if (this._warmT || this.disposed) return;
+    this._warmT = setTimeout(() => { this._warmT = 0; this.warmShaders(); }, 80);
+  }
+  warmShaders() {
+    if (this.disposed) return;
+    const t0 = performance.now();
+    if (!this._warmGroup) {
+      // things built one per tower: the glow sprites (same material as a tower's)
+      this._warmGroup = new THREE.Group();
+      this._warmGroup.visible = false;
+      for (const color of [0xffffff, 0xc07bff]) this._warmGroup.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: this.crystalTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+      this.scene.add(this._warmGroup);
+    }
+    // a giant rat and one of each boss, built from its model and left waiting in the pool
+    // (building one, a skeleton and all, is a hitch of its own the first time it comes)
+    for (const key of new Set([...Object.keys(this.animGiant || {}), ...Object.keys(this.giantGeo || {})])) {
+      const boss = key === 'normal' ? false : key;
+      if (this.giantPool.some((g) => g.boss === boss)) continue;
+      const g = this._getGiant(boss);
+      g.inUse = false; g.group.visible = false; g.label.style.display = 'none';
+    }
+    // the Meshy towers' materials (a tower's model loads when it is first needed)
+    for (const e of this.models.cache.values()) if (e.parts && !e.warmed) {
+      e.warmed = true;
+      this._warmGroup.add(new THREE.Mesh(e.parts.base, e.parts.mat));
+    }
+    try { this.renderer.compile(this.scene, this.camera); } catch { /* a shader that fails to build shows up when it is drawn */ }
+    // and every picture on them is sent to the graphics chip now: a boss's painted maps,
+    // decoded and uploaded the first time it is drawn, are a hitch too
+    const done = this._warmTex || (this._warmTex = new WeakSet());
+    const up = (t) => { if (t && t.isTexture && !done.has(t) && (t.image || t.isDataTexture)) { done.add(t); try { this.renderer.initTexture(t); } catch { /* drawn later */ } } };
+    this.scene.traverse((o) => {
+      const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of ms) {
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'gradientMap', 'bumpMap', 'specularMap']) up(m[k]);
+        if (m.uniforms) for (const u of Object.values(m.uniforms)) up(u && u.value);
+        if (m.userData && m.userData.pbr) for (const u of Object.values(m.userData.pbr)) up(u && u.value);   // a toon-PBR material's ORM map
+      }
+    });
+    this.warmMs = (this.warmMs || 0) + (performance.now() - t0);
+    this.warmCount = (this.warmCount || 0) + 1;
   }
 
   render() {

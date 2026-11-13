@@ -728,7 +728,16 @@ Progress is saved in the browser's local storage, and every access is guarded so
 - All small rats share one instanced draw call, as do their shadows, the coins, the bolts and each effect type. Static scenery is merged into a few meshes. The final wave puts nearly 600 rats on screen at once and renders in about 80 draw calls, ink outlines, the town and its 18 villagers included.
 - Shadows are baked into a shadow map that only re-renders when a structure changes. Moving units use cheap blob shadows.
 - The simulation runs at a fixed 60 Hz step with no per-frame allocations in hot loops. A step takes about 0.03 ms on a laptop CPU.
-- The pixel ratio is capped by quality level. **Auto** quality picks High on desktop and Medium on phones, then drops a level if the frame rate stays under about 38 fps.
+- The pixel ratio is capped by quality level. **Auto** quality picks High on desktop and Medium on phones and tablets.
+
+### Smoothness (no stutters, mostly for tablets and phones)
+- **Every shader is ready before play.** A browser builds a material's shader the first time something using it is drawn, which freezes that frame, for a good part of a second on a tablet. So the whole scene (hidden things too) is compiled while the menu is up, and again whenever a model arrives. One giant rat and one of every boss are built ahead of time and wait in the pool, and the towers' glows and Meshy materials are compiled too. A browser test checks that not one shader is built during play, with towers of every kind going up and every boss on the road.
+- **Every picture is on the graphics chip before play.** A boss's painted maps used to be decoded and uploaded the first time it came, which was another hitch.
+- **The towers you own load while the menu is up.** Their 3D models used to load the first time one was built in a game.
+- **Auto detail lowers the resolution, smoothly.** It watches the frame time every half second. Running slow, it draws at a lower resolution, one step at a time and down to about half. With time to spare, it climbs back up, but never back to a level that was too slow. Nothing is rebuilt, so this causes no hitch. It used to drop the detail level instead, which rebuilt every shader at once and froze the game for a second or more, just when it was already struggling. Shadows now only go off if the lowest resolution is still too slow for a long while, and only between waves.
+- **Rats out of sight are not drawn.** With the camera on the farmer, most of a big crowd is off-screen. Those rats are neither animated nor sent to the graphics chip. With the biggest crowd this cut the scene update from about 4.9 to 3.0 ms a frame, and the triangles drawn from about 1.06 million to 640 thousand where the crowd is thickest.
+- **A slow frame does not make the next one slower.** The game catches up at most a few simulation steps a frame, within a time budget. If it falls behind, it runs a moment slow instead of jerking ahead.
+- **Floating labels only touch the page when they move.**
 
 ## Tests
 

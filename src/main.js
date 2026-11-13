@@ -74,6 +74,7 @@ try {
   view = new View(canvas, $('labels'), quality);
   view.towerArt = TOWER_ART;
   view.setSkins(currentSkins());
+  view.preloadTowers(ownedTowers().filter(isArsenal));
 } catch (err) {
   $('loading').textContent = 'This browser could not start 3D graphics (WebGL). Try another browser or turn on hardware acceleration.';
   throw err;
@@ -184,6 +185,7 @@ function switchLevel(id) {
   view = new View(canvas, $('labels'), quality, old.renderer);
   view.towerArt = TOWER_ART;
   view.setSkins(currentSkins());
+  view.preloadTowers(ownedTowers().filter(isArsenal));
   hudCache = {}; tcKey = '';
   needsRender = true;
   return true;
@@ -487,6 +489,7 @@ document.getElementById('shopScreen').addEventListener('click', (e) => {
   askConfirm(kind === 'tower' ? `Unlock the ${item.name}?` : `Buy the ${item.name}${kind === 'skin' ? ' skin' : ''}?`, `This spends ${item.cost} of your ${progress.diamonds} diamonds.`, kind === 'tower' ? 'Unlock' : 'Buy', () => {
     progress.diamonds -= item.cost;
     if (kind === 'ride' || kind === 'tower') progress.unlocks[id] = true; else progress.skins.push(id);
+    if (kind === 'tower' && isArsenal(id)) view.preloadTowers([id]);
     Save.set('progress', progress);
     equip();
     audio.build('fortress');
@@ -602,7 +605,7 @@ function syncSettingsUi() {
   $('sfxToggle').setAttribute('aria-checked', String(settings.sfx));
   $('musicToggle').setAttribute('aria-checked', String(settings.music));
   $('qualitySelect').value = settings.quality;
-  $('qualityNote').textContent = settings.quality === 'auto' ? `Auto picked ${quality} detail for this device and lowers it if the game slows down.` : 'Lower detail runs faster on older phones.';
+  $('qualityNote').textContent = settings.quality === 'auto' ? `Auto picked ${quality} detail for this device, and lowers the resolution while the game runs slow.` : 'Lower detail runs faster on older phones.';
   $('resetBtn').textContent = 'Erase saved progress';
   resetArmed = false;
 }
@@ -1192,21 +1195,39 @@ function endGame(won, stars = 0) {
 }
 
 // ------------------------------------------------------- performance
+// Auto detail keeps the game smooth: every half second it looks at how long frames
+// take. Running slow, it draws at a lower resolution (a step at a time, which costs
+// nothing: no shader is rebuilt), and with time to spare it climbs back up. Only if
+// the lowest resolution is still too slow for a good while does it turn the shadows
+// off, and then only between waves, never in the middle of one (that rebuilds every
+// shader, a hitch of its own).
 const perf = {
-  samples: [], strikes: 0, fps: 60,
-  reset() { this.samples.length = 0; this.strikes = 0; },
+  samples: [], slow: 0, fast: 0, floorSlow: 0, fps: 60, scale: 1, ceil: 1, upAt: -1e9,
+  reset() { this.samples.length = 0; this.slow = this.fast = this.floorSlow = 0; this.scale = this.ceil = 1; this.upAt = -1e9; view.setRenderScale(1); },
   add(dt) {
+    if (dt <= 0) return;
     this.samples.push(dt);
-    if (this.samples.length < 120) return;
+    if (this.samples.length < 30) return;
+    const s = [...this.samples].sort((a, b) => a - b), med = s[s.length >> 1];
     const avg = this.samples.reduce((a, b) => a + b, 0) / this.samples.length;
     this.samples.length = 0;
     this.fps = Math.round(1 / avg);
     if (settings.quality !== 'auto') return;
-    if (avg > 1 / 38) this.strikes++; else this.strikes = 0;
-    if (this.strikes >= 2) {
-      this.strikes = 0;
-      const next = quality === 'high' ? 'medium' : quality === 'medium' ? 'low' : null;
-      if (next) { quality = next; view.setQuality(quality); }
+    if (med > 1 / 48) { this.slow++; this.fast = 0; } else if (med < 1 / 57) { this.fast++; this.slow = 0; } else { this.slow = 0; this.fast = 0; }
+    if (this.slow >= 2) {
+      this.slow = 0;
+      // too slow again soon after climbing: that was too high, so stay below it from now on
+      if (performance.now() - this.upAt < 8000) this.ceil = Math.max(0.55, this.scale - 0.1);
+      if (this.scale > 0.56) { this.scale = Math.max(0.55, this.scale - 0.15); view.setRenderScale(this.scale); }
+      else this.floorSlow++;
+    } else if (this.fast >= 8 && this.scale < this.ceil - 0.01) {
+      this.fast = 0; this.floorSlow = 0;
+      this.scale = Math.min(this.ceil, this.scale + 0.1); view.setRenderScale(this.scale); this.upAt = performance.now();
+    }
+    if (this.floorSlow >= 12 && quality !== 'low' && sim.state === 'build') {
+      this.floorSlow = 0;
+      quality = quality === 'high' ? 'medium' : 'low';
+      view.setQuality(quality);
     }
   },
 };
@@ -1235,10 +1256,15 @@ function frame(now) {
       if (sim.state === 'victory' || sim.state === 'defeat' || sim.time > 240) { sim = makeDemo(); demoBot = makeBot(); view.reset(sim); }
     }
     acc += dt * speed;
+    // a slow frame must not make the next one slower: catch up a few steps at most,
+    // and within a time budget, then let the game run a moment behind instead
     let steps = 0;
-    const maxSteps = 6 * speed;
-    while (acc >= FIXED && steps < maxSteps) { sim.step(FIXED); acc -= FIXED; steps++; }
-    if (steps === maxSteps) acc = 0;
+    const maxSteps = 4 * speed, t0 = performance.now();
+    while (acc >= FIXED && steps < maxSteps) {
+      sim.step(FIXED); acc -= FIXED; steps++;
+      if (steps >= speed && performance.now() - t0 > 10) break;
+    }
+    if (acc > FIXED * 2) acc = FIXED * 2;
     processEvents();
     if (mode === 'play') {
       // clip-clop while riding
