@@ -1256,10 +1256,11 @@ function frame(now) {
       if (sim.state === 'victory' || sim.state === 'defeat' || sim.time > 240) { sim = makeDemo(); demoBot = makeBot(); view.reset(sim); }
     }
     acc += dt * speed;
-    // a slow frame must not make the next one slower: catch up a few steps at most,
-    // and within a time budget, then let the game run a moment behind instead
+    // a slow frame must not make the next one slower: when the steps themselves are
+    // costly (a big crowd on a slow processor) catching up stops at a time budget, and
+    // the game runs a moment behind instead of piling the work onto the next frame
     let steps = 0;
-    const maxSteps = 4 * speed, t0 = performance.now();
+    const maxSteps = 6 * speed, t0 = performance.now();
     while (acc >= FIXED && steps < maxSteps) {
       sim.step(FIXED); acc -= FIXED; steps++;
       if (steps >= speed && performance.now() - t0 > 10) break;

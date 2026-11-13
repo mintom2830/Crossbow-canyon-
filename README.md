@@ -736,7 +736,7 @@ Progress is saved in the browser's local storage, and every access is guarded so
 - **The towers you own load while the menu is up.** Their 3D models used to load the first time one was built in a game.
 - **Auto detail lowers the resolution, smoothly.** It watches the frame time every half second. Running slow, it draws at a lower resolution, one step at a time and down to about half. With time to spare, it climbs back up, but never back to a level that was too slow. Nothing is rebuilt, so this causes no hitch. It used to drop the detail level instead, which rebuilt every shader at once and froze the game for a second or more, just when it was already struggling. Shadows now only go off if the lowest resolution is still too slow for a long while, and only between waves.
 - **Rats out of sight are not drawn.** With the camera on the farmer, most of a big crowd is off-screen. Those rats are neither animated nor sent to the graphics chip. With the biggest crowd this cut the scene update from about 4.9 to 3.0 ms a frame, and the triangles drawn from about 1.06 million to 640 thousand where the crowd is thickest.
-- **A slow frame does not make the next one slower.** The game catches up at most a few simulation steps a frame, within a time budget. If it falls behind, it runs a moment slow instead of jerking ahead.
+- **A slow frame does not make the next one slower.** When the simulation steps themselves are costly (a big crowd on a slow processor), catching up stops at a time budget of about 10 ms a frame. The game then runs a moment slow instead of piling the work onto the next frame.
 - **Floating labels only touch the page when they move.**
 
 ## Tests
