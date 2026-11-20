@@ -42,8 +42,8 @@ button:focus-visible,[tabindex]:focus-visible,summary:focus-visible{outline:3px 
 .pl{position:relative}
 .pl .tbar{position:absolute;left:10px;right:10px;bottom:2px;height:4px;border-radius:3px;background:rgba(36,22,64,.14);overflow:hidden;opacity:0;transition:opacity .2s}
 .pl.timing .tbar{opacity:1}
-.pl .tbar i{position:absolute;top:0;bottom:0;left:0;width:100%;border-radius:3px;background:#34b85a}
-.pl.p2 .tbar i{left:auto;right:0}
+.pl .tbar i{position:absolute;top:0;bottom:0;left:0;width:100%;border-radius:3px;background:#34b85a;transform-origin:left center;will-change:transform}
+.pl.p2 .tbar i{left:auto;right:0;transform-origin:right center}
 .pl .clk{position:absolute;top:4px;right:8px;display:none;padding:2px 6px;border-radius:9px;background:var(--ink);color:#fff;font-size:12px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;pointer-events:none}
 .pl.p2 .clk{right:auto;left:8px}
 .pl.timing .clk{display:block}
@@ -421,6 +421,7 @@ html,body{overscroll-behavior:none}
 #coach.mini p{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;font-size:12px}
 #coach.mini .coachBtns{flex-direction:row}
 #fxc{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:11}
+#fxc[hidden]{display:block;visibility:hidden}
 .mb.land{animation:land .5s cubic-bezier(.3,1.7,.5,1)}
 @keyframes land{0%{transform:scale(2.1)}100%{transform:scale(1)}}
 #style .card{max-width:400px}
@@ -797,9 +798,14 @@ let GFXMODE='auto';
 /* the old auto setting lowered the resolution and froze the table, and was saved for good: forget it */
 try{localStorage.removeItem('pool8-gfx');if(localStorage.getItem('pool8-gfx2')==='1')GFX.low=true;}catch(_){}
 function rDpr(){return Math.min(window.devicePixelRatio||1,2);}
-function gfxTick(raw){GFX.cool-=raw;GFX.win.push(raw);if(GFX.win.length<180)return;const w=GFX.win;GFX.win=[];if(GFX.cool>0||GFXMODE!=='auto'||GFX.low)return;
-  const avg=w.reduce((a,b)=>a+b,0)/w.length;if(avg<1/40){GFX.bad=0;return;}
-  if(++GFX.bad<2)return;GFX.low=true;gfxApply();try{localStorage.setItem('pool8-gfx2','1');}catch(_){}}
+/* Auto graphics: every ~3 s of play, check how steady the frame rate was against the screen's own refresh
+   rate (not just a fixed 40 fps floor), so phones that hover around 45-55 fps get the lighter effects too.
+   Two rough windows in a row trim the effects, saved as before. The resolution never changes. */
+function gfxTick(raw){GFX.cool-=raw;GFX.win.push(raw);if(GFX.win.length<180)return;const w=GFX.win;GFX.win=[];if(GFX.cool>0||GFXMODE!=='auto')return;
+  const vs=Math.max(1/144,Math.min(1/30,FS.vs||1/60)),avg=w.reduce((a,b)=>a+b,0)/w.length,slow=w.filter(t=>t>vs*1.7).length/w.length;
+  const rough=avg>vs*1.15||slow>0.1;if(GFX.low)return;if(!rough){GFX.bad=Math.max(0,GFX.bad-0.5);return;}
+  if(++GFX.bad<2)return;GFX.bad=0;GFX.cool=4;
+  if(!GFX.low){GFX.low=true;gfxApply();try{localStorage.setItem('pool8-gfx2','1');}catch(_){}}}
 function gfxApply(){GFXMODE=sty.gfx==='smooth'||sty.gfx==='best'?sty.gfx:'auto';LOWFX=GFXMODE==='smooth'||(GFXMODE==='auto'&&!!GFX.low);}
 const STORE={get(k){try{if(PLAT.sdk)return PLAT.sdk.data.getItem(k);}catch(_){}try{return localStorage.getItem(k);}catch(_){return null;}},
   set(k,v){try{if(PLAT.sdk){PLAT.sdk.data.setItem(k,v);return;}}catch(_){}try{localStorage.setItem(k,v);}catch(_){}}};
@@ -1571,7 +1577,7 @@ function tmrReset(){TMR.left=SHOT_T;TMR.last=performance.now();TMR.sec=-1;tmrUI(
 function tmrUI(){const on=tmrOn(),f=Math.max(0,TMR.left/SHOT_T),sec=Math.ceil(TMR.left),key=on?cur+':'+sec+':'+(f*200|0):'off';if(key===TMR.ui)return;TMR.ui=key;
   for(let i=0;i<2;i++){const el=plEls[i];if(!el)continue;const a=on&&i===cur;el.classList.toggle('timing',a);el.classList.toggle('low',a&&sec<=10);el.classList.toggle('crit',a&&sec<=5);
     if(!a)continue;const bar=el.querySelector('.tbar i'),ck=el.querySelector('.clk');
-    if(bar){bar.style.width=(f*100).toFixed(1)+'%';bar.style.background=sec<=8?'#e8453c':sec<=15?'#ffb020':'#34b85a';}
+    if(bar){bar.style.transform=`scaleX(${f.toFixed(3)})`;bar.style.background=sec<=8?'#e8453c':sec<=15?'#ffb020':'#34b85a';}
     if(ck)ck.textContent='0:'+String(Math.max(0,sec)).padStart(2,'0');}}
 const sTick=s=>{const f=s<=3?1560:1240;sweep(f,f,0.05,0.05,'square',0);sweep(f*2,f*2,0.015,0.03,'sine',0);};
 function tmrTick(){const now=performance.now(),el=Math.min(Math.max(0,now-TMR.last),mode==='online'?60000:250)/1000;TMR.last=now;
@@ -2891,9 +2897,13 @@ function livePops(g,tm,n,rate,pick,rgb,size){for(let i=0;i<n;i++){const t=tm*rat
   g.globalAlpha=a;g.fillStyle='#ffffff';sparkle4(g,p.x,p.y,size*(0.35+0.65*a),1.15);g.fill();}g.globalAlpha=1;}
 /* a band of light sweeping across the table's emblem picture, masked by the picture itself */
 let EMBSH=null;
+/* the emblem is shrunk to the shine canvas once and reused, instead of rescaling the full image every frame */
+const EMBMASK=new Map();
+function embMask(EI,cw,ch){const k=EI.src.length+':'+EI.naturalWidth+':'+cw+'x'+ch;let c=EMBMASK.get(EI);if(c&&c._k===k)return c;
+  c=document.createElement('canvas');c.width=cw;c.height=ch;const x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(EI,0,0,cw,ch);c._k=k;EMBMASK.set(EI,c);return c;}
 function embShine(g,G,X,tm,per,rgb,a){const k=((tm/per)%1+1)%1;if(k>0.42||!X||!X.emb||LOWFX)return;const EI=X.emb();if(!EI.complete||!EI.naturalWidth)return;
   const ew=X.ew,eh=X.eh,cw=Math.ceil(ew),ch=Math.ceil(eh);if(!EMBSH)EMBSH=document.createElement('canvas');if(EMBSH.width!==cw||EMBSH.height!==ch){EMBSH.width=cw;EMBSH.height=ch;}
-  const o=EMBSH.getContext('2d'),p=k/0.42,x=-ew*0.6+p*ew*2.2;o.globalCompositeOperation='source-over';o.clearRect(0,0,cw,ch);o.drawImage(EI,0,0,cw,ch);o.globalCompositeOperation='source-in';
+  const o=EMBSH.getContext('2d'),p=k/0.42,x=-ew*0.6+p*ew*2.2;o.globalCompositeOperation='source-over';o.clearRect(0,0,cw,ch);o.drawImage(embMask(EI,cw,ch),0,0);o.globalCompositeOperation='source-in';
   o.save();o.translate(x,ch/2);o.rotate(0.45);const gr=o.createLinearGradient(-60,0,60,0);gr.addColorStop(0,`rgba(${rgb},0)`);gr.addColorStop(0.5,`rgba(${rgb},${a})`);gr.addColorStop(1,`rgba(${rgb},0)`);
   o.fillStyle=gr;o.fillRect(-60,-ch*1.5,120,ch*3);o.restore();o.globalCompositeOperation='source-over';
   g.globalCompositeOperation='lighter';g.drawImage(EMBSH,G.fw/2-ew/2,G.fh/2-eh/2,ew,eh);g.globalCompositeOperation='source-over';}
@@ -3136,6 +3146,8 @@ function almightySky(g,tm,fw,fh,P,z,wrapV){const S=Math.sin;g.save();g.globalCom
   g.restore();}
 /* ---- pocket celebrations (overlay layer above the whole app) ---- */
 const fxc=$('fxc'),fxg=fxc.getContext('2d'),appEl=$('app'),PRT=[],incoming=new Set();
+/* app size is tracked by an observer so the frame loop never has to measure the page */
+const APPSZ={w:0,h:0};try{new ResizeObserver(es=>{for(const e of es){APPSZ.w=appEl.clientWidth;APPSZ.h=appEl.clientHeight;}}).observe(appEl);}catch(_){}
 let shakeT=0,shakeD=1,shakeA=0,fxDirty=false;
 const CAM={k:1,z:0,px:0,py:0,on:false,vz:-1};
 /* the deciding moment: the 8 ball rolling straight at a pocket plays in slow motion with a gentle zoom */
@@ -3209,10 +3221,11 @@ function drawTutorial(g){const T=TUT.step===0?(RM?0.9:clock%1.8):1.8+(RM?0.6:clo
     g.beginPath();g.moveTo(q0.x,q0.y);g.lineTo(q.x,q.y);g.stroke();g.setLineDash([]);drawFinger(g,q.x,q.y,T-1.8<0.35?(T-1.8)/0.35:0);}
   g.restore();}
 function drawParticles(){
-  const w=appEl.clientWidth,h=appEl.clientHeight,d=rDpr(),cw=Math.round(w*d),chh=Math.round(h*d);
+  const w=APPSZ.w||appEl.clientWidth,h=APPSZ.h||appEl.clientHeight,d=rDpr(),cw=Math.round(w*d),chh=Math.round(h*d);
   if(fxc.width!==cw||fxc.height!==chh){fxc.width=cw;fxc.height=chh;fxDirty=true;}
   const tut=tutOn();
-  if(!fxDirty&&!PRT.length&&!tut)return;
+  if(!fxDirty&&!PRT.length&&!tut){if(!fxc.hidden)fxc.hidden=true;return;}
+  if(fxc.hidden&&(PRT.length||tut))fxc.hidden=false;
   const g=fxg;g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,cw,chh);fxDirty=PRT.length>0||tut;
   if(paused)return;
   g.setTransform(d,0,0,d,0,0);g.lineJoin='round';g.lineCap='round';
