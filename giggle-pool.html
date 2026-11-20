@@ -55,6 +55,9 @@ button:focus-visible,[tabindex]:focus-visible,summary:focus-visible{outline:3px 
 @media (prefers-reduced-motion:reduce){.pl.timing.crit .clk{animation:none}}
 .pl .top{display:flex;align-items:baseline;gap:8px;justify-content:space-between;min-width:0}
 .pl .nm{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl .hav{width:26px;height:26px;flex:none;margin:-5px -3px -5px -4px;display:none}
+.pl.me .hav{display:block}.pl.me .hav+.nm{margin-right:auto}.pl.p2.me .hav+.nm{margin-right:0;margin-left:auto}
+@media (max-height:430px){.pl .hav{width:22px;height:22px;margin:-4px -2px -4px -3px}}
 .pl .grp{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
 .pl.active .grp{color:var(--accent)}
 .tray{display:flex;gap:2px;flex-wrap:nowrap;min-height:16px}
@@ -475,12 +478,12 @@ html,body{overscroll-behavior:none}
 <body>
 <div id="app">
   <header id="hud">
-    <div class="pl" id="pl0"><div class="top"><span class="nm">You</span><span class="grp"></span></div><div class="tray"></div><b class="clk" aria-hidden="true"></b><div class="tbar" aria-hidden="true"><i></i></div></div>
+    <div class="pl" id="pl0"><div class="top"><canvas class="hav" aria-hidden="true"></canvas><span class="nm">You</span><span class="grp"></span></div><div class="tray"></div><b class="clk" aria-hidden="true"></b><div class="tbar" aria-hidden="true"><i></i></div></div>
     <div class="mid">
       <button class="ib" id="bSnd" aria-label="Toggle sound"></button>
       <button class="ib" id="bMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
-    <div class="pl p2" id="pl1"><div class="top"><span class="nm">CPU</span><span class="grp"></span></div><div class="tray"></div><b class="clk" aria-hidden="true"></b><div class="tbar" aria-hidden="true"><i></i></div></div>
+    <div class="pl p2" id="pl1"><div class="top"><canvas class="hav" aria-hidden="true"></canvas><span class="nm">CPU</span><span class="grp"></span></div><div class="tray"></div><b class="clk" aria-hidden="true"></b><div class="tbar" aria-hidden="true"><i></i></div></div>
   </header>
   <main id="stage">
     <div id="tableWrap">
@@ -1941,7 +1944,8 @@ function renderHUD(){
     el.querySelector('.nm').textContent=mode==='solo'?soloLabel(i,0):P.cpu&&!P.demo&&!/CPU/.test(P.name)?`${P.name} (CPU)`:P.name;
     el.querySelector('.grp').textContent=mode==='solo'?soloLabel(i,1):P.group?(cleared(i)?'On the 8':P.group==='solids'?'Solids':'Stripes'):(isBreak?(i===cur&&gameLive?'Breaking':''):'Open');
     el.querySelector('.tray').innerHTML=trayHTML(i);
-    el.classList.toggle('active',i===cur&&gameLive&&state!=='over');}
+    el.classList.toggle('active',i===cur&&gameLive&&state!=='over');
+    el.classList.toggle('me',meIdx()===i);}
   drawTrays();coachUI();
 }
 function soloLabel(i,k){if(!SOLO)return'';const K=SOLO.kind;
@@ -2281,6 +2285,15 @@ function drawChar(g,id,x,y,r,c,o){
     else if(o.vel>80){const st=Math.min(0.13,o.vel/14000);g.rotate(o.velA);g.scale(1+st,1-st*0.7);g.rotate(-o.velA);}
     else if(o.breathe){const k=Math.sin(tm*2.3+c.ph)*0.022;g.scale(1-k*0.5,1+k);}
   }
+  if(id===0&&o.spr&&avReady(sty.avatar)){
+    /* a white rim keeps a coloured avatar reading as the cue ball */
+    if(sty.avatar!=='cuekid'){g.beginPath();g.arc(0,0,r*1.04,0,TAU);g.lineWidth=Math.max(o.px*1.4,r*0.11);g.strokeStyle='rgba(255,255,255,.9)';g.stroke();}
+    if(!RM&&o.vel>80)g.rotate(clamp(Math.cos(o.velA||0)*o.vel/2600,-0.32,0.32));
+    const idle=!RM&&o.breathe&&!(o.vel>30)&&sty.anim!=='off';
+    avSprite(g,sty.avatar,0,0,r,mood==='laugh'||mood==='win'?'laugh':null,idle?Math.max(0.001,tm):0);
+    g.restore();
+    if(F.stars){const s=Math.max(r*0.24,o.px*4);for(let i=0;i<3;i++){const a=tm*5+i*TAU/3;star(g,Math.cos(a)*r*0.95,-r*1.12+Math.sin(a)*r*0.3,s*(0.8+0.2*Math.sin(a)),lw);}}
+    g.restore();return;}
   const q=o.q&&o.q[0]<0.99999?o.q:null;
   if(id>8&&q){g.beginPath();g.arc(0,0,r,0,TAU);g.fillStyle=col;g.fill();g.save();g.clip();stripeCaps(g,q,r,lw);g.restore();
     if(!(o.spr&&bodySpr(g,id,r,lw,'shade')))bodyPaint(g,id,r,lw,'shade');}
@@ -4335,9 +4348,14 @@ function avSprite(g,id,cx,cy,r,mood,tm){const A=AVART[id],F=AVFX[id]||{},t=tm||0
 function avStar(g,x,y,s,col,a){if(s<0.3)return;g.save();g.globalAlpha*=Math.max(0,Math.min(1,a));g.fillStyle=col;sparkle4(g,x,y,s,1.7);g.fill();g.restore();}
 /* redraw the small menu and profile avatars every frame while they show */
 const AVANIM={};
-function avAnimTick(now){const tm=now/1000;for(const [id,sel,mood] of [['avMenu','#menu',null],['avBig','#saveOv','laugh']]){const ov=document.querySelector(sel);if(!ov||!ov.classList.contains('show'))continue;
+function avAnimTick(now){const tm=now/1000;
+  {const i=meIdx(),el=i>=0&&plEls[i],cv=el&&el.classList.contains('me')&&el.querySelector('.hav');
+    if(cv&&avReady(sty.avatar)){const w=cv.clientWidth,h=cv.clientHeight;if(w&&h){const d=Math.min(window.devicePixelRatio||1,2),cw=Math.round(w*d),ch=Math.round(h*d);
+      if(cv.width!==cw||cv.height!==ch){cv.width=cw;cv.height=ch;}const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);const f=avFit(sty.avatar,w,h);
+      avSprite(g,sty.avatar,f.x,f.y,f.r,state==='over'&&gameLive===false?'laugh':null,RM||sty.anim==='off'?0:tm);}}}for(const [id,sel,mood] of [['avMenu','#menu',null],['avBig','#saveOv','laugh']]){const ov=document.querySelector(sel);if(!ov||!ov.classList.contains('show'))continue;
     const cv=$(id),w=cv.clientWidth,h=cv.clientHeight;if(!w||!h||!avReady(sty.avatar))continue;const d=Math.min(window.devicePixelRatio||1,2),cw=Math.round(w*d),ch=Math.round(h*d);
     if(cv.width!==cw||cv.height!==ch){cv.width=cw;cv.height=ch;}const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);const f=avFit(sty.avatar,w,h);avSprite(g,sty.avatar,f.x,f.y,f.r,mood,tm);}}
+function meIdx(){if(mode==='online')return NET&&Number.isInteger(NET.me)?NET.me:-1;return players[0]&&!players[0].cpu?0:-1;}
 function avStatic(){try{avatarCanvas($('avMenu'),sty.avatar);}catch(_){}}
 function drawAvatar(g,id,cx,cy,r,mood,tm){if(avReady(id)){avSprite(g,id,cx,cy,r,mood,tm);return;}const A=AVATARS.find(a=>a.id===id)||AVATARS[0];AVC.blink=0;AVC.lx=0.25;AVC.ly=0.15;AVC.sq=0;
   drawChar(g,A.ball,cx,cy,r,AVC,{mood:mood||(A.acc==='crown'?'smug':'idle'),px:Math.max(0.55,r/26),noRot:true,t:0.3});
