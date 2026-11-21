@@ -1453,43 +1453,9 @@ DXS.cosmos={wood:[[0,'#120530'],[0.05,'#d9c8ff'],[0.1,'#5b2fc9'],[0.18,'#311486'
   str:'rgba(220,200,255,.5)',dot:'rgba(235,220,255,.9)',cush:['#c9b4ff','#7b52f0','#4a25bc','#1e0d5c'],cushInk:'#0c0322',cushLine:'rgba(200,230,255,.9)',lip:['#7b52f0','rgba(150,220,255,.85)'],deco:cosmosDeco};
 
 
-/* the playing area of the painted tables: a clean cloth in the table's colour, like a real pool table, so the balls stand out */
-const ARTPAL={
-  winter:{f:['#3ea8ec','#1a5cae'],c:['#7cc8ff','#3d92e2','#2366bd','#113a7a'],ink:'#0a1f4a',ln:'rgba(215,242,255,.9)',lip:['#2366bd','rgba(160,220,255,.85)'],sh:'6,24,60',rim:'#cfeaff'},
-  almighty:{f:['#7a62e0','#35248a'],c:['#a08cff','#6a54d8','#4a36b0','#28186e'],ink:'#160a3a',ln:'rgba(255,230,160,.9)',lip:['#4a36b0','rgba(255,215,120,.9)'],sh:'20,8,50',rim:'#ffd36a'},
-  disco:{f:['#8a44d8','#3d1478'],c:['#b77cff','#8a4ae0','#6430b8','#3a1270'],ink:'#1a0636',ln:'rgba(255,190,255,.9)',lip:['#6430b8','rgba(255,170,250,.85)'],sh:'24,4,48',rim:'#ffcf6a'},
-  aurora:{f:['#1fb5a8','#0c5664'],c:['#5fe8d8','#22b8a8','#14887e','#0a4d50'],ink:'#042628',ln:'rgba(190,255,245,.9)',lip:['#14887e','rgba(140,255,235,.85)'],sh:'2,30,34',rim:'#d8c8ff'},
-  jungle:{f:['#36b04c','#136a2a'],c:['#5ad86e','#2fae4a','#1d8a38','#0d5222'],ink:'#042810',ln:'rgba(190,255,200,.9)',lip:['#1d8a38','rgba(120,240,150,.85)'],sh:'0,26,8',rim:'#e8b25a'},
-  volcano:{f:['#c4402a','#5e140c'],c:['#ff7a52','#d4462c','#a8301c','#5e1408'],ink:'#2a0602',ln:'rgba(255,200,150,.9)',lip:['#a8301c','rgba(255,160,90,.85)'],sh:'40,4,0',rim:'#ff9a3a'}};
-let CLOTH=null;
-function clothPattern(g){if(!CLOTH){const c=document.createElement('canvas');c.width=c.height=96;const x=c.getContext('2d');let sd=7;const r=()=>(sd=(sd*16807)%2147483647)/2147483647;
-    for(let i=0;i<900;i++){x.fillStyle=r()<0.5?'rgba(255,255,255,.05)':'rgba(0,0,0,.06)';x.fillRect(r()*96,r()*96,1+r()*1.2,1+r()*1.2);}CLOTH=c;}
-  return g.createPattern(CLOTH,'repeat');}
-function artFelt(g,px,T){const P=ARTPAL[T.art];if(!P)return;
-  const fl=g.createRadialGradient(W/2,H/2,30,W/2,H/2,W*0.62);fl.addColorStop(0,P.f[0]);fl.addColorStop(1,P.f[1]);g.fillStyle=fl;g.fillRect(-CW,-CW,W+2*CW,H+2*CW);
-  const pt=clothPattern(g);if(pt){g.fillStyle=pt;g.fillRect(-CW,-CW,W+2*CW,H+2*CW);}
-  /* soft shadow the cushions throw onto the cloth */
-  for(const [x0,y0,x1,y1,rx,ry,rw,rh] of [[0,0,0,16,0,0,W,16],[0,H,0,H-16,0,H-16,W,16],[0,0,16,0,0,0,16,H],[W,0,W-16,0,W-16,0,16,H]]){const sg=g.createLinearGradient(x0,y0,x1,y1);sg.addColorStop(0,`rgba(${P.sh},.55)`);sg.addColorStop(0.35,`rgba(${P.sh},.22)`);sg.addColorStop(1,`rgba(${P.sh},0)`);g.fillStyle=sg;g.fillRect(rx,ry,rw,rh);}
-  /* the head string line and the spots, nothing else on the cloth */
-  g.strokeStyle='rgba(255,255,255,.28)';g.lineWidth=Math.max(px*1.1,1.1);g.beginPath();g.moveTo(HEAD_X,6);g.lineTo(HEAD_X,H-6);g.stroke();
-  g.fillStyle='rgba(255,255,255,.5)';for(const [x,y] of [[HEAD_X,CY],[FOOT_X,CY]]){g.beginPath();g.arc(x,y,3.4,0,TAU);g.fill();}
-  /* pockets */
-  for(const p of POCKETS){const r=p.r+1;g.beginPath();g.arc(p.x,p.y,r,0,TAU);const hg=g.createRadialGradient(p.x-p.ix*4,p.y-p.iy*4,2,p.x,p.y,r);hg.addColorStop(0,'#000');hg.addColorStop(0.7,'#06070a');hg.addColorStop(1,'#1c1c24');g.fillStyle=hg;g.fill();
-    g.save();g.clip();g.beginPath();g.arc(p.x+p.ix*8,p.y+p.iy*8,r,0,TAU);g.fillStyle='rgba(0,0,0,.85)';g.fill();g.restore();}
-  /* cushions */
-  for(const c of CUSH){g.beginPath();g.moveTo(c[0][0],c[0][1]);for(let i=1;i<4;i++)g.lineTo(c[i][0],c[i][1]);g.closePath();
-    const vert=c[0][0]===c[1][0],gr=vert?g.createLinearGradient(c[0][0],0,c[3][0],0):g.createLinearGradient(0,c[0][1],0,c[3][1]);
-    gr.addColorStop(0,P.c[0]);gr.addColorStop(0.18,P.c[1]);gr.addColorStop(0.7,P.c[2]);gr.addColorStop(1,P.c[3]);g.fillStyle=gr;g.fill();
-    g.lineJoin='round';g.strokeStyle=P.ink;g.lineWidth=px*1.4;g.stroke();
-    g.beginPath();g.moveTo(c[0][0],c[0][1]);g.lineTo(c[1][0],c[1][1]);g.strokeStyle=P.ln;g.lineWidth=px*1.6;g.stroke();}
-  for(const p of POCKETS){if(p.side)continue;const a=Math.atan2(p.iy,p.ix);g.beginPath();g.arc(p.x,p.y,p.r+2,a-1.05,a+1.05);g.strokeStyle=P.lip[0];g.lineWidth=4;g.stroke();
-    g.beginPath();g.arc(p.x,p.y,p.r+3.6,a-0.95,a+0.95);g.strokeStyle=P.lip[1];g.lineWidth=px*1.5;g.stroke();}
-  /* a trim round each pocket in the frame's colour */
-  for(const p of POCKETS){g.beginPath();g.arc(p.x,p.y,p.r+1.5,0,TAU);g.strokeStyle=P.ink;g.lineWidth=4.2;g.stroke();g.strokeStyle=P.rim;g.lineWidth=2.2;g.stroke();}}
 function drawArtTable(g,px,T,so){const A=ARTT[T.art],dw=A.w*A.ax,dh=A.h*A.ay;
   if(MAIN_TABLE){g.save();g.shadowColor='rgba(20,10,40,.45)';g.shadowBlur=24;g.shadowOffsetX=so.x*1.3;g.shadowOffsetY=so.y*1.3+6;g.drawImage(A.img,A.bx,A.by,dw,dh);g.restore();}
-  else g.drawImage(A.img,A.bx,A.by,dw,dh);
-  artFelt(g,px,T);}
+  else g.drawImage(A.img,A.bx,A.by,dw,dh);}
 function drawTableSkin(g,px,T,so){
   if(artOK(T)){drawArtTable(g,px,T,so);return;}
   if(!MAIN_TABLE&&sprTable(T.id)){MAIN_TABLE=true;try{drawTableSkin(g,px,T,so);}finally{MAIN_TABLE=false;}
@@ -3061,7 +3027,6 @@ function ambData(id){if(AMBC[id])return AMBC[id];let sd=97+id.length*31;const r=
 function artLive(g,T,tm,z){const A=ARTT[T.art],X=p=>A.ax*p+A.bx,Y=p=>A.ay*p+A.by,S=Math.sin,zz=Math.min(z,1.6),f1=v=>v-Math.floor(v),
     hh=(i,j)=>{const v=Math.sin(i*127.1+j*311.7)*43758.5453;return v-Math.floor(v);},lo=LOWFX,dw=A.w*A.ax,dh=A.h*A.ay,K=A.glow;
   g.save();g.lineCap='round';g.lineJoin='round';
-  g.beginPath();g.rect(-600,-600,W+1200,H+1200);g.rect(-CW,-CW,W+2*CW,H+2*CW);g.clip('evenodd');
   const add=()=>{g.globalCompositeOperation='lighter';},nrm=()=>{g.globalCompositeOperation='source-over';g.globalAlpha=1;};
   const glow=(px,py,r,rgb,a)=>glowAt(g,rgb,X(px),Y(py),r*zz,Math.max(0,Math.min(1,a)));
   const flick=(px,py,r,rgb,b,i)=>glow(px,py,r,rgb,b*(0.72+0.18*S(tm*13+i*2.1)+0.1*S(tm*29.3+i*5.7)));
