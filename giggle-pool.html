@@ -93,7 +93,16 @@ button:focus-visible,[tabindex]:focus-visible,summary:focus-visible{outline:3px 
 #fine{flex:0 0 22%;min-height:56px;width:36px;border-radius:12px;border:2.5px solid var(--ink);cursor:ns-resize;touch-action:none;box-shadow:0 3px 0 var(--ink);
   background:linear-gradient(90deg,rgba(20,10,40,.42),rgba(255,255,255,.28) 38%,rgba(255,255,255,.12) 55%,rgba(20,10,40,.45)),repeating-linear-gradient(180deg,var(--panel) 0 6px,color-mix(in srgb,var(--ink) 35%,var(--panel)) 6px 8px)}
 #fine[hidden],#fineLbl[hidden]{display:none}
-#stage.pleft{flex-direction:row-reverse}.seg.dimSeg{opacity:.55}#stage.pleft #skTray{right:auto;left:74px}
+#stage.pleft{flex-direction:row-reverse}
+body.tall #stage{padding:0 0 6px;gap:0}
+body.tall #controls{position:absolute;top:0;bottom:6px;right:4px;width:44px;z-index:6;gap:5px;pointer-events:none}
+body.tall #controls>*{pointer-events:auto}
+body.tall #stage.pleft #controls{right:auto;left:4px}
+body.tall #spin{width:42px;height:42px}body.tall #spinDot{width:12px;height:12px}
+body.tall #fine,body.tall #power{width:32px}body.tall #bSkills{width:42px;height:36px}
+body.tall .lbl{background:var(--panel);border:2px solid var(--ink);border-radius:8px;padding:0 5px;font-size:11px;line-height:15px;box-shadow:0 2px 0 var(--ink)}
+body.tall #status,body.tall #toast,body.tall #turnBan,body.tall #skillPop,body.tall #coach,body.tall #potPill{left:var(--tcx,50%)}
+body.tall #skTray{right:56px}body.tall #stage.pleft #skTray{right:auto;left:56px}.seg.dimSeg{opacity:.55}#stage.pleft #skTray{right:auto;left:74px}
 #spinPop{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(20,10,40,.38)}#spinPop[hidden]{display:none}
 #spinPop .spCard{background:var(--panel);color:var(--text);border:2.5px solid var(--ink);border-radius:18px;box-shadow:0 5px 0 var(--ink);padding:12px 16px 14px;display:flex;flex-direction:column;align-items:center;gap:6px;max-width:92%;text-align:center}
 .spTitle{font-family:var(--display);font-size:20px;letter-spacing:.03em}
@@ -1156,14 +1165,17 @@ const noiseCan=document.createElement('canvas');noiseCan.width=noiseCan.height=9
 
 let V={a:1,b:0,c:0,d:1,e:0,f:0,s:0,rot:false,dpr:1,w:0,h:0};
 function layout(){
+  /* phone held upright: the table gets the whole width and the controls float over the edge of its frame */
+  const tall=innerHeight>innerWidth*1.08;document.body.classList.toggle('tall',tall);
   const w=wrap.clientWidth,h=wrap.clientHeight;if(!w||!h)return;
   const dpr=rDpr();
   canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
   tcan.width=canvas.width;tcan.height=canvas.height;
-  const FW=W+2*(M+CAPX),FH=H+2*(M+CAPX),rot=h>w*1.08,cx=w/2,cy=h/2;let s;
-  if(!rot){s=Math.min(w/FW,h/FH);V={a:s,b:0,c:0,d:s,e:cx-s*W/2,f:cy-s*H/2};}
-  else{s=Math.min(w/FH,h/FW);V={a:0,b:-s,c:s,d:0,e:cx-s*H/2,f:cy+s*W/2};}
-  Object.assign(V,{s,rot,dpr,w,h});
+  let ins=0,left=false;if(tall){const ce=$('controls'),r=ce&&ce.getBoundingClientRect();ins=r&&r.width?r.width+8:52;left=sty.pside==='left';}
+  const MG=tall?50:56,FW=W+2*MG,FH=H+2*MG,uw=w-ins-(tall?4:0),rot=h>w*1.08,cx=(left?ins+4:0)+uw/2+(tall&&!left?2:0),cy=h/2;let s;
+  if(!rot){s=Math.min(uw/FW,h/FH);V={a:s,b:0,c:0,d:s,e:cx-s*W/2,f:cy-s*H/2};}
+  else{s=Math.min(uw/FH,h/FW);V={a:0,b:-s,c:s,d:0,e:cx-s*H/2,f:cy+s*W/2};}
+  Object.assign(V,{s,rot,dpr,w,h});wrap.style.setProperty('--tcx',cx+'px');
   drawTableCache();
 }
 function worldTransform(g){const k=V.dpr;g.setTransform(V.a*k,V.b*k,V.c*k,V.d*k,V.e*k,V.f*k);}
@@ -1878,8 +1890,8 @@ canvas.addEventListener('pointermove',e=>{
 canvas.addEventListener('pointerup',()=>{
   if(drag==='pull'){const hv=DR.pt==='mouse'&&HOV();if(humanTurn()&&power>(hv?0.05:0.03))takeShot();
     else{power=0;updatePowerUI();if(hv&&DR.mv<6&&performance.now()-DR.t<450&&humanTurn())aimLock(!HV.lock);}}
-  else if((drag==='swipe'||drag==='pend')&&DR.mv<9&&performance.now()-DR.t<350&&sty.tapAim==='on'&&sty.aimMode==='swipe'&&humanTurn()){const w=wrap.clientWidth;
-    if(DR.x<w*0.42)aimAngle-=TAP_STEP;else if(DR.x>w*0.58)aimAngle+=TAP_STEP;stk.adj=clock;lastInput=clock;}
+  else if((drag==='swipe'||drag==='pend')&&DR.mv<9&&performance.now()-DR.t<350&&sty.tapAim==='on'&&sty.aimMode==='swipe'&&humanTurn()){const tw=V.rot?V.s*H:V.s*W,tx=V.rot?V.e+tw/2:V.e+tw/2;
+    if(DR.x<tx-tw*0.08)aimAngle-=TAP_STEP;else if(DR.x>tx+tw*0.08)aimAngle+=TAP_STEP;stk.adj=clock;lastInput=clock;}
   drag=null;});
 canvas.addEventListener('pointercancel',()=>{if(drag==='pull'){power=0;updatePowerUI();}drag=null;});
 canvas.addEventListener('pointerleave',e=>{if((e.pointerType||'mouse')!=='mouse'||drag||!HOV()||!humanTurn()||HV.lock)return;const t=performance.now();
