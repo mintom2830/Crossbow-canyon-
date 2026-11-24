@@ -28,7 +28,7 @@
   --accent:#ff5a4e;--sky:#5aa6ff;--scrim:rgba(8,5,20,.55)}
 *,*::before,*::after{box-sizing:border-box}
 html{height:100%;background:var(--bg);scroll-padding-top:env(safe-area-inset-top,0px)}
-body{height:100%;margin:0;color:var(--text);font-family:var(--ui);overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+body{height:100%;margin:0;color:var(--text);font-family:var(--ui);overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
   background-color:var(--bg);
   background-image:radial-gradient(ellipse at 50% 50%,transparent 30%,rgba(36,22,64,.24) 100%),repeating-conic-gradient(from 4deg at 50% 50%,var(--sun1) 0deg 10deg,var(--sun2) 10deg 20deg)}
 button{font-family:inherit;touch-action:manipulation}
@@ -456,7 +456,7 @@ html,body{overscroll-behavior:none}
 @media (max-height:600px) and (min-aspect-ratio:5/4){
   #wheelOv .card{max-width:min(720px,94vw);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:18px;align-items:center}
   #wheelOv .card>*{grid-column:2}
-  #wheelOv #wheelCan{grid-column:1;grid-row:1/span 8;height:min(300px,calc(100vh - 70px))}
+  #wheelOv #wheelCan{grid-column:1;grid-row:1/span 8;height:min(300px,calc(100vh - 70px));height:min(300px,calc(100dvh - 70px))}
   #wheelOv .ttl{margin-top:0}
 }
 #coach p{cursor:pointer}
@@ -849,10 +849,10 @@ let GFXMODE='auto';
 /* the old auto setting lowered the resolution and froze the table, and was saved for good: forget it */
 try{localStorage.removeItem('pool8-gfx');if(localStorage.getItem('pool8-gfx2')==='1')GFX.low=true;}catch(_){}
 function rDpr(){return Math.min(window.devicePixelRatio||1,2);}
-/* Auto graphics: every ~3 s of play, check how steady the frame rate was against the screen's own refresh
+/* Auto graphics: every 2.5 s (by time, not frame count, so a slow phone is judged as quickly as a fast one), check how steady the frame rate was against the screen's own refresh
    rate (not just a fixed 40 fps floor), so phones that hover around 45-55 fps get the lighter effects too.
    Two rough windows in a row trim the effects, saved as before. The resolution never changes. */
-function gfxTick(raw){GFX.cool-=raw;GFX.win.push(raw);if(GFX.win.length<180)return;const w=GFX.win;GFX.win=[];if(GFX.cool>0||GFXMODE!=='auto')return;
+function gfxTick(raw){GFX.cool-=raw;GFX.win.push(raw);GFX.wt=(GFX.wt||0)+raw;if(GFX.wt<2.5||GFX.win.length<40)return;const w=GFX.win;GFX.win=[];GFX.wt=0;if(GFX.cool>0||GFXMODE!=='auto')return;
   const vs=Math.max(1/144,Math.min(1/30,FS.vs||1/60)),avg=w.reduce((a,b)=>a+b,0)/w.length,slow=w.filter(t=>t>vs*1.7).length/w.length;
   const rough=avg>vs*1.15||slow>0.1;if(GFX.low)return;if(!rough){GFX.bad=Math.max(0,GFX.bad-0.5);return;}
   if(++GFX.bad<2)return;GFX.bad=0;GFX.cool=4;
@@ -1195,14 +1195,18 @@ seg(W-CG,H,W-CG+J,H+J);seg(W,H-CG,W+J,H-CG+J);
 seg(W/2-SG,0,W/2-SG-3,-J);seg(W/2+SG,0,W/2+SG+3,-J);
 seg(W/2-SG,H,W/2-SG-3,H+J);seg(W/2+SG,H,W/2+SG+3,H+J);
 let CPX=0,CPY=0;
-/* painted tables draw bigger holes than the plain pockets: a ball whose centre is over the painted hole (5 inside its rim, like the plain pockets) drops in too */
+/* painted tables draw bigger holes than the plain pockets. A moving ball plays the normal pockets (so jaw shots and trick shots work the same on every table),
+   but a ball that slows to a crawl with its centre over the painted hole (5 inside its rim, like the plain pockets) drops in rather than resting on the black */
+const PH_V=140;
+let PLAIN_PK=false;   /* trick shots are tuned to the plain pockets, so they (and their hint previews) never use the painted holes;
+   online games use the plain pockets too, since each player may be looking at a different table */
 const PHOLE={k:'',h:null};
 function holes(){const T=tableSkin(),art=typeof artOK==='function'&&artOK(T),k=T.id+(art?'*':'');
   if(PHOLE.k!==k){PHOLE.k=k;const A=art&&ARTT[T.art];
     PHOLE.h=A&&A.pk?A.pk.map(([cx,cy,r])=>{const rx=A.SX(cx)*r-5,ry=A.ay*r-5;return{x:A.X(cx),y:A.ay*cy+A.by,ix:1/(rx*rx),iy:1/(ry*ry)};}):null;}
   return PHOLE.h;}
-function inHole(x,y,hl){for(const p of POCKETS){const dx=x-p.x,dy=y-p.y;if(dx*dx+dy*dy<p.cap*p.cap)return p;}
-  if(hl)for(let i=0;i<hl.length;i++){const q=hl[i],dx=x-q.x,dy=y-q.y;if(dx*dx*q.ix+dy*dy*q.iy<1)return POCKETS[i];}return null;}
+function inHole(x,y,hl,v){for(const p of POCKETS){const dx=x-p.x,dy=y-p.y;if(dx*dx+dy*dy<p.cap*p.cap)return p;}
+  if(hl&&!(v>PH_V))for(let i=0;i<hl.length;i++){const q=hl[i],dx=x-q.x,dy=y-q.y;if(dx*dx*q.ix+dy*dy*q.iy<1)return POCKETS[i];}return null;}
 function segD2(s,px,py){let t=((px-s.x1)*s.dx+(py-s.y1)*s.dy)/s.l2;t=t<0?0:t>1?1:t;CPX=s.x1+t*s.dx;CPY=s.y1+t*s.dy;const ex=px-CPX,ey=py-CPY;return ex*ex+ey*ey;}
 
 const POCKETS=[];
@@ -1670,10 +1674,12 @@ function jLive(g,A,tm,z,zz,main,lo,X,Y,S,f1,hh,add,nrm,glow,flick){
     else if(t==='tou'){const e=main?(tm-JX.hop.toucan)/0.5:9,hp=e>=0&&e<1?S(e*PI):0,land=e>=0.8&&e<1.15?S((e-0.8)/0.35*PI):0,
         bl=f1(tm/3.6),lid=bl<0.045?S(bl/0.045*PI):(bl>0.1&&bl<0.145&&f1(tm/10.8)<0.34?S((bl-0.1)/0.045*PI):0),
         nd=f1(tm/6.5+0.3),nod=nd<0.09?-0.06*S(nd/0.09*PI):0,br=S(tm*2.3);
-      jSpr(g,A,k,0,-13*hp,0.02*S(tm*0.55)+nod-0.05*hp,1-0.007*br+0.05*land,(1+0.014*br)*(1-0.07*land),(g)=>{if(lid>0.02)jLid(g,318-P[0],34-P[1],11.5,11.5,lid,'#ffd54a','#d48c00','#2a1606');});}
+      if(hp>0.02){g.save();g.globalAlpha=0.42*hp;g.fillStyle='#1d1406';g.beginPath();g.ellipse(X(272),Y(150),34*A.ax*(1-0.2*hp),9*A.ay,-0.12,0,TAU);g.fill();g.globalAlpha=0.3*hp;g.beginPath();g.ellipse(X(360),Y(70),44*A.ax,16*A.ay,0.1,0,TAU);g.fill();g.restore();}
+      jSpr(g,A,k,0,-7*hp,0.02*S(tm*0.55)+nod-0.04*hp,1-0.007*br+0.05*land,(1+0.014*br)*(1-0.07*land),(g)=>{if(lid>0.02)jLid(g,318-P[0],34-P[1],11.5,11.5,lid,'#ffd54a','#d48c00','#2a1606');});}
     else if(t==='frog'){const e=main?(tm-JX.hop.frog)/0.6:9,hp=e>=0&&e<1?S(e*PI):0,land=e>=0.85&&e<1.2?S((e-0.85)/0.35*PI):0,
         bl=f1(tm/4.3+0.5),lid=bl<0.04?S(bl/0.04*PI):0,rb=f1(tm/3.4),puff=rb<0.26?Math.pow(Math.max(0,S(rb/0.13*PI)),1.5):0,br=S(tm*3.1);
-      jSpr(g,A,k,0,-26*hp,0.06*hp*S(e*PI*2),1+0.06*land,(1+0.016*br+0.06*hp)*(1-0.09*land),(g)=>{
+      if(hp>0.02){g.save();g.globalAlpha=0.45*hp;g.fillStyle='#0f2a08';g.beginPath();g.ellipse(X(1286),Y(752),52*A.ax*(1-0.25*hp),12*A.ay,0,0,TAU);g.fill();g.globalAlpha=0.3*hp;g.beginPath();g.ellipse(X(1290),Y(700),44*A.ax,30*A.ay,0,0,TAU);g.fill();g.restore();}
+      jSpr(g,A,k,0,-14*hp,0.05*hp*S(e*PI*2),1+0.06*land,(1+0.016*br+0.06*hp)*(1-0.09*land),(g)=>{
         if(puff>0.02){const tx=1295-P[0],ty=713-P[1],gr=g.createRadialGradient(tx-3,ty-4,1,tx,ty,18+6*puff);gr.addColorStop(0,'#fff6c2');gr.addColorStop(0.55,'#fcd860');gr.addColorStop(1,'#e8b53a');
           g.globalAlpha=Math.min(1,puff*1.6);g.fillStyle=gr;g.beginPath();g.ellipse(tx,ty+2*puff,13+7*puff,5+9*puff,0,0,TAU);g.fill();g.globalAlpha=1;}
         if(lid>0.02)for(const [ex,ey,rx,ry] of [[1260.5,665.5,7.6,10.6],[1307,683,12.8,12.8]])jLid(g,ex-P[0],ey-P[1],rx,ry,lid,'#b4f04a','#5aac16','#1f4a08');});}}
@@ -1939,10 +1945,10 @@ function step(h){
       if(SIL)continue;
       if(vr>120)onBallHit(a,b,vr,nx,ny);
       if(vr>20)at((a.x+b.x)/2,(a.y+b.y)/2,0.1,()=>sClack(Math.min(1,vr/1500)));}}
-  const mg=!!(shot&&shot.mag),HL=holes();
+  const mg=!!(shot&&shot.mag),HL=PLAIN_PK||mode==='online'||(MATCH&&MATCH.kind==='trick')?null:holes();
   for(let i=0;i<16;i++){const b=balls[i];if(b.potted)continue;
     if(mg&&i&&magPull(b,h))continue;
-    if(b.x>R+1&&b.x<W-R-1&&b.y>R+1&&b.y<H-R-1){if(HL&&(b.x<60||b.x>W-60||b.y<42||b.y>H-42)){const p=inHole(b.x,b.y,HL);if(p)pot(b,p);}continue;}
+    if(b.x>R+1&&b.x<W-R-1&&b.y>R+1&&b.y<H-R-1){if(HL&&(b.x<60||b.x>W-60||b.y<42||b.y>H-42)){const p=inHole(b.x,b.y,HL,Math.hypot(b.vx,b.vy));if(p)pot(b,p);}continue;}
     for(const s of SEGS){const d2=segD2(s,b.x,b.y);if(d2>=R*R||d2<1e-12)continue;
       const d=Math.sqrt(d2),nx=(b.x-CPX)/d,ny=(b.y-CPY)/d;b.x=CPX+nx*R;b.y=CPY+ny*R;
       const vn=b.vx*nx+b.vy*ny;if(vn>=0)continue;const ivx=b.vx,ivy=b.vy;
@@ -1958,7 +1964,7 @@ function step(h){
       if(SIL)continue;
       if(-vn>180)onCushion(b,-vn,nx,ny);
       if(-vn>25)at(b.x,b.y,0.08,()=>sCush(Math.min(1,-vn/1400)));}
-    {const p=inHole(b.x,b.y,HL);if(p)pot(b,p);}
+    {const p=inHole(b.x,b.y,HL,Math.hypot(b.vx,b.vy));if(p)pot(b,p);}
     if(!b.potted&&(b.x<-58||b.x>W+58||b.y<-58||b.y>H+58))pot(b,nearestPocket(b));}
 }
 let SIL=false;
@@ -2066,8 +2072,11 @@ function tmrUI(){const on=tmrOn(),f=Math.max(0,TMR.left/SHOT_T),sec=Math.ceil(TM
   {const ct=$('ctimer');if(ct){const tx=on?'0:'+String(Math.max(0,sec)).padStart(2,'0'):'0:'+SHOT_T;if(ct.textContent!==tx&&on&&sec<=10){ct.classList.remove('tick');void ct.offsetWidth;ct.classList.add('tick');}
     ct.textContent=tx;ct.classList.toggle('low',on&&sec<=10);ct.classList.toggle('idle',!on);}}}
 const sTick=s=>{const f=s<=3?1560:1240;sweep(f,f,0.05,0.05,'square',0);sweep(f*2,f*2,0.015,0.03,'sine',0);};
+const OVSHOW=document.getElementsByClassName('ov show');
+/* Safari's pinch gesture would zoom the whole page mid-shot */
+for(const ev of ['gesturestart','gesturechange'])document.addEventListener(ev,e=>e.preventDefault(),{passive:false});   /* live list: no page search every frame */
 function tmrTick(){const now=performance.now(),el=Math.min(Math.max(0,now-TMR.last),mode==='online'?60000:250)/1000;TMR.last=now;
-  const halt=mode!=='online'&&(paused||!!document.querySelector('.ov.show'));
+  const halt=mode!=='online'&&(paused||OVSHOW.length>0);
   if(!tmrOn()||halt){tmrUI();return;}
   TMR.left=Math.max(0,TMR.left-el);const sec=Math.ceil(TMR.left);
   if(sec!==TMR.sec){TMR.sec=sec;if(sec>0&&sec<=5&&state==='aim'&&players[cur]&&!players[cur].cpu&&!players[cur].remote)sTick(sec);}
@@ -2676,8 +2685,15 @@ function proBall(g,id,r,lw,kind){const col=colOf(id);
   g.beginPath();g.ellipse(-r*0.36,-r*0.44,r*0.27,r*0.15,-0.62,0,TAU);g.fillStyle='rgba(255,255,255,.7)';g.fill();
   g.beginPath();g.arc(-r*0.44,-r*0.5,r*0.075,0,TAU);g.fillStyle='rgba(255,255,255,.95)';g.fill();g.restore();
   g.beginPath();g.arc(0,0,r,0,TAU);g.strokeStyle='rgba(0,0,0,.55)';g.lineWidth=Math.max(lw*0.55,0.5);g.stroke();}
-function numBadge(g,id,r){if(!id)return;g.beginPath();g.arc(0,0,r*0.5,0,TAU);g.fillStyle='#fffdf6';g.fill();
+/* the number on a ball is drawn once per size and reused, instead of laying out text for every ball every frame */
+const NBC=new Map();
+function numBadgeRaw(g,id,r){g.beginPath();g.arc(0,0,r*0.5,0,TAU);g.fillStyle='#fffdf6';g.fill();
   g.fillStyle='#111';g.font=`700 ${(r*(id>9?0.5:0.6)).toFixed(2)}px Arial,Helvetica,sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(String(id),0,r*0.05);}
+function numBadge(g,id,r){if(!id)return;const m=g.getTransform(),px=r*Math.max(Math.hypot(m.a,m.b),Math.hypot(m.c,m.d));
+  if(px<9||px>150){numBadgeRaw(g,id,r);return;}
+  const B=px<=18?24:px<=28?36:px<=40?50:px<=60?72:px<=90?104:160,k=id*1000+B;let c=NBC.get(k);
+  if(!c){c=document.createElement('canvas');c.width=c.height=B;const x=c.getContext('2d');x.translate(B/2,B/2);numBadgeRaw(x,id,B-2);NBC.set(k,c);}
+  const f=r/(B-2);g.drawImage(c,-B/2*f,-B/2*f,B*f,B*f);}
 function bodyPaint(g,id,r,lw,kind){if(BNUM){proBall(g,id,r,lw,kind);return;}const col=colOf(id),fcol=id===0?COL[0]:col;
   if(kind!=='shade'){g.beginPath();g.arc(0,0,r,0,TAU);
     if(id>8){g.fillStyle=COL[0];g.fill();g.save();g.clip();g.fillStyle=col;g.fillRect(-r,-r*0.6,2*r,r*1.2);
@@ -4493,8 +4509,8 @@ function drawPreviews(ts){const tm=ts/1000,dt=Math.min(0.05,Math.max(0,tm-prevLa
     if(b.dataset.k==='ball'){g.setTransform(d,0,0,d,0,0);const r=Math.min(h*0.3,w/9.5);withBallSet(b.dataset.v,()=>{[1,10,8,3].forEach((id,j)=>{const c=PREVC;c.blink=0;c.lx=0;c.ly=0.2;c.sq=0;
         drawChar(g,id,w/2+(j-1.5)*r*2.2,h/2+(j%2?-r*0.25:r*0.25),r,c,{mood:j===2?'smug':'idle',px:Math.max(0.5,r/26),noRot:true,t:0.3});});});return;}
     if(b.dataset.k==='table'){const T=TABLES.find(t=>t.id===b.dataset.v),s=Math.min((w-4)/(W+2*(M+CAPX)),(h-7)/(H+2*(M+CAPX))),ox=w/2-s*W/2,oy=(h-4)/2-s*H/2;
-      if(!cv._base){const bc=document.createElement('canvas');bc.width=cw;bc.height=chh;const bg=bc.getContext('2d');bg.imageSmoothingQuality='high';bg.setTransform(d,0,0,d,0,0);bg.translate(ox,oy);bg.scale(s,s);
-        ART_LIVE=sty.anim!=='off';try{drawTableSkin(bg,0.3/s,T,{x:0,y:3/s});}finally{ART_LIVE=false;}cv._base=bc;}
+      if(!cv._base||cv._ba!==sty.anim){const bc=document.createElement('canvas');bc.width=cw;bc.height=chh;const bg=bc.getContext('2d');bg.imageSmoothingQuality='high';bg.setTransform(d,0,0,d,0,0);bg.translate(ox,oy);bg.scale(s,s);
+        ART_LIVE=sty.anim!=='off';try{drawTableSkin(bg,0.3/s,T,{x:0,y:3/s});}finally{ART_LIVE=false;}cv._base=bc;cv._ba=sty.anim;}
       g.drawImage(cv._base,0,0);g.setTransform(d,0,0,d,0,0);g.translate(ox,oy);g.scale(s,s);{const aa=sty.anim==='off'?0:at;drawAmbient(g,T,aa,false,2.6);if(aa)tableLive(g,T,aa,false,2.6);}}
     else{const C=CUES.find(c=>c.id===b.dataset.v),s=(w-10)/(STL+14),ey=-shw(FACE_T)*0.8-9,H_=PREVH[C.id]||(PREVH[C.id]={parts:[],acc:0,cid:''}),up={x:0,y:-1};
       g.setTransform(d,0,0,d,0,0);g.translate(6,h*0.66);g.scale(s,s);cueFxTick(H_,C,dt,up,STL,at);
@@ -5080,12 +5096,12 @@ function trickJudge(L,s){const G=L.g,pk=s.pocketed,c=balls[0];
   if(G.zone){const z=G.zone;if(Math.hypot(c.x-z.x,c.y-z.y)>z.r)return{ok:false,why:'The cue ball has to stop inside the circle.'};}
   return{ok:true};}
 /* run one shot silently: no sound, effects or saves; restores the table afterwards */
-function trickSim(L,a,p,sx,sy,path){const sv=balls.map(b=>[b.x,b.y,b.vx,b.vy,b.potted,b.sink]),ssh=shot;SIL=true;const pts=path?[]:null;
+function trickSim(L,a,p,sx,sy,path){const sv=balls.map(b=>[b.x,b.y,b.vx,b.vy,b.potted,b.sink]),ssh=shot;SIL=true;PLAIN_PK=true;const pts=path?[]:null;
   try{placeBalls(L.balls);shot=Object.assign({firstHit:null,pocketed:[],rail:false,cueDist:0,spinX:sx,spinY:sy,isBreak:false,openBefore:true,clearedBefore:false},trackFields(),{masse:!!L.masse});
     const c=balls[0],v=powToSpeed(p);c.vx=Math.cos(a)*v;c.vy=Math.sin(a)*v;let t=0,k=0;
     while(t<16){simulate(SIM_H);t+=SIM_H;if(pts&&(k++%5===0)&&!c.potted)pts.push([c.x,c.y,shot.firstHit===null?0:1]);if(allStill())break;}
     const r=trickJudge(L,shot);r.path=pts;return r;}
-  finally{SIL=false;shot=ssh;balls.forEach((b,i)=>{[b.x,b.y,b.vx,b.vy,b.potted,b.sink]=sv[i];});}}
+  finally{SIL=false;PLAIN_PK=false;shot=ssh;balls.forEach((b,i)=>{[b.x,b.y,b.vx,b.vy,b.potted,b.sink]=sv[i];});}}
 function placeBalls(list){for(const b of balls){resetBall(b);b.potted=true;}for(const p of list){const b=balls[p.id];b.potted=false;b.x=p.x;b.y=p.y;}}
 function startSolo(kind,o){{const el=$('coach');if(el)el.classList.remove('mini');}if(NET)netLeave();closeOverlays();VENUE=null;drawTableCache();mode='solo';bet=0;SERIES=null;MATCH={kind,fouls:0};
   players=[{name:'You',group:null,cpu:false},{name:'',group:null,cpu:false}];SOLO=Object.assign({kind,shots:0},o||{});
