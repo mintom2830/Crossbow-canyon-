@@ -889,7 +889,7 @@ const CUES=[
 CUES.push({id:'trick',name:'Trick Shot',shaft:'#fff1c2',wrap:['#16a394','#ffd23f'],band:'#241640',butt:'#16a394',ring:'#ffd23f',glint:[230,.45]});
 CUES.forEach(c=>{c.tip=c.tip||'#4aa3ff';c.fer=c.fer||'#ffffff';c.ring=c.ring||'#ffffff';});
 const MUSICS=[['off','Off'],['bounce','Bounce'],['chill','Chill'],['arcade','Arcade']];
-const STYLE_KEY='pool8-style';const sty={look:'clean',avcue:'off',table:'classic',cue:'classic',music:'bounce',ball:'classic',avatar:'cuekid',amb:'on',anim:'on',gfx:'auto',gfxv:'2',voice:'on',aimMode:'swipe',ctlv:'2',mouseAim:'hover',sens:'normal',tapAim:'off',wheel:'on',tapShoot:'off',pside:'right'};
+const STYLE_KEY='pool8-style';const sty={look:'clean',avcue:'on',table:'classic',cue:'classic',music:'bounce',ball:'classic',avatar:'cuekid',amb:'on',anim:'on',gfx:'auto',gfxv:'2',voice:'on',aimMode:'swipe',ctlv:'2',mouseAim:'hover',sens:'normal',tapAim:'off',wheel:'on',tapShoot:'off',pside:'right'};
 function loadStyle(){let o={};try{o=JSON.parse(STORE.get(STYLE_KEY)||'{}')||{};for(const k in sty)if(typeof o[k]==='string')sty[k]=o[k];}catch(_){}
   if(o.ctlv!=='2'){sty.aimMode='swipe';sty.ctlv='2';}
   if(sty.table==='cosmos')sty.table='galaxy';
@@ -1159,6 +1159,8 @@ function loadSave(){let had=false;
   if(STORE.get('pool8-volcano2')!=='1'){STORE.set('pool8-volcano2','1');if(owns('table','volcano')){sty.table='volcano';saveStyle();window.__newvol=true;}}
   if(STORE.get('pool8-jungle2')!=='1'){STORE.set('pool8-jungle2','1');if(owns('table','jungle')){sty.table='jungle';saveStyle();window.__newjun=true;window.__newvol=false;}}
   if(STORE.get('pool8-aurora2')!=='1'){STORE.set('pool8-aurora2','1');if(owns('table','aurora')){sty.table='aurora';saveStyle();window.__newaur=true;window.__newjun=window.__newvol=false;}}
+  /* the avatar you equip is your cue ball: switched on once for everyone (it can still be turned off in Collection) */
+  if(STORE.get('pool8-avc1')!=='1'){STORE.set('pool8-avc1','1');sty.avcue='on';saveStyle();}
   if(!owns('table',sty.table))sty.table='classic';if(!owns('cue',sty.cue))sty.cue='classic';
   if(!owns('ball',sty.ball))sty.ball='classic';if(!owns('avatar',sty.avatar))sty.avatar='cuekid';
   // the new Frostbite cue: given to every player once and put straight in their hand
@@ -4522,7 +4524,7 @@ styleEl.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)re
   if(b.dataset.chest){openChest(b.dataset.chest);return;}
   const k=b.dataset.k;if(!k)return;
   if(k!=='music'&&k!=='amb'&&k!=='anim'&&k!=='gfx'&&k!=='voice'&&k!=='look'&&k!=='avcue'&&!owns(k,b.dataset.v)){const {it}=itemOf(k+':'+b.dataset.v);sSqueak();styleNote(`${it.rar==='secret'?'Secret item':it.name}: ${howText(k,it)}.`);return;}
-  sty[k]=b.dataset.v;saveStyle();syncStyle();styleNote('');if(k==='ball'){applyBallSet();renderHUD();}if(k==='avatar')menuRefresh();
+  sty[k]=b.dataset.v;if(k==='avatar')sty.avcue='on';saveStyle();syncStyle();styleNote('');if(k==='ball'){applyBallSet();renderHUD();}if(k==='avatar')menuRefresh();
   if(k==='table')drawTableCache();if(k!=='music'&&k!=='amb'&&k!=='anim'&&k!=='gfx'&&k!=='voice'&&k!=='look'&&k!=='avcue')sBling();if(k==='look'){applyLook();drawTableCache();renderHUD();}
   if(k==='gfx'){gfxApply();if(GFXMODE==='best'||GFXMODE==='smooth')GFX.cool=3;layout();}else if(k==='anim')drawTableCache();});
 $('bStyle').addEventListener('click',()=>{audio();closeOverlays();styleEl.classList.add('show');buildStyle();});
