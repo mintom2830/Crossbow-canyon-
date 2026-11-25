@@ -183,6 +183,12 @@ details.how b{color:var(--text);font-weight:700}
 .topRow{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:32px}
 .coins{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:2.5px solid var(--ink);border-radius:999px;padding:3px 11px 3px 4px;font-weight:700;font-size:15px;box-shadow:0 2px 0 var(--ink);color:var(--text)}
 .coin{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6c2 0 16%,#ffd23f 18% 60%,#e3a300 63%);border:2px solid var(--ink);display:inline-block;flex:none;box-sizing:border-box}
+.btn.online{background:#1f9a5c;color:#fff}
+#mmOv .mmSpin{width:54px;height:54px;margin:6px auto 2px;border-radius:50%;border:6px solid rgba(31,154,92,.22);border-top-color:#1f9a5c;animation:mmspin 1s linear infinite}
+@keyframes mmspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#mmOv .mmSpin{animation-duration:3s}}
+#mmOv .mmTime{font-family:var(--display);font-size:30px;text-align:center;margin:2px 0 0}
+#mmOv #mmTip{margin-top:6px}
 .gift{border:2.5px solid var(--ink);background:var(--accent);color:#fff;font-weight:700;border-radius:999px;padding:5px 12px;font-size:13.5px;box-shadow:0 2px 0 var(--ink);cursor:pointer;font-family:inherit}
 .gift:active{transform:translateY(2px);box-shadow:none}
 .gift[hidden]{display:none}
@@ -561,6 +567,8 @@ html,body{overscroll-behavior:none}
       <canvas id="mascots" aria-hidden="true"></canvas>
       <h1>Giggle Pool</h1>
       <button class="btn primary big" id="bQuick"><span>Quick Play</span><small id="quickSub">Instant match against the computer</small></button>
+      <button class="btn big online" id="bPlayOnline" hidden><span>Play Online</span><small>Match with a real player</small></button>
+      <button class="gift" id="bMMWant" hidden style="margin-top:10px;background:#1f9a5c">Someone wants to play! Tap to join</button>
       <button class="btn" id="bResume" hidden>Resume game</button>
       <button class="gift" id="bGift" hidden style="margin-top:10px">Daily gift +100</button>
       <button class="gift" id="bNewCue" hidden style="margin-top:10px;background:#3b8ee8">New cue: Frostbite! It's in your hand</button>
@@ -655,6 +663,21 @@ html,body{overscroll-behavior:none}
     </div>
   </div>
 
+  <div class="ov" id="mmOv">
+    <div class="card">
+      <h2 class="ttl" id="mmTtl">Finding a player</h2>
+      <div id="mmSearch">
+        <div class="mmSpin" aria-hidden="true"></div>
+        <p class="mmTime" id="mmTime">0:00</p>
+        <p class="note" id="mmMsg" aria-live="polite">Searching for a real player…</p>
+        <p class="note small" id="mmCount"></p>
+        <div id="mmTip" hidden><p class="note small">Only people who have this game's link and are signed in to Claude can be matched. Invite a friend to play right now.</p><button class="btn" id="mmShare">Share the game</button></div>
+      </div>
+      <p class="note" id="mmNo" hidden>Online play works in the shared game link opened in Claude while you're signed in.</p>
+      <button class="btn primary" id="mmCpu">Play the computer instead</button>
+      <button class="btn" id="mmCancel">Cancel</button>
+    </div>
+  </div>
   <div class="ov" id="onOv">
     <div class="card">
       <h2 class="ttl">Play online</h2>
@@ -4742,7 +4765,7 @@ function frame(now){if(window.__hold){last=now;requestAnimationFrame(frame);retu
    Each player's presence is the channel: the shooter publishes the shot and the
    table state after it, the other page replays the shot and then snaps to that state. */
 let ROOM=null,NET=null,shotNo=0;
-try{const cl=window.claude;if(cl&&typeof cl.use==='function')cl.use('room').then(r=>{ROOM=r||null;},()=>{});}catch(_){}
+try{const cl=window.claude;if(cl&&typeof cl.use==='function')cl.use('room').then(r=>{ROOM=r||null;if(ROOM&&typeof lobbyOn==='function')lobbyOn();},()=>{});}catch(_){}
 const CODE_AB='abcdefghjkmnpqrstuvwxyz23456789';
 const cleanName=s=>String(s||'').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069<>]/g,'').trim().slice(0,14);
 const r2=v=>Math.round(v*100)/100;
@@ -4760,12 +4783,12 @@ function oppPeer(){const N=NET;if(!N)return null;const want=N.role==='host'?'gue
     if(N.role==='guest'&&q.opp&&N.myPeer&&q.opp!==N.myPeer)continue;
     return p;}
   return null;}
-async function netJoin(role,code,betAmt){
+async function netJoin(role,code,betAmt,qm){
   netLeave();
   if(!ROOM){onErr('Online play only works in the shared game link opened in Claude, with both players signed in.');return false;}
   let r;try{r=await ROOM.join('pool8-'+code);}catch(e){onErr('Couldn’t connect. Check your internet and try again.');return false;}
   NET={r,code,role,name:save.name||'Player',bet:role==='host'?betAmt:0,stage:'lobby',gameNo:0,me:role==='host'?0:1,oppPeer:null,myPeer:null,oppName:'',
-    lastShot:0,synced:-1,pending:null,replaying:false,staked:{},paid:{},lostT:0,aimT:0,aimKey:'',again:0,t:0,warned:false,accepted:false,unsub:[]};
+    lastShot:0,synced:-1,pending:null,replaying:false,staked:{},paid:{},lostT:0,aimT:0,aimKey:'',again:0,t:0,warned:false,accepted:false,qm:!!qm,unsub:[]};
   NET.unsub.push(r.onPeers(()=>netPeers()));
   netPresence({app:'pool8',v:1,role,name:NET.name,coins:save.coins,bet:NET.bet,ready:role==='host',g:0});
   return true;}
@@ -4787,7 +4810,8 @@ function lobbyUpdate(op,q){const N=NET;
     if(q.g>0&&q.post&&q.post.g===q.g&&q.post.n===0&&q.opp===N.myPeer){netStartGuest(q);return;}
     const nm=cleanName(q.name)||'Your friend',b=q.bet|0;N.bet=b;
     if(N.accepted){onJoinMsg(`Waiting for ${nm} to start…`);return;}
-    const f=q.fmt===3?' Best of 3.':'';N.fmt=q.fmt===3?3:1;onJoinMsg((b>0?`${nm} wants to play you for ${b} coins. The winner takes ${b*2}.`:`${nm} wants to play you, just for fun.`)+f);
+    const f=q.fmt===3?' Best of 3.':'';N.fmt=q.fmt===3?3:1;
+    if(N.qm){netAccept();return;}   /* a Play Online match: accept straight away */onJoinMsg((b>0?`${nm} wants to play you for ${b} coins. The winner takes ${b*2}.`:`${nm} wants to play you, just for fun.`)+f);
     const ok=save.coins>=b;$('onAccept').disabled=!ok;$('onAccept').textContent=ok?'Accept and play':`You need ${b} coins`;$('onAccept').hidden=false;
   }
 }
@@ -4984,6 +5008,84 @@ const SHARE_URL='https://claude.ai/artifact/8QTduf6nCDU8svoR7Tg19R';
 $('onShare').addEventListener('click',()=>{const code=$('onCodeShow').value,txt=`Play Giggle Pool with me! Open ${SHARE_URL} , tap Play with Friends, then Online with a code, and enter ${code}.`;
   const done=()=>{$('onShare').textContent='Invite copied!';setTimeout(()=>{$('onShare').textContent='Share invite';},1600);};
   try{if(navigator.share){navigator.share({title:'Giggle Pool',text:txt}).catch(()=>{});return;}navigator.clipboard.writeText(txt).then(done,()=>{});}catch(_){}});
+/* ---- Play Online: matchmaking with real players ----
+   Everyone who can connect says in the shared lobby room what they are doing (menu, playing, searching).
+   Searching players list each other in the same order (by when they started, then by peer), pair up
+   neighbours, and the first of each pair opens a game room that the other joins; from there the normal
+   online game runs. If nobody is found the search restarts every 30 s, and players sitting on the menu
+   are told someone wants a game. Nothing a peer sends is trusted beyond choosing a partner. */
+const MM={on:false,t0:0,start:0,a:1,offer:null,take:null,phase:'',joinAt:0,iv:0,seen:new Map(),bad:new Map(),key:''};
+const MM_REBOOT=30000,MM_JOIN_WAIT=8000;
+function mmMe(){if(!ROOM)return null;for(const p of ROOM.peers())if(p.isMe&&p.sameTab)return p;return null;}
+function lobbyState(){return MM.on?'seek':NET&&NET.stage==='game'?'game':gameLive?'play':'menu';}
+function lobbySet(){if(!ROOM)return;const st=lobbyState();
+  const mm=MM.on?{t:MM.start,a:MM.a,n:cleanName(save.name)||'Player',offer:MM.offer,take:MM.take}:null;
+  const key=st+JSON.stringify(mm);if(key===MM.key)return;MM.key=key;
+  ROOM.presence({app:'pool8',v:1,st,mm}).catch(()=>{});}
+/* the searching players, everyone in the same order; busy ones (already offering to or taking from someone else) are left out */
+function mmList(meP){const out=[];if(!ROOM)return out;
+  for(const p of ROOM.peers()){if(p.kind&&p.kind!=='viewer')continue;if(p.isMe&&!p.sameTab)continue;
+    const q=p.presence||{},m=q.mm;if(q.app!=='pool8'||q.st!=='seek'||!m||!Number.isFinite(m.t))continue;
+    const busyO=m.offer&&m.offer.to&&(!meP||m.offer.to!==meP.peer),busyT=m.take&&m.take.to&&(!meP||m.take.to!==meP.peer);
+    if(!p.sameTab&&(busyO||busyT))continue;
+    /* someone a pairing just failed with is skipped for a minute, so a stuck player can't hold up the others */
+    if(!p.sameTab&&MM.bad.has(p.peer)&&MM.bad.get(p.peer)>Date.now())continue;out.push(p);}
+  out.sort((a,b)=>(a.presence.mm.t-b.presence.mm.t)||(a.peer<b.peer?-1:a.peer>b.peer?1:0));return out;}
+function mmCounts(){let on=0,seek=0;if(!ROOM)return{on,seek};for(const p of ROOM.peers()){if(p.isMe||(p.kind&&p.kind!=='viewer'))continue;const q=p.presence||{};if(q.app!=='pool8')continue;on++;if(q.st==='seek')seek++;}return{on,seek};}
+function mmMsg(t){$('mmMsg').textContent=t;}
+function mmRender(){if(!$('mmOv').classList.contains('show'))return;const c=mmCounts();
+  $('mmCount').textContent=c.on?`${c.on} other ${c.on===1?'player':'players'} online${c.seek?`, ${c.seek} searching`:''}`:'No other players online right now';
+  if(MM.on){const s=Math.floor((Date.now()-MM.t0)/1000);$('mmTime').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}}
+function mmJoin(role,code){MM.phase='joining';MM.joinAt=Date.now();
+  netJoin(role,code,0,true).then(ok=>{if(!MM.on){if(NET&&NET.stage==='lobby')netLeave();return;}
+    if(!ok||!NET){mmBack();return;}NET.fmt=1;netPresence({fmt:1});mmMsg(role==='host'?'Found a player! Setting up the table…':'Found a player! Joining the table…');},()=>mmBack());}
+/* go back to searching after a pairing that did not work out */
+function mmBack(){const who=(MM.offer&&MM.offer.to)||(MM.take&&MM.take.to);if(who)MM.bad.set(who,Date.now()+60000);if(NET&&NET.stage==='lobby')netLeave();MM.phase='';MM.offer=null;MM.take=null;lobbySet();if(MM.on)mmMsg('Searching for a real player…');}
+function mmStep(){if(!MM.on||!ROOM)return;const now=Date.now();
+  if(NET&&NET.stage==='game'){mmDone();return;}
+  const me=mmMe();
+  if(MM.phase==='joining'){if(now-MM.joinAt>MM_JOIN_WAIT){mmBack();return;}
+    /* two players who offered each other at the same moment: the one with the lower peer label hosts, the other takes its offer */
+    if(me&&MM.offer){const P=ROOM.peers().find(p=>p.peer===MM.offer.to),m=P&&P.presence&&P.presence.mm;
+      if(m&&m.offer&&m.offer.to===me.peer&&P.peer<me.peer&&/^[a-z0-9]{5}$/.test(String(m.offer.c||''))){const code=String(m.offer.c);if(NET&&NET.stage==='lobby')netLeave();MM.offer=null;MM.take={to:P.peer,c:code};lobbySet();mmJoin('guest',code);}}
+    return;}
+  if(!me)return;
+  /* an offer addressed to me: take it */
+  for(const p of ROOM.peers()){if(p.isMe)continue;const q=p.presence||{},m=q.mm;if(q.app!=='pool8'||q.st!=='seek'||!m||!m.offer||m.offer.to!==me.peer)continue;
+    const code=String(m.offer.c||'');if(!/^[a-z0-9]{5}$/.test(code))continue;
+    MM.offer=null;MM.take={to:p.peer,c:code};lobbySet();mmJoin('guest',code);return;}
+  /* otherwise pair with my neighbour in the shared order; the first of each pair hosts */
+  const L=mmList(me),i=L.findIndex(p=>p.sameTab);if(i<0)return;
+  const j=i%2===0?i+1:i-1,P=L[j];if(!P)return;
+  if(i%2===0){let code='';for(let k=0;k<5;k++)code+=CODE_AB[Math.random()*CODE_AB.length|0];
+    MM.offer={to:P.peer,c:code};MM.take=null;lobbySet();mmJoin('host',code);}}
+function mmTick(){if(!ROOM)return;lobbySet();
+  /* players on the menu are told when someone has been waiting a few seconds */
+  const now=Date.now(),me=mmMe();let want=false;
+  for(const p of ROOM.peers()){if(p.isMe||(p.kind&&p.kind!=='viewer'))continue;const q=p.presence||{};
+    if(q.app==='pool8'&&q.st==='seek'){if(!MM.seen.has(p.peer))MM.seen.set(p.peer,now);if(now-MM.seen.get(p.peer)>=5000)want=true;}else MM.seen.delete(p.peer);}
+  const showWant=want&&!MM.on&&!gameLive&&$('menu').classList.contains('show');$('bMMWant').hidden=!showWant;
+  if(MM.on){if(MM.phase!=='joining'&&now-MM.t0>=MM_REBOOT){MM.a++;MM.t0=now;MM.offer=null;MM.take=null;MM.key='';lobbySet();
+      mmMsg(`No one yet. Searching again (try ${MM.a})…`);$('mmTip').hidden=false;}
+    mmStep();}
+  mmRender();}
+function mmStart(){audio();closeOverlays();$('mmOv').classList.add('show');
+  const ok=!!ROOM;$('mmSearch').hidden=!ok;$('mmNo').hidden=ok;$('mmCancel').textContent=ok?'Cancel':'Back';
+  if(!ok){$('mmTtl').textContent='Play online';return;}
+  $('mmTtl').textContent='Finding a player';$('mmTip').hidden=true;
+  MM.on=true;MM.t0=MM.start=Date.now();MM.a=1;MM.offer=null;MM.take=null;MM.phase='';MM.key='';mmMsg('Searching for a real player…');lobbySet();mmRender();mmStep();}
+function mmStop(){const was=MM.on;MM.on=false;if(MM.phase==='joining'&&NET&&NET.stage==='lobby')netLeave();MM.phase='';MM.offer=null;MM.take=null;lobbySet();return was;}
+function mmDone(){MM.on=false;MM.phase='';MM.offer=null;MM.take=null;lobbySet();$('mmOv').classList.remove('show');}
+$('bPlayOnline').hidden=!(window.claude&&typeof window.claude.use==='function');
+$('bPlayOnline').addEventListener('click',mmStart);
+$('bMMWant').addEventListener('click',mmStart);
+$('mmCancel').addEventListener('click',()=>{mmStop();showMenu();});
+$('mmCpu').addEventListener('click',()=>{mmStop();quickPlay();});
+$('mmShare').addEventListener('click',()=>{const txt=`Play Giggle Pool with me! Open ${SHARE_URL} and tap Play Online.`;
+  const done=()=>{$('mmShare').textContent='Link copied!';setTimeout(()=>{$('mmShare').textContent='Share the game';},1600);};
+  try{if(navigator.share){navigator.share({title:'Giggle Pool',text:txt}).catch(()=>{});return;}navigator.clipboard.writeText(txt).then(done,()=>{});}catch(_){}});
+function lobbyOn(){if(!ROOM||MM.iv)return;try{ROOM.onPeers(()=>{mmRender();if(MM.on)mmStep();},()=>{});}catch(_){}MM.iv=setInterval(mmTick,500);lobbySet();}
+if(ROOM)lobbyOn();
 
 /* ---- chests ---- */
 const chestEl=$('chestOv'),chestCan=$('chestCan'),chestG=chestCan.getContext('2d');let CHEST=null,chestLast=0;
