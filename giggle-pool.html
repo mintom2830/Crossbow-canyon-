@@ -1246,8 +1246,13 @@ function loadSave(){let had=false;
   saveStyle();
   // one-time cue gifts from earlier updates (only for players who already had a save)
   for(const [key,id,looks,earned] of [['pool8-looks','rainbow',['Ice','Flame','Rainbow']],['pool8-looks2','galaxy',['Galaxy']],['pool8-looks3','gold',['Gold']],['pool8-looks4','bubblegum',['Bubblegum']],['pool8-looks5','trick',['Trick Shot'],1],['pool8-looks6','thunder',['Thunder']],['pool8-looks7','prism',['Prism']],['pool8-looks8','almighty',['Almighty'],1]])if(STORE.get(key)!=='1'){
-    /* the redesigned cues were a gift to players who already had a save; new players buy or win them */
-    if(had){if(!earned&&!save.owned.includes('cue:'+id))save.owned.push('cue:'+id);if(owns('cue',id)){sty.cue=id;saveStyle();NEWCUE=id;}NEWLOOKS.push(...looks);}persist();STORE.set(key,'1');}
+    /* these were free gifts in earlier updates; cues are now bought or won, so the old flags are only marked as seen */
+    STORE.set(key,'1');}
+  /* cues have prices now: the cues that earlier updates gave away for free go back to the shop, once, for players who had a save */
+  if(STORE.get('pool8-cues1')!=='1'){STORE.set('pool8-cues1','1');
+    if(had){const GIFT=['rainbow','galaxy','gold','bubblegum','thunder','prism'].map(id=>'cue:'+id),n=save.owned.length;
+      save.owned=save.owned.filter(k=>!GIFT.includes(k));if(save.owned.length!==n){persist();window.__cueback=true;}
+      if(!owns('cue',sty.cue)){sty.cue='pro';saveStyle();}}}
   if(FREE_ALL&&save.coins<50000)save.coins=50000;}
 loadSave();
 if(FREE_ALL)addEventListener('DOMContentLoaded',()=>{const m=document.getElementById('menu');if(!m)return;const t=document.createElement('div');t.id='freeTag';t.textContent='Test mode: everything is free';
@@ -5866,7 +5871,8 @@ function menuRefresh(){const L=lvlInfo(save.xp);$('pLvl').textContent=L.l;$('pXp
   {const nc=NEWCUE&&CUES.find(c=>c.id===NEWCUE);if(nc){{const L=NEWLOOKS;$('cSub').textContent=`New look: ${L.length>1?L.slice(0,-1).join(', ')+' & '+L[L.length-1]+' cues':L[0]+' cue'}!`;}const b=$('bNewCue');b.textContent=`New cue looks! ${nc.name} is in your hand`;
       b.style.background='linear-gradient(90deg,#e8453c,#ff9f1a,#34b85a,#3b8ee8,#9b59f0)';}
     $('bStyle').classList.toggle('hot',!!nc);$('bNewCue').hidden=!nc;
-    if(!nc&&window.__newsnw){const b=$('bNewCue');b.textContent="New living Snow table! You're playing on it";b.style.background='linear-gradient(90deg,#1f6fd6,#3fa9f5,#6fd3ff)';b.hidden=false;}
+    if(!nc&&window.__cueback){const b=$('bNewCue');b.textContent='Cues now have prices! Win coins and buy them in Collection';b.style.background='linear-gradient(90deg,#b8641a,#e8a33a)';b.hidden=false;}
+    else if(!nc&&window.__newsnw){const b=$('bNewCue');b.textContent="New living Snow table! You're playing on it";b.style.background='linear-gradient(90deg,#1f6fd6,#3fa9f5,#6fd3ff)';b.hidden=false;}
     else if(!nc&&window.__newalm){const b=$('bNewCue');b.textContent="New living Almighty table! You're playing on it";b.style.background='linear-gradient(90deg,#8a5206,#c98a1a,#e0a81e)';b.hidden=false;}
     else if(!nc&&window.__newmys){const b=$('bNewCue');b.textContent="New living Mystery table! You're playing on it";b.style.background='linear-gradient(90deg,#6a2bd6,#c24fe0,#e8b423)';b.hidden=false;}
     else if(!nc&&window.__newaur){const b=$('bNewCue');b.textContent="New living Aurora table! You're playing on it";b.style.background='linear-gradient(90deg,#1aa6a0,#7a4ff0,#d24fd6)';b.hidden=false;}
@@ -5878,7 +5884,7 @@ $('bQuick').addEventListener('click',quickPlay);
 /* opening the collection from the menu after Frostbite arrives shows the cue list */
 $('bStyle').addEventListener('click',()=>{if(NEWCUE){NEWCUE='';collTab='cue';try{menuRefresh();}catch(_){}
   const nm=(CUES.find(c=>c.id===sty.cue)||{}).name||'';setTimeout(()=>{const el=[...document.querySelectorAll('#swCue .sw')].find(e=>e.textContent.startsWith(nm));if(el)el.scrollIntoView({block:'center',behavior:'smooth'});},120);}},true);
-$('bNewCue').addEventListener('click',()=>{if(window.__newpro||window.__newvol||window.__newjun||window.__newaur||window.__newmys||window.__newalm||window.__newsnw){window.__newpro=window.__newvol=window.__newjun=window.__newaur=window.__newmys=window.__newalm=window.__newsnw=false;collTab='table';}},true);
+$('bNewCue').addEventListener('click',()=>{if(window.__cueback){window.__cueback=false;collTab='cue';return;}if(window.__newpro||window.__newvol||window.__newjun||window.__newaur||window.__newmys||window.__newalm||window.__newsnw){window.__newpro=window.__newvol=window.__newjun=window.__newaur=window.__newmys=window.__newalm=window.__newsnw=false;collTab='table';}},true);
 $('bNewCue').addEventListener('click',()=>{$('bStyle').click();});
 $('bJourney').addEventListener('click',()=>{audio();openMap();});
 $('bMissions').addEventListener('click',()=>{audio();openMissions();});
