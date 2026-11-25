@@ -341,6 +341,13 @@ i.rar.almighty{background:linear-gradient(90deg,#fff1a8,#ffc629,#ff9f1a,#ffc629,
 .mini{border:2px solid var(--ink);background:var(--panel2);color:var(--text);border-radius:10px;padding:5px 10px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 var(--ink);white-space:nowrap}
 .mini[hidden]{display:none}
 #collTabs{margin-top:10px}
+.sw small.price{display:flex;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:800;color:#6b4700;line-height:1.2}
+.sw small.price b{width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff4b0,#ffc61a 55%,#c98a00);border:1.5px solid var(--ink);flex:none}
+#swCue .sw small.price{grid-column:1/3;justify-content:flex-start}
+#buyCan{display:block;width:100%;height:170px}
+#buyOv #buyGo:disabled{background:#d7d1e3;color:#4d4766;box-shadow:0 3px 0 var(--ink);cursor:default;opacity:1}
+#buyOv .rarLbl{font-size:26px;text-align:center}
+#buyOv .itemNm{text-align:center}
 .sw small.how{font-size:10.5px;font-weight:600;color:var(--muted);line-height:1.2;text-align:center}
 .sw.on small.how{color:#fff}
 #swCue .sw small.how{grid-column:1/3;text-align:left}
@@ -731,6 +738,18 @@ html,body{overscroll-behavior:none}
     </div>
   </div>
 
+  <div class="ov" id="buyOv">
+    <div class="card">
+      <canvas id="buyCan" aria-hidden="true"></canvas>
+      <div class="rarLbl" id="buyRar"></div>
+      <div class="itemNm" id="buyName"></div>
+      <p class="note" id="buyHave"></p>
+      <button class="btn primary" id="buyGo">Buy</button>
+      <p class="note small" id="buyHow"></p>
+      <button class="btn" id="buyNo">Cancel</button>
+    </div>
+  </div>
+
   <div class="ov" id="friendsOv">
     <div class="card">
       <h2 class="ttl">Play with Friends</h2>
@@ -1066,10 +1085,13 @@ CUES.unshift({id:'pro',name:'Pro Maple',shaft:'#efd6a2',wrap:['#1b1b1e','#2a2a2f
 const CHESTS={basic:{name:'Chest',cost:150,odds:{common:45,uncommon:26,rare:15,epic:8.5,legendary:4,mythical:1.2,secret:0.3}},
   super:{name:'Super chest',cost:400,odds:{uncommon:32,rare:32,epic:20,legendary:11,mythical:4,secret:1}}};
 const DUP={common:30,uncommon:50,rare:90,epic:160,legendary:300,mythical:600,secret:1000};
+/* shop prices in coins, by rarity: tables, ball sets, cues and avatars can be bought in the Collection (starter items are free and never sold) */
+const PRICE={common:300,uncommon:600,rare:1200,epic:2500,legendary:5000,mythical:10000,secret:20000,almighty:40000,reward:1500};
+function priceOf(k,it){return it&&!it.base?(PRICE[it.rar]||0):0;}
 const PRIZE={easy:25,normal:50,hard:90},BETS=[0,50,100,250,500],FRIEND_START=300;
 const SAVE_KEY='pool8-save',save={diamonds:2,coins:600,name:'',owned:['table:pro','cue:pro','ball:pro','table:classic','cue:classic','ball:classic','avatar:cuekid'],daily:'',wallets:{}};
-/* TEST MODE: set to false to bring back normal unlocks, prices and level gates */
-const FREE_ALL=true;
+/* TEST MODE: set to true to make everything free for testing (all items, chests, wheel spins, abilities and levels) */
+const FREE_ALL=false;
 if(FREE_ALL)for(const k in CHESTS)CHESTS[k].cost=0;
 function owns(k,id){return FREE_ALL||save.owned.includes(k+':'+id);}
 /* ================= progression data (v2 save) ================= */
@@ -1204,11 +1226,15 @@ function loadSave(){let had=false;
   if(STORE.get('pool8-almighty1')!=='1'){STORE.set('pool8-almighty1','1');if(owns('table','almighty')){sty.table='almighty';saveStyle();window.__newalm=true;window.__newmys=window.__newaur=window.__newjun=window.__newvol=false;}}
   if(STORE.get('pool8-snow1')!=='1'){STORE.set('pool8-snow1','1');if(owns('table','snow')){sty.table='snow';saveStyle();window.__newsnw=true;window.__newalm=window.__newmys=window.__newaur=window.__newjun=window.__newvol=false;}}
   {const T=TABLES.find(t=>t.id===sty.table);if(T&&T.art&&ARTT[T.art])artLoad(ARTT[T.art],'full');}
-  if(!owns('table',sty.table))sty.table='classic';if(!owns('cue',sty.cue))sty.cue='classic';
-  if(!owns('ball',sty.ball))sty.ball='classic';if(!owns('avatar',sty.avatar))sty.avatar='cuekid';
+  /* test mode is over: everyone starts fresh once (coins and diamonds back to the start; items owned, progress and stats are kept) */
+  if(STORE.get('pool8-econ1')!=='1'){STORE.set('pool8-econ1','1');save.coins=600;save.diamonds=2;persist();}
+  if(!owns('table',sty.table))sty.table='pro';if(!owns('cue',sty.cue))sty.cue='pro';
+  if(!owns('ball',sty.ball))sty.ball='pro';if(!owns('avatar',sty.avatar))sty.avatar='cuekid';
+  saveStyle();
   // the new Frostbite cue: given to every player once and put straight in their hand
   for(const [key,id,looks,earned] of [['pool8-looks','rainbow',['Ice','Flame','Rainbow']],['pool8-looks2','galaxy',['Galaxy']],['pool8-looks3','gold',['Gold']],['pool8-looks4','bubblegum',['Bubblegum']],['pool8-looks5','trick',['Trick Shot'],1],['pool8-looks6','thunder',['Thunder']],['pool8-looks7','prism',['Prism']],['pool8-looks8','almighty',['Almighty'],1]])if(STORE.get(key)!=='1'){
-    if(!earned&&!save.owned.includes('cue:'+id))save.owned.push('cue:'+id);if(owns('cue',id)){sty.cue=id;saveStyle();NEWCUE=id;}persist();STORE.set(key,'1');NEWLOOKS.push(...looks);}
+    /* the redesigned cues were a gift to players who already had a save; new players buy or win them */
+    if(had){if(!earned&&!save.owned.includes('cue:'+id))save.owned.push('cue:'+id);if(owns('cue',id)){sty.cue=id;saveStyle();NEWCUE=id;}NEWLOOKS.push(...looks);}persist();STORE.set(key,'1');}
   if(FREE_ALL&&save.coins<50000)save.coins=50000;}
 loadSave();
 if(FREE_ALL)addEventListener('DOMContentLoaded',()=>{const m=document.getElementById('menu');if(!m)return;const t=document.createElement('div');t.id='freeTag';t.textContent='Test mode: everything is free';
@@ -4759,7 +4785,7 @@ function cgTick(){const S=PLAT.sdk,K=PLAT.poki;if((!S&&!K)||PLAT.ad)return;const
 const FS={vs:1/60};
 function snapDt(d){const v=FS.vs;if(Math.abs(d-v)<v*0.12){FS.vs=v+(d-v)*0.05;return FS.vs;}if(d>0.004&&d<v*0.88)FS.vs=v+(d-v)*0.2;return d;}
 function frame(now){if(window.__hold){last=now;requestAnimationFrame(frame);return;}const raw=Math.max(0,(now-last)/1000),dt=snapDt(Math.min(0.05,raw));last=now;
-  if(!document.hidden&&raw>0&&raw<0.25&&!PLAT.ad)gfxTick(raw);cgTick();update(dt);render();drawParticles();drawMascots(now);avAnimTick(now);if(styleEl.classList.contains('show'))drawPreviews(now);if(chestEl.classList.contains('show'))drawChestScene(now);if(wheelEl.classList.contains('show'))drawWheelScene(now);requestAnimationFrame(frame);}
+  if(!document.hidden&&raw>0&&raw<0.25&&!PLAT.ad)gfxTick(raw);cgTick();update(dt);render();drawParticles();drawMascots(now);avAnimTick(now);if(styleEl.classList.contains('show'))drawPreviews(now);if(chestEl.classList.contains('show'))drawChestScene(now);if(buyEl.classList.contains('show'))drawBuyScene(now);if(wheelEl.classList.contains('show'))drawWheelScene(now);requestAnimationFrame(frame);}
 
 /* ================= online play with a friend (room codes) =================
    Each player's presence is the channel: the shooter publishes the shot and the
@@ -4890,8 +4916,8 @@ mCan.addEventListener('pointerdown',e=>{audio();const b=mCan.getBoundingClientRe
 function showMenu(){if(NET&&!gameLive)netLeave();closeOverlays();abTray(false);menuRefresh();$('bResume').hidden=!gameLive;paused=gameLive;$('menu').classList.add('show');}
 const styleEl=$('style'),PREVC=mkChar();
 function styleNote(t){$('styleNote').textContent=t||'';}
-function swHTML(k,it){const own=owns(k,it.id),R_=RAR[it.rar],sl=!own&&it.rar==='secret',how=own?'':howText(k,it);
-  return `<button class="sw${own?'':' locked'}${sl?' sl':''}" data-k="${k}" data-v="${it.id}"><canvas></canvas><span class="swn">${sl?'???':it.name}${own?'':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-label="Locked"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'}</span><i class="rar ${it.rar}" style="--rc:${R_.c}">${R_.n}</i>${how?`<small class="how">${how}</small>`:''}</button>`;}
+function swHTML(k,it){const own=owns(k,it.id),R_=RAR[it.rar],sl=!own&&it.rar==='secret',pr=own?0:priceOf(k,it),how=own||pr?'':howText(k,it);
+  return `<button class="sw${own?'':' locked'}${sl?' sl':''}" data-k="${k}" data-v="${it.id}"><canvas></canvas><span class="swn">${sl?'???':it.name}${own?'':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-label="Locked"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'}</span><i class="rar ${it.rar}" style="--rc:${R_.c}">${R_.n}</i>${pr?`<small class="price"><b aria-hidden="true"></b>${pr.toLocaleString()}</small>`:how?`<small class="how">${how}</small>`:''}</button>`;}
 function buildStyle(){
   $('swTable').innerHTML=TABLES.map(T=>swHTML('table',T)).join('');
   $('swCue').innerHTML=CUES.map(C=>swHTML('cue',C)).join('');
@@ -4941,7 +4967,7 @@ styleEl.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)re
   if(b.id==='bStyleDone'){closeOverlays();menuEl.classList.add('show');return;}
   if(b.dataset.chest){openChest(b.dataset.chest);return;}
   const k=b.dataset.k;if(!k)return;
-  if(k!=='music'&&k!=='amb'&&k!=='anim'&&k!=='gfx'&&k!=='voice'&&k!=='look'&&k!=='avcue'&&!owns(k,b.dataset.v)){const {it}=itemOf(k+':'+b.dataset.v);sSqueak();styleNote(`${it.rar==='secret'?'Secret item':it.name}: ${howText(k,it)}.`);return;}
+  if(k!=='music'&&k!=='amb'&&k!=='anim'&&k!=='gfx'&&k!=='voice'&&k!=='look'&&k!=='avcue'&&!owns(k,b.dataset.v)){const {it}=itemOf(k+':'+b.dataset.v);styleNote('');openBuy(k,it);return;}
   sty[k]=b.dataset.v;if(k==='avatar')sty.avcue='on';saveStyle();syncStyle();styleNote('');if(k==='ball'){applyBallSet();renderHUD();}if(k==='avatar')menuRefresh();
   if(k==='table')drawTableCache();if(k!=='music'&&k!=='amb'&&k!=='anim'&&k!=='gfx'&&k!=='voice'&&k!=='look'&&k!=='avcue')sBling();if(k==='look'){applyLook();drawTableCache();renderHUD();}
   if(k==='gfx'){gfxApply();if(GFXMODE==='best'||GFXMODE==='smooth')GFX.cool=3;layout();}else if(k==='anim')drawTableCache();});
@@ -5086,6 +5112,31 @@ $('mmShare').addEventListener('click',()=>{const txt=`Play Giggle Pool with me! 
   try{if(navigator.share){navigator.share({title:'Giggle Pool',text:txt}).catch(()=>{});return;}navigator.clipboard.writeText(txt).then(done,()=>{});}catch(_){}});
 function lobbyOn(){if(!ROOM||MM.iv)return;try{ROOM.onPeers(()=>{mmRender();if(MM.on)mmStep();},()=>{});}catch(_){}MM.iv=setInterval(mmTick,500);lobbySet();}
 if(ROOM)lobbyOn();
+
+
+/* ---- buying an item from the Collection ---- */
+let BUY=null;const buyEl=$('buyOv');
+function buyRender(){const B=BUY;if(!B)return;const pr=priceOf(B.k,B.it),r=B.it.rar,sec=r==='secret',rl=$('buyRar');
+  rl.textContent=RAR[r].n;rl.className='rarLbl '+r;rl.style.color=sec?'':RAR[r].c;
+  $('buyName').textContent=sec?'Secret '+KNAME[B.k]:B.it.name+' '+KNAME[B.k];
+  $('buyHave').textContent=`You have ${save.coins.toLocaleString()} coins`;
+  const go=$('buyGo'),short=pr-save.coins;go.disabled=!pr||short>0;
+  go.textContent=!pr?'Not for sale':short>0?`You need ${short.toLocaleString()} more coins`:`Buy for ${pr.toLocaleString()} coins`;
+  const how=howText(B.k,B.it);$('buyHow').textContent=how?`Or ${how[0].toLowerCase()+how.slice(1)}.`:'';}
+function openBuy(k,it){BUY={k,it,host:{parts:[],acc:0,cid:''},last:performance.now()};buyRender();buyEl.classList.add('show');}
+function closeBuy(){buyEl.classList.remove('show');BUY=null;}
+function drawBuyScene(ts){const B=BUY;if(!B)return;const dt=Math.min(0.05,Math.max(0,(ts-B.last)/1000));B.last=ts;const tm=RM?0:ts/1000;
+  const cv=$('buyCan'),d=Math.min(window.devicePixelRatio||1,2),w=cv.clientWidth,h=cv.clientHeight;if(!w||!h)return;
+  if(cv.width!==Math.round(w*d)||cv.height!==Math.round(h*d)){cv.width=Math.round(w*d);cv.height=Math.round(h*d);}
+  const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);
+  if(B.it.rar==='secret'){rrect(g,w/2-54,h/2-42,108,84,14);g.fillStyle='#1b1530';g.fill();g.font=`52px ${DFONT}`;g.fillStyle='#ffffff';g.textAlign='center';g.textBaseline='middle';g.fillText('?',w/2,h/2+3);return;}
+  itemPreview(g,B.k,B.it,w/2,h/2,Math.min(w-30,B.k==='cue'?270:B.k==='table'?250:200),tm,dt,B.host);}
+$('buyNo').addEventListener('click',()=>{audio();closeBuy();});
+$('buyGo').addEventListener('click',()=>{audio();const B=BUY;if(!B)return;const pr=priceOf(B.k,B.it),key=B.k+':'+B.it.id;
+  if(!pr||save.coins<pr||owns(B.k,B.it.id)){buyRender();return;}
+  setCoins(save.coins-pr);if(!save.owned.includes(key))save.owned.push(key);persist();
+  sty[B.k]=B.it.id;if(B.k==='avatar')sty.avcue='on';saveStyle();syncStyle();if(B.k==='ball'){applyBallSet();renderHUD();}if(B.k==='table')drawTableCache();
+  sBling();closeBuy();buildStyle();menuRefresh();styleNote('');toast(`You got the ${B.it.name} ${KNAME[B.k]}!`,null,2200);});
 
 /* ---- chests ---- */
 const chestEl=$('chestOv'),chestCan=$('chestCan'),chestG=chestCan.getContext('2d');let CHEST=null,chestLast=0;
