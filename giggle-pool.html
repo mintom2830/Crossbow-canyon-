@@ -1201,7 +1201,7 @@ const MPOOL=[
   {id:'multi',t:'multi',n:1,txt:'Pocket 2 balls with one shot',coins:90},{id:'clean',t:'cleanwin',n:1,txt:'Win a match without a foul',coins:120},
   {id:'skill3',t:'skill',n:3,txt:'Make 3 skill shots in matches',coins:100},{id:'bank1',t:'bank',n:1,txt:'Make a bank shot in a match',coins:90},
   {id:'kick1',t:'kick',n:1,txt:'Make a kick shot in a match',coins:110},{id:'combo1',t:'combo',n:1,txt:'Make a combo or carom shot in a match',coins:100}];
-Object.assign(save,{xp:0,stats:{wins:0,matches:0,potted:0,missions:0,stars:0,practice:0},journey:{beaten:0},missions:null,puzzle:{},tricks:{best:{},owned:[]},skill:{},abil:{},paidIds:[],tutDone:0,v:2});
+Object.assign(save,{pot:null,xp:0,stats:{wins:0,matches:0,potted:0,missions:0,stars:0,practice:0},journey:{beaten:0},missions:null,puzzle:{},tricks:{best:{},owned:[]},skill:{},abil:{},paidIds:[],tutDone:0,v:2});
 function loadV2(o){const N=v=>Number.isFinite(v)?Math.min(1e9,Math.max(0,Math.floor(v))):0;
   save.xp=N(o.xp);if(o.stats&&typeof o.stats==='object')for(const k in save.stats)save.stats[k]=N(o.stats[k]);
   if(o.journey&&typeof o.journey==='object')save.journey.beaten=Math.min(NODES.length,N(o.journey.beaten));
@@ -1210,6 +1210,7 @@ function loadV2(o){const N=v=>Number.isFinite(v)?Math.min(1e9,Math.max(0,Math.fl
   if(o.puzzle&&typeof o.puzzle==='object'&&typeof o.puzzle.day==='string')save.puzzle={day:o.puzzle.day,stars:Math.min(3,N(o.puzzle.stars)),shots:N(o.puzzle.shots)};
   if(Array.isArray(o.paidIds))save.paidIds=o.paidIds.filter(x=>typeof x==='string').slice(-60);
   if(o.tutDone)save.tutDone=1;
+  if(o.pot&&typeof o.pot==='object'&&typeof o.pot.n==='string'&&Number.isFinite(o.pot.b)&&o.pot.b>0)save.pot={n:o.pot.n.slice(0,14),b:Math.min(1e6,Math.floor(o.pot.b))};
   if(o.skill&&typeof o.skill==='object')for(const k in SKILLS){const v=N(o.skill[k]);if(v>0)save.skill[k]=v;}
   if(o.abil&&typeof o.abil==='object')for(const d of ABIL){const v=Math.min(ABMAX,N(o.abil[d.id]));if(v>0)save.abil[d.id]=v;}
   if(o.tricks&&Array.isArray(o.tricks.owned))save.tricks.owned=[...new Set(o.tricks.owned.filter(i=>Number.isInteger(i)&&i>=0&&i<200))];
@@ -1253,7 +1254,9 @@ function loadSave(){let had=false;
     if(had){const GIFT=['rainbow','galaxy','gold','bubblegum','thunder','prism'].map(id=>'cue:'+id),n=save.owned.length;
       save.owned=save.owned.filter(k=>!GIFT.includes(k));if(save.owned.length!==n){persist();window.__cueback=true;}
       if(!owns('cue',sty.cue)){sty.cue='pro';saveStyle();}}}
-  if(FREE_ALL&&save.coins<50000)save.coins=50000;}
+  if(FREE_ALL&&save.coins<50000)save.coins=50000;
+  /* the page was closed in the middle of a same-device bet game: give both bets back once everything has loaded */
+  if(save.pot)setTimeout(()=>{if(!gameLive)potRefund();},700);}
 loadSave();
 if(FREE_ALL)addEventListener('DOMContentLoaded',()=>{const m=document.getElementById('menu');if(!m)return;const t=document.createElement('div');t.id='freeTag';t.textContent='Test mode: everything is free';
   t.style.cssText='position:absolute;left:50%;top:6px;transform:translateX(-50%);z-index:5;background:#ffd23f;color:#3a2a00;font:700 12px/1 Fredoka,system-ui,sans-serif;padding:5px 10px;border-radius:99px;border:2px solid #241640;pointer-events:none;white-space:nowrap';m.appendChild(t);});
@@ -1265,6 +1268,9 @@ function cntStep(){CNT.raf=0;const tc=save.coins,tg=save.diamonds,k=0.18,pc=Math
 function updateCoinUI(){document.querySelectorAll('.chestBtn[data-chest]').forEach(b=>{const C=CHESTS[b.dataset.chest];b.classList.toggle('poor',!!(C&&C.cost&&save.coins<C.cost));});if(CNT.c===null||CNT.rm||document.hidden){CNT.c=save.coins;CNT.g=save.diamonds;cntPaint();}else if(!CNT.raf)CNT.raf=requestAnimationFrame(cntStep);const gb=document.getElementById('bGift');if(gb)gb.hidden=save.daily===today();}
 function setCoins(n){save.coins=Math.max(0,Math.floor(n));persist();updateCoinUI();}
 const walletGet=n=>Number.isFinite(save.wallets[n])?save.wallets[n]:FRIEND_START;
+/* a same-device bet game that was left before it finished: both players get their bet back */
+function potRefund(){const P=save.pot;if(!P)return false;save.pot=null;walletSet(P.n,walletGet(P.n)+P.b);setCoins(save.coins+P.b);
+  try{toast(`You left the bet game early, so both bets of ${P.b.toLocaleString()} coins were given back.`,null,3000);}catch(_){}return true;}
 function walletSet(n,v){save.wallets[n]=Math.max(0,Math.floor(v));persist();}
 function rollChest(kind){const od=CHESTS[kind].odds;let tot=0;for(const k in od)tot+=od[k];let r=Math.random()*tot,rar='uncommon';
   for(const k of RAR_ORDER){if(!od[k])continue;if(r<od[k]){rar=k;break;}r-=od[k];}
@@ -2367,7 +2373,7 @@ function spot8(){const b=balls[8];resetBall(b);let x=FOOT_X;while(x<W-R&&!freeAt
 /* ================= game state ================= */
 let mode='cpu',diff='normal',players=[{name:'You',group:null,cpu:false},{name:'CPU',group:null,cpu:true}];
 let cur=0,breaker=0,tableOpen=true,isBreak=true,ballInHand=true,kitchenOnly=true;
-let state='menu',paused=false,gameLive=false,hinted=false;
+let state='menu',paused=false,gameLive=false,hinted=false,GAMEID=0;
 let bet=0;
 let aimAngle=0,power=0;const spin={x:0,y:0};
 let shot=null,stopT=0,cpu=null,strike=null;
@@ -2502,7 +2508,9 @@ function gameOver(w,why){
     setTimeout(()=>voice(me?'v_win':'v_close',3),350);}
   potUI();
   if(mode==='cpu'?w===0:mode==='online'?!!NET&&w===NET.me:true)fireworks(6);
-  const dl=SKG.win?1900:750;SKG.win=0;setTimeout(()=>matchEnd(w,why),dl);
+  const dl=SKG.win?1900:750;SKG.win=0;
+  /* the result shows a moment later, but only if this is still the same game (you may already have started another) */
+  const gid=GAMEID;setTimeout(()=>{if(gid===GAMEID)matchEnd(w,why);},dl);
 }
 function turnStatus(){
   const P=players[cur];if(state==='over'||mode==='solo')return'';
@@ -2569,7 +2577,7 @@ function beginTurn(){
   renderHUD();setStatus(turnStatus());turnBanner();abUI();
   if(P.cpu)startCPU();
 }
-function newGame(){
+function newGame(){GAMEID++;
   sprReset();
   if(MATCH){MATCH.done=0;MATCH.fouls=0;MATCH.sk={c:0,x:0,n:{}};}BAN.last=-1;VIS=null;SKG.on8=[0,0];SKG.rem=[7,7];SKG.win=0;
   rack();players.forEach(p=>p.group=null);abReset();if(mode!=='solo')setTimeout(()=>{if(state==='aim'||state==='cpu')voice('v_play',1);},600);
@@ -2578,13 +2586,13 @@ function newGame(){
   for(const c of CH){c.mood=null;c.mt=0;c.sq=0;}FX.length=0;PRT.length=0;incoming.clear();fxDirty=true;stk.mood=null;stk.mt=0;stk.x=cueB.x;stk.y=cueB.y;stk.al=0;
   $('over').classList.remove('show');$('menu').classList.remove('show');
   beginTurn();
-  if(mode==='pvp'&&bet>0&&(!SERIES||SERIES.played===0)){const n2=players[1].name;bet=Math.min(bet,save.coins,walletGet(n2));if(bet>0){setCoins(save.coins-bet);walletSet(n2,walletGet(n2)-bet);}}
+  if(mode==='pvp'&&bet>0&&(!SERIES||SERIES.played===0)){const n2=players[1].name;bet=Math.min(bet,save.coins,walletGet(n2));if(bet>0){save.pot={n:n2,b:bet};setCoins(save.coins-bet);walletSet(n2,walletGet(n2)-bet);}}
   potUI();
   if(!players[cur].cpu&&!players[cur].remote&&!hinted&&!save.tutDone){hinted=true;toast(FINE&&HOV()?'Move the pointer to aim, then press, drag back and let go to shoot. You have 35 seconds a shot.':'Swipe on the table to aim, then pull the cue stick back and let go. You have 35 seconds a shot.',null,4200);}
 }
 function startMode(m,o){
   if(NET)netLeave();
-  if(gameLive&&mode==='pvp'&&bet>0){setCoins(save.coins+bet);walletSet(players[1].name,walletGet(players[1].name)+bet);}
+  potRefund();
   closeOverlays();mode=m;bet=o&&o.bet||0;SOLO=null;VENUE=null;drawTableCache();MATCH={kind:m==='cpu'?'custom':m,fouls:0};SERIES=o&&o.fmt>1?{of:o.fmt,score:[0,0],played:0,over:false}:null;
   players=m==='cpu'?[{name:'You',group:null,cpu:false},{name:'CPU',group:null,cpu:true}]
     :[{name:o&&o.n1||'Player 1',group:null,cpu:false},{name:o&&o.n2||'Player 2',group:null,cpu:false}];
@@ -2774,9 +2782,14 @@ $('spinPop').addEventListener('pointerdown',e=>{if(e.target.id==='spinPop')spinP
    hold Space to power up and let go to shoot, Esc pauses */
 let kbCharge=false;
 window.addEventListener('keyup',e=>{if(e.code==='Space'&&kbCharge){kbCharge=false;if(humanTurn()&&power>0.015)takeShot();else{power=0;updatePowerUI();}}});
+/* Escape closes the screen on top, the same as tapping its own Back / Done / Cancel button */
+const ESC=[['buyOv',['buyNo']],['chestOv',['chestDone']],['style',['bStyleDone']],['trickOv',['tsBuyNo','tsBack']],['abOv',['abBack']],['mapOv',['mapBack']],['misOv',['misBack']],
+  ['saveOv',['profBack']],['wheelOv',['wheelBack']],['pvpOv',['pvpBack']],['onOv',['onBack','onCancel','onCancel2']],['friendsOv',['friendsBack']],['ctlOv',['ctlDone']],['mmOv',['mmCancel']]];
+function escClose(){for(const [ov,ids] of ESC){const o=$(ov);if(!o||!o.classList.contains('show'))continue;
+    for(const id of ids){const b=$(id);if(b&&b.offsetParent&&!b.disabled){b.click();return true;}}return true;}return false;}
 window.addEventListener('keydown',e=>{const tgt=e.target&&e.target.closest&&e.target.closest('input,textarea');if(tgt)return;
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)&&gameLive&&!document.querySelector('.ov.show'))e.preventDefault();
-  if(e.key==='Escape'){if(!$('spinPop').hidden){spinPop(false);return;}if(menuEl.classList.contains('show')&&gameLive&&!$('bResume').hidden){$('bResume').click();}
+  if(e.key==='Escape'){if(!$('spinPop').hidden){spinPop(false);return;}if(escClose())return;if(menuEl.classList.contains('show')&&gameLive&&!$('bResume').hidden){$('bResume').click();}
     else if(gameLive&&state!=='over'&&!document.querySelector('.ov.show')){showMenu();}}});
 window.addEventListener('keydown',e=>{const ovOpen=!!document.querySelector('.ov.show');if(e.code==='Space'&&!ovOpen&&!(e.target&&e.target.closest&&e.target.closest('input,button,summary,textarea')))e.preventDefault();if(ovOpen||!humanTurn())return;
   const k=e.shiftKey?0.02:0.003,sp=e.shiftKey?0.25:0.1;
@@ -3799,7 +3812,7 @@ function abUI(){const b=$('bSkills');if(!b)return;const av=abAvail();b.hidden=!a
   {const a=$('spin').previousElementSibling,c=$('power').previousElementSibling;if(a)a.textContent=x2?'Spin ×2':'Spin';if(c)c.textContent=bo?'Power+':'Power';}
   if(AB.open)abRenderTray();}
 function abTray(open){AB.open=!!open;const el=$('skTray');if(!el)return;el.hidden=!AB.open;$('bSkills').setAttribute('aria-expanded',AB.open?'true':'false');if(AB.open)abRenderTray();}
-function abRenderTray(){const box=$('skTrayList');box.innerHTML='';const pi=cur;
+function abRenderTray(){const box=$('skTrayList');box.innerHTML='';const pi=humanTurn()?cur:abMe();
   $('skTrayNote').textContent=AB.inf?'Free to try on the practice table':humanTurn()?'Tap a skill to use it on this shot':'Wait for your turn';
   for(const d of ABIL){const r=abRank(d.id),own=AB.inf||r>0,on=d.id==='second'?AB.shield[pi]:AB.armed.has(d.id),why=on?'':abWhyNot(d);
     const bt=document.createElement('button');bt.type='button';bt.className='skt'+(on?' on':'')+(own?'':' lock');bt.dataset.ab=d.id;bt.style.setProperty('--c',d.c);
@@ -4869,14 +4882,14 @@ function lobbyUpdate(op,q){const N=NET;
   }
 }
 function netStake(){const N=NET;if(bet>0&&(!SERIES||SERIES.played===0)&&!N.staked[N.gameNo]){N.staked[N.gameNo]=1;setCoins(save.coins-bet);netPresence({coins:save.coins});}potUI();}
-function netStartHost(q){const N=NET;N.oppName=cleanName(q.name)||'Friend';N.gameNo++;N.stage='game';N.again=0;
+function netStartHost(q){potRefund();const N=NET;N.oppName=cleanName(q.name)||'Friend';N.gameNo++;N.stage='game';N.again=0;
   bet=Math.min(N.bet,save.coins,Number.isFinite(q.coins)?q.coins:N.bet);N.bet=bet;
   mode='online';players=[{name:N.name,group:null,cpu:false},{name:N.oppName,group:null,cpu:false,remote:true}];breaker=(N.gameNo-1)%2;
   SOLO=null;VENUE=null;drawTableCache();MATCH={kind:'online',fouls:0};N.forfeit=0;if(!SERIES||SERIES.over){SERIES={of:N.fmt||1,score:[0,0],played:0,over:false};N.seriesStart=N.gameNo;}
   closeOverlays();newGame();shotNo=0;N.lastShot=0;N.synced=0;N.pending=null;N.replaying=false;netStake();
   const st=snapState();applyState(st);
   netPresence({g:N.gameNo,opp:N.oppPeer,bet:N.bet,again:0,shot:null,aim:null,post:{g:N.gameNo,n:0,st}});}
-function netStartGuest(q){const N=NET;N.oppName=cleanName(q.name)||'Friend';N.gameNo=q.g;N.stage='game';N.again=0;bet=Math.min(q.bet|0,save.coins);N.bet=bet;
+function netStartGuest(q){potRefund();const N=NET;N.oppName=cleanName(q.name)||'Friend';N.gameNo=q.g;N.stage='game';N.again=0;bet=Math.min(q.bet|0,save.coins);N.bet=bet;
   mode='online';players=[{name:N.oppName,group:null,cpu:false,remote:true},{name:N.name,group:null,cpu:false}];
   SOLO=null;VENUE=null;drawTableCache();MATCH={kind:'online',fouls:0};N.forfeit=0;if(!SERIES||SERIES.over){SERIES={of:q.fmt===3?3:1,score:[0,0],played:0,over:false};N.seriesStart=N.gameNo;}
   closeOverlays();newGame();shotNo=0;N.lastShot=0;N.synced=-1;N.pending=q.post;N.replaying=false;netStake();
@@ -5012,7 +5025,7 @@ function coinBurst(x,y,n){{const t=performance.now();if(t-coinT>200){coinT=t;pla
 function elCenter(el){const r=el.getBoundingClientRect(),a=appEl.getBoundingClientRect();return{x:r.left-a.left+r.width/2,y:r.top-a.top+r.height/2};}
 function payout(w,sOver){if(sOver===undefined)sOver=true;let line='',gain=0;const iWon=mode==='cpu'?w===0:mode==='online'?!!NET&&w===NET.me:w===0;if(iWon){save.diamonds++;persist();updateCoinUI();if(mode!=='pvp')cgHappy();}PLAT.games++;
   if(mode==='cpu'){if(w===0){gain=cpuPrize();setCoins(save.coins+gain);line=`You won ${gain} coins`;}else line='No prize this time. Win to earn coins.';}
-  else if(mode==='pvp'){if(bet>0&&sOver){const pot=bet*2;if(w===0){setCoins(save.coins+pot);gain=pot;}else walletSet(players[1].name,walletGet(players[1].name)+pot);line=`${players[w].name} takes the pot of ${pot} coins`;}}
+  else if(mode==='pvp'){if(bet>0&&sOver){const pot=bet*2;save.pot=null;if(w===0){setCoins(save.coins+pot);gain=pot;}else walletSet(players[1].name,walletGet(players[1].name)+pot);line=`${players[w].name} takes the pot of ${pot} coins`;}}
   else if(mode==='online'&&NET){if(bet>0&&sOver&&!NET.paid[NET.gameNo]&&!paidSeries()){NET.paid[NET.gameNo]=1;(window.__paylog||(window.__paylog=[])).push({g:NET.gameNo,won:w===NET.me,bet});if(w===NET.me){gain=bet*2;setCoins(save.coins+gain);line=`You won ${gain} coins`;}else line=`You lost ${bet} coins`;}
     netPresence({coins:save.coins});}
   const el=$('ovReward');el.innerHTML='';if(line){const c=document.createElement('span');c.className='coin';const t=document.createElement('span');t.textContent=line;const pr=document.createElement('span');pr.className='pair';pr.append(c,t);el.append(pr);}
@@ -5631,7 +5644,7 @@ function skillOf(sig){return{sig,pw:0.035+sig*1.2,sloppy:clamp((sig-0.006)/0.032
 const QUICK=[['Billie',1],['Pip',10],['Dot',3],['Rory',12],['Juno',6],['Zed',15],['Kit',5],['Mo',11]];
 function quickOpp(){const lv=lvlInfo(save.xp).l,q=QUICK[Math.random()*QUICK.length|0];return{name:q[0],ball:q[1],sig:clamp(0.032-0.0019*(lv-1),0.007,0.032)*(0.9+Math.random()*0.2)};}
 function cpuPrize(){const o=MATCH.opp;return o?Math.round(30+(0.04-o.sig)*1400):PRIZE[diff];}
-function startCpuMatch(opp,venue){if(NET)netLeave();closeOverlays();SOLO=null;SERIES=null;VENUE=venue||null;drawTableCache();mode='cpu';bet=0;
+function startCpuMatch(opp,venue){potRefund();if(NET)netLeave();closeOverlays();SOLO=null;SERIES=null;VENUE=venue||null;drawTableCache();mode='cpu';bet=0;
   players=[{name:'You',group:null,cpu:false},{name:opp.name,group:null,cpu:true,skill:skillOf(opp.sig)}];breaker=0;newGame();}
 function quickPlay(){audio();if(!save.tutDone){startTutorial(true);return;}cgMidgame(()=>{MATCH={kind:'quick',fouls:0,opp:quickOpp()};startCpuMatch(MATCH.opp,null);});}
 function startJourney(n){n=Math.min(n,NODES.length-1);const N=NODES[n];MATCH={kind:'journey',node:n,fouls:0,opp:{name:N.name,ball:N.ball,sig:N.sig}};startCpuMatch(MATCH.opp,N.room.table);}
@@ -5684,7 +5697,7 @@ function trickSim(L,a,p,sx,sy,path){const sv=balls.map(b=>[b.x,b.y,b.vx,b.vy,b.p
     const r=trickJudge(L,shot);r.path=pts;return r;}
   finally{SIL=false;PLAIN_PK=false;shot=ssh;balls.forEach((b,i)=>{[b.x,b.y,b.vx,b.vy,b.potted,b.sink]=sv[i];});}}
 function placeBalls(list){for(const b of balls){resetBall(b);b.potted=true;}for(const p of list){const b=balls[p.id];b.potted=false;b.x=p.x;b.y=p.y;}}
-function startSolo(kind,o){{const el=$('coach');if(el)el.classList.remove('mini');}if(NET)netLeave();closeOverlays();VENUE=null;drawTableCache();mode='solo';bet=0;SERIES=null;MATCH={kind,fouls:0};
+function startSolo(kind,o){GAMEID++;potRefund();{const el=$('coach');if(el)el.classList.remove('mini');}if(NET)netLeave();closeOverlays();VENUE=null;drawTableCache();mode='solo';bet=0;SERIES=null;MATCH={kind,fouls:0};
   players=[{name:'You',group:null,cpu:false},{name:'',group:null,cpu:false}];SOLO=Object.assign({kind,shots:0},o||{});
   cur=0;shot=null;strike=null;cpu=null;gameLive=true;paused=false;tableOpen=true;abReset();
   if(kind==='practice'){rack();isBreak=true;ballInHand=true;kitchenOnly=true;}else{placeBalls(SOLO.layout);isBreak=false;ballInHand=false;kitchenOnly=false;}
