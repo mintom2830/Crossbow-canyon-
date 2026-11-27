@@ -319,7 +319,7 @@ The upright rats are not trots: the shield rat stomps along on its hind legs beh
 
 | Boss | Gate attack |
 |---|---|
-| Giant rat (club) | plants its feet, pulls the club back, hips and shoulders wind away, swings through, a ground crack and dust, follows through |
+| Giant rat (club) | a Club Smash: plants its feet, leans back as the club goes up (the last half second before the blow), throws its weight forward into the slam with a ground crack and dust, then heaves itself back up |
 | Rat Warlord | winds up the weapon, a powerful forward slam with a shockwave; **roars and raises his weapon as he climbs out** (after the 5-second boss siren) |
 | Iron Rat Baron (heavy) | raises the spiked mace, weight back, slams it down with a heavy shockwave and shake |
 | Rat King | gathers himself, a massive slam in a burst of gold; crown and robe jolt with every impact |
@@ -328,6 +328,13 @@ The upright rats are not trots: the shield rat stomps along on its hind legs beh
 | Canyon Buzzard | dives at the gate; glides between wingbeats, banks into turns, beats hard hovering before each drop, legs forward to land |
 
 Impacts shake the screen by the attacker's weight, and every gate hit has its own sound.
+
+**The giant rat moves like the Hulking Rat** (the `HulkingRat.cs` enemy script). Only how it moves changed; its health, speed, armour, damage and timing are the same, and the balance tests pass unchanged.
+- **A heavy waddle:** as it walks it bobs up on each step and rolls about 6° side to side, onto the foot that is down, in step with its walk clip. It fades out as it stops.
+- **Club Smash:** at the gate it leans back through the half-second wind-up and throws its weight into the blow (above).
+- **Shove:** when a small rat is in its way, it gives it a quick swipe: shoulder back toward that side (0.2 s), then through. The rat bounces up with a puff of dust and a whoosh while the crowd pushes it aside. It does no damage and the rat loses no time on the road (a sideways knock out of the arrows' path made the waves harder, so it only bounces). Then it recovers (0.3 s) and waits 2.5 s before it shoves again. A stunned, frozen or held giant drops its shove.
+- **Hit:** a small flinch that squashes it; its 30% armour takes 30% off every arrow, as before.
+- **Defeated:** it topples onto its back, slowly at first and then faster (0.7 s), lands with a small bounce, a dust ring and a screen shake, lies still, sinks into the ground and is gone 2 seconds after it fell.
 
 - **Small rats** are animated on the graphics card, so hundreds of them still draw in one call. Each rat's legs, tail and head move around their own joints.
   - **Climbing out:** a new rat rises out of the burrow nose first, with a little dirt puff.
@@ -343,7 +350,7 @@ Impacts shake the screen by the attacker's weight, and every gate hit has its ow
   - **Walking:** a heavy stomp whose stride follows the distance walked.
   - **Hit:** a white flash, a lean back and a squash.
   - **Attacking the town hall:** they wind up the club overhead and smash it down in time with each hit on the gate, with a dust puff.
-  - **Defeated:** a white burst, then they topple backwards, bounce with a dust ring and a screen shake, lie still, and sink away in a big puff. The HP number disappears the moment they're defeated. A Canyon Buzzard shot down drops out of the sky in a cloud of feathers.
+  - **Defeated:** a white burst, then they topple backwards, bounce with a dust ring and a screen shake, lie still, and sink away in a big puff (the giant rat falls flat on its back; see above). The HP number disappears the moment they're defeated. A Canyon Buzzard shot down drops out of the sky in a cloud of feathers.
 - **Cartoon splashes:** every defeated monster leaves a little inked splat on the ground. The splat pops in with a bounce, lingers a few seconds and shrinks away.
   - Its colour depends on the kind: lavender for plain rats, pink for brood rats, green for healers and slimes, and so on, with each boss getting its own colour.
   - Droplets fly out of it, arc through the air and each leave a tiny splat where they land.

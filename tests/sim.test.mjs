@@ -121,6 +121,40 @@ function onRoad(sim, v, s, lat = 0, hp = 100) {
 }
 const quietSim = () => { const sim = new Sim({ seed: 5 }); sim.towers.length = 0; for (const sl of sim.slots) sl.tower = null; sim.state = 'wave'; sim.spawnQueue = []; sim.spawnIndex = 0; return sim; };
 
+test('the giant rat shoves a small rat in its way (as the Hulking Rat): a 0.2 s wind-up, then the rat bounces up; no damage, no time lost, a 2.5 s cooldown; stunned, it drops the shove', () => {
+  const sim = quietSim();
+  const g = sim._makeEnemy(T_GIANT, 0, 1e5, 0, 40, CFG.giant); sim._placeEnemy(g); sim.enemies.push(g);
+  const r = onRoad(sim, 0, 41, 0.2, 100);
+  const s0 = r.s;
+  run(sim, 0.05);
+  assert(g.shoveK >= 0 && g.shoveId === r.id, `the giant should start a shove at the rat in its way: ${g.shoveK} ${g.shoveId}`);
+  assert(!(r.hy > 0), 'no bounce before the wind-up is over');
+  run(sim, 0.2);
+  assert(r.hy > 0 && (sim.stats.shoves || 0) === 1, `after the wind-up the rat bounces up: hy ${r.hy}, shoves ${sim.stats.shoves}`);
+  assert(r.hp === 100, 'a shove does no damage: ' + r.hp);
+  run(sim, 0.4);
+  assert(g.shoveK < 0 && g.shoveCd > 2, 'then it recovers and waits before shoving again: ' + g.shoveK + ' ' + g.shoveCd);
+  const t = 0.65;
+  assert(Math.abs(r.s - (s0 + r.speed * t)) < 0.12, `the shoved rat loses no time on the road: ${(r.s - s0).toFixed(3)} vs ${(r.speed * t).toFixed(3)}`);
+  // no second shove during the cooldown, even right in its way
+  r.s = g.s + 1; r.lat = g.lat; r.hy = 0; r.vy = 0;
+  run(sim, 1);
+  assert((sim.stats.shoves || 0) === 1, 'it shoved again during its cooldown');
+  // stunned in the wind-up: no shove
+  g.shoveCd = 0; r.s = g.s + 1; r.lat = g.lat;
+  run(sim, 0.05);
+  assert(g.shoveK >= 0, 'a new shove should start');
+  g.stun = 1;
+  run(sim, 0.3);
+  assert((sim.stats.shoves || 0) === 1 && g.shoveK < 0, 'a stunned giant should drop its shove');
+  // bosses don't shove
+  const sim2 = quietSim();
+  const b = sim2._makeEnemy(T_BOSS, 0, 1e5, 0, 40, { ...CFG.boss, ...CFG.bosses.warlord }); b.boss = 'warlord'; sim2._placeEnemy(b); sim2.enemies.push(b);
+  onRoad(sim2, 0, 41, 0.2, 100);
+  run(sim2, 0.5);
+  assert(!(sim2.stats.shoves > 0) && b.shoveK < 0, 'only the giant rat shoves');
+});
+
 test('physics: a crowd spreads out instead of stacking up; giants shoulder rats aside; a blast throws a rat back under gravity; enemies turn smoothly', () => {
   const sim = quietSim();
   // ten rats climbing out on the very same spot push each other apart across the road

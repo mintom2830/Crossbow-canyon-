@@ -32,6 +32,11 @@ function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 // ---- enemy physics (see _crowd, _kick and _steer)
 const GRAVITY = 22;          // thrown rats fall back down (m/s²)
 const KNOCK_DRAG = 6;        // a thrown rat slides to a stop: velocity falls by e^(-6t), so a kick of v travels v/6
+// The giant rat's shove (as the Hulking Rat's in HulkingRat.cs): a small rat in its way gets a
+// quick swipe (windUp) that bounces it up (lift) while the crowd pushes it aside as before. No
+// damage, no time lost and no change to where it is on the road (a sideways knock out of the
+// arrows' path made the waves harder). Then the giant recovers and waits cooldown to shove again.
+const SHOVE = { windUp: 0.2, recovery: 0.3, cooldown: 2.5, lift: 2.5, reach: 3 };
 const CROWD_SQUASH = 0.55;   // rats are long: along the road two of them need ~1/0.55 times the room they need side by side
 const CROWD_ROOM = 0.65;     // how much of their radius rats keep clear of each other (a crowd still packs in tight)
 function angDiff(a, b) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
@@ -383,6 +388,7 @@ export class Sim {
       weak: 0, mark: 0, burn: 0, burnDps: 0, held: 0,   // poisoned/scorched, sniper-marked, burning, held by a rat soldier
       frost: 0, frostT: 0, frozen: 0, freezeCd: 0, hitT: 0,
       shield: 0, shieldMax: 0, healT: 0, healed: 0, gy: 0,
+      shoveK: -1, shoveCd: 0, shoveId: 0, shoveSide: 0, shoved: false,   // giant rat: its shove (seconds into it, -1 when not shoving)
       dodgeT: 0, jetT: 0, boost: 0,   // ninja rat: until it can dodge again · jetpack rat: until it fires, and how long it still burns
       // boss abilities: kind (stats), boss (name), slime size (tier) and family (root, rootHp),
       // mole tunnelling (dig, digT, under), buzzard flight (fly, dropT), rats falling from it (fall)
@@ -736,6 +742,8 @@ export class Sim {
           const q = ds * ds + dl * dl;
           if (q >= R * R) continue;
           if (a.atGate && c.atGate) continue;
+          if (a.type === T_GIANT && c.type === T_GRUNT) this._shoveStart(a, c);
+          else if (c.type === T_GIANT && a.type === T_GRUNT) this._shoveStart(c, a);
           // the sideways gap that clears them, shared by weight (rats attacking the gate don't budge)
           const need = Math.sqrt(R * R - ds * ds) - Math.abs(dl);
           const dir = dl > 0 ? 1 : dl < 0 ? -1 : ((a.id + c.id) & 1 ? 1 : -1);
@@ -754,6 +762,31 @@ export class Sim {
         }
       }
     }
+  }
+
+  // A giant rat bumping into a small rat ahead of it in its way starts a shove.
+  _shoveStart(g, r) {
+    if (g.shoveK >= 0 || g.shoveCd > 0 || g.atGate || r.atGate || r.s <= g.s || r.hy > 0 || g.stun > 0 || g.frozen > 0 || g.held > 0) return;
+    g.shoveK = 0; g.shoved = false; g.shoveId = r.id;
+    g.shoveSide = r.lat > g.lat ? 1 : r.lat < g.lat ? -1 : (r.id & 1 ? 1 : -1);
+  }
+  // The shove under way: after the wind-up the rat (if it is still there) is bounced up.
+  // A giant that is stunned, frozen or held mid-shove drops it.
+  _shoveStep(e, dt) {
+    if (e.shoveCd > 0) e.shoveCd = Math.max(0, e.shoveCd - dt);
+    if (e.shoveK < 0) return;
+    if (e.stun > 0 || e.frozen > 0 || e.held > 0) { e.shoveK = -1; e.shoveCd = SHOVE.cooldown * 0.5; return; }
+    e.shoveK += dt;
+    if (!e.shoved && e.shoveK >= SHOVE.windUp) {
+      e.shoved = true;
+      const r = this.enemies.find((o) => o.id === e.shoveId);
+      if (r && r.alive && !r.atGate && !(r.hy > 0) && Math.abs(r.s - e.s) < SHOVE.reach && Math.abs(r.lat - e.lat) < SHOVE.reach) {
+        r.vy = Math.max(r.vy, SHOVE.lift); r.hy = Math.max(r.hy, 0.01); r.spinV = 0;
+        this.stats.shoves = (this.stats.shoves || 0) + 1;
+        this.events.push({ type: 'shove', id: e.id, x: r.x, z: r.z, side: e.shoveSide });
+      }
+    }
+    if (e.shoveK >= SHOVE.windUp + SHOVE.recovery) { e.shoveK = -1; e.shoveCd = SHOVE.cooldown; }
   }
 
   _updateEnemies(dt) {
@@ -780,6 +813,7 @@ export class Sim {
         if (e.burn <= 0) e.burnDps = 0;
       }
       this._kickPhysics(e, dt);
+      if (e.type === T_GIANT) this._shoveStep(e, dt);
       if (e.fall > 0) {            // dropped by the buzzard: still falling
         e.fall -= dt;
         e.flash = Math.max(0, e.flash - dt);

@@ -1056,6 +1056,7 @@ function processEvents() {
       case 'bomb': audio.explosion('shell', 2); break;
       case 'dodge': audio.dodge(); break;
       case 'jet': audio.jet(); break;
+      case 'shove': audio.shove(); break;
       case 'spent': if (e.kind === T_GRUNT && e.v === 7) audio.explosion('shell', 2); break;
       case 'split': audio.broodSplit(); break;
       case 'storm': audio.storm(); break;

@@ -158,6 +158,13 @@ export class Audio {
     this._noise(t, 0.12, 0.08, 'bandpass', 2400, 1.2);
     this._osc('sine', 900, 1600, t, 0.1, 0.03);
   }
+  // a giant rat swiping a small rat out of its way: a heavy whoosh and a thump
+  shove() {
+    if (!this._ok('shove', 4)) return;
+    const t = this.ctx.currentTime;
+    this._noise(t, 0.22, 0.12, 'bandpass', 900, 0.8);
+    this._osc('sine', 120, 60, t + 0.04, 0.18, 0.1);
+  }
   // a jetpack rat firing its jetpack: a short roar
   jet() {
     if (!this._ok('jet', 4)) return;

@@ -730,6 +730,40 @@ export class View {
     R.move(e.vs || 0, sc);
   }
 
+  // The giant rat moves like the Hulking Rat (HulkingRat.cs), over its Meshy clips: a heavy
+  // waddle as it walks (up on each step, rolling over onto the foot that is down), the
+  // club smash on the gate with its weight thrown back through the half-second wind-up and
+  // forward into the blow, a quick swipe when it shoves a small rat out of its way (shoulder
+  // back, then through), and a squash when it is hit.
+  _hulkMotion(v, e, dt, fl, fighting) {
+    const R = v.rig, P = v.ps;
+    const pace = e.atGate || e.stun > 0 || e.frozen > 0 || e.held > 0 ? 0 : clampN((e.vs || 0) / Math.max(0.1, e.speed || 1), 0, 1);
+    const w = v.waddle || 0, dw = dt * 3;
+    v.waddle = Math.abs(pace - w) <= dw ? pace : w + Math.sign(pace - w) * dw;
+    if (R.state === 'walk' || R.state === 'run') v.wph = P.step * Math.PI * 2;   // two steps a cycle of the walk clip
+    const ph = v.wph || 0;
+    const bob = Math.abs(Math.sin(ph)) * 0.1 * v.waddle, roll = Math.sin(ph) * 0.105 * v.waddle;   // 6 degrees
+    let pitch = -0.06 * fl, yaw = 0;
+    if (e.atGate && fighting) {
+      // the club smash: leans back as the club goes up (0.5 s before the gate takes the
+      // blow), then throws itself forward into the slam, and heaves itself back up
+      const a = attackPhase(e.attackT, CFG.giant.gateRate);
+      const wind = smooth(0.31, 0.58, a) * (1 - smooth(0.6, 0.66, a)), slam = smooth(0.6, 0.68, a) * (1 - smooth(0.8, 1, a));
+      pitch += -0.1 * wind + 0.16 * slam;
+    }
+    if (e.shoveK >= 0) {
+      // the shove: shoulder back toward the side the small rat is on, then a swipe through it
+      const k = e.shoveK, left = e.shoveSide * (e.nx * Math.cos(e.yaw) - e.nz * Math.sin(e.yaw)) >= 0 ? 1 : -1;
+      const wind = smooth(0, 0.2, k) * (1 - smooth(0.2, 0.28, k)), thru = smooth(0.2, 0.28, k) * (1 - smooth(0.36, 0.5, k));
+      yaw = left * (-0.52 * wind + 0.61 * thru);
+      pitch += -0.1 * wind + 0.17 * thru;
+    }
+    const sq = 0.06 * fl;
+    v.body.position.set(0, bob, 0);
+    v.body.rotation.set(pitch, yaw, roll);
+    v.body.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
+  }
+
   // What a giant's extra parts (ears, jaw, tail, cape; see articulate.js) answer to
   // this frame: its ground speed and turn rate (in its own size: a boss's cape
   // billows as a giant's would), where it is in its stride, how wide its jaw opens.
@@ -1178,7 +1212,7 @@ export class View {
     if (!v) return;
     v.dying = 0; v.spent = spent; v.dieDir = e.dir || 1; v.dieStarted = false;
     v.gy = this._gy(v.group.position.x, v.group.position.z);
-    v.dieDur = spent ? 0.6 : v.boss === 'slime' ? 0.5 : v.boss === 'buzzard' && v.group.position.y - v.gy > 0.5 ? 2.0 : v.boss ? 1.8 : 1.2;
+    v.dieDur = spent ? 0.6 : v.boss === 'slime' ? 0.5 : v.boss === 'buzzard' && v.group.position.y - v.gy > 0.5 ? 2.0 : v.boss ? 1.8 : 2.0;
     v.downed = spent; v.vanished = false;
     v.fallFrom = v.group.position.y - v.gy;   // a buzzard shot down falls out of the sky
     v.label.style.display = 'none';
@@ -1213,6 +1247,41 @@ export class View {
       v.body.position.z = 0;
       if (k >= 0.6 && !v.vanished) { v.vanished = true; this.fx.splat(g.position.x, g.position.z, sc * 0.9); }
       g.scale.setScalar(sc * (k < 0.6 ? 1 : Math.max(0.01, 1 - (k - 0.6) / 0.4)));
+      return;
+    }
+    if (!v.boss) {
+      // the giant rat falls over like the Hulking Rat (HulkingRat.cs): it topples onto its
+      // back, slowly at first and then faster, lands with a small bounce, lies still, and
+      // is gone 2 seconds after it was hit (sinking into the ground over the last half second)
+      if (!v.dieStarted) {
+        v.dieStarted = true; v.dieLean = g.rotation.x; v.dieRoll = g.rotation.z;
+        v.body.rotation.set(0, 0, 0); v.body.position.set(0, 0, 0); v.body.scale.set(1, 1, 1);
+        if (v.rig) { v.rig.hold(false); v.rig.go('idle', 0.25); if (v.ps) { v.ps.speed = 0; v.ps.turn = 0; v.ps.step = 0; v.ps.jaw = 0.8; v.ps.grip = 0.6; v.ps.atk = -1; } }
+        if (v.mover) v.mover.kick(1);
+      }
+      const D = v.dieDur, tf = 0.7 / D, tb = 0.25 / D, f = Math.min(1, k / tf), blend = 1 - Math.min(1, f * 4);
+      const ang = k < tf ? (Math.PI / 2) * f * f : Math.PI / 2 - 0.14 * Math.sin(Math.PI * Math.min(1, (k - tf) / tb));
+      g.rotation.x = -ang + v.dieLean * blend;
+      g.rotation.z = v.dieRoll * blend;
+      if (!v.rig) {   // the hand-made giant (before its Meshy model loads): arms flung up, legs kicking
+        v.armL.rotation.x = -2.6 * f * f; v.armR.rotation.x = -2.2 * f * f;
+        const kick = Math.sin(t * 22) * 0.35 * Math.max(0, 1 - k * 1.6);
+        v.legL.rotation.x = -0.7 * f * f + kick; v.legR.rotation.x = -0.5 * f * f - kick;
+      }
+      if (!v.downed && k >= tf) {
+        v.downed = true;
+        const x = g.position.x - Math.sin(g.rotation.y) * 1.6 * sc, z = g.position.z - Math.cos(g.rotation.y) * 1.6 * sc;
+        this.fx.puff(x, 0, z, 0xd9c7a8, 2.4);
+        this.fx.ring(x, 0, z, 1.6 * sc, 0xf2deb8, 0.5);
+        this.shake = Math.max(this.shake, 0.3);
+      }
+      const ts = Math.max(tf + tb, 1 - 0.5 / D), sink = Math.max(0, (k - ts) / (1 - ts));
+      if (sink > 0 && !v.vanished) {
+        v.vanished = true;
+        this.fx.puff(g.position.x - Math.sin(g.rotation.y) * 1.4 * sc, 0.2, g.position.z - Math.cos(g.rotation.y) * 1.4 * sc, 0xffffff, 2.4);
+      }
+      g.position.y = -sink * sink * 1.1 * sc;
+      g.scale.setScalar(sc * (1 - 0.85 * sink));
       return;
     }
     if (v.rig) {
@@ -1496,6 +1565,8 @@ export class View {
       case 'dodge': fx.puff(e.x, 0.1, e.z, 0x6a6078, 0.7); fx.star(e.x, 0.7, e.z, 0.45, 0xdcd4ee, 0.12, 0.4); break;
       // a jetpack rat fires its jetpack
       case 'jet': fx.glow(e.x, 0.4, e.z, 1.6, 0xffa040, 0.2); fx.puff(e.x, 0, e.z, 0xd9d0c8, 0.6); break;
+      // a giant rat swipes a small rat out of its way
+      case 'shove': fx.puff(e.x, 0, e.z, 0xd9c7a8, 0.9); fx.star(e.x, 0.7, e.z, 0.5, 0xfff2c8, 0.12, 0.45); break;
       case 'block': if (Math.random() < 0.5) { fx.glow(e.x, 0.6, e.z, 0.8, 0xffe6b0, 0.09); fx.star(e.x, 0.6, e.z, 0.5, 0xe8b878, 0.13, 0.5); } break;   // arrow thuds into a shield
       case 'shieldBreak': fx.shieldBreak(e.x, e.z); break;
       case 'split': fx.burst(e.x, e.z); this.shake = Math.max(this.shake, 0.06); break;
@@ -1816,7 +1887,8 @@ export class View {
           }
           v.ps.atk = e.atGate && fighting ? attackPhase(e.attackT, CFG.giant.gateRate) : -1; v.ps.style = style;
           this._partState(v, e, dt, gyaw, sc);
-          v.body.rotation.set(-0.06 * fl, 0, 0);
+          if (style === false) this._hulkMotion(v, e, dt, fl, fighting);
+          else v.body.rotation.set(-0.06 * fl, 0, 0);
           if (style === 'mole') this._poseMole(v, e, sc, t);
           // footfalls still kick up dust
           if (!e.atGate && em > 0.5 && this.dustBudget >= 1 && v.rig.state !== 'idle' && !(e.stun > 0)) {

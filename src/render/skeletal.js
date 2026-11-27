@@ -233,7 +233,9 @@ export class SkeletalRig {
 // per boss, how its gate attack moves its body (BodyMotion): twist of hips and
 // shoulders, how far its weight goes back in the wind-up, how far it drops into the blow
 const ATTACK_BODY = {
-  giant: { twist: 1, back: 0.12, drop: 0.1 },      // the club: plant, pull back, rotate, swing through
+  // the club (as the Hulking Rat's Club Smash): weight back through the last half second
+  // before the blow (w0: where in the swing that starts), then a heavy drop into it
+  giant: { twist: 0.45, back: 0.24, drop: 0.26, w0: 0.31 },
   warlord: { twist: 0.8, back: 0.15, drop: 0.12 }, // wind up the weapon, a powerful forward slam
   baron: { twist: 0.35, back: 0.32, drop: 0.2 },   // raise the mace, weight back, slam it down
   king: { twist: 0.2, back: 0.3, drop: 0.28 },     // arms up, gather strength, a ground slam
@@ -267,7 +269,7 @@ export class BodyMotion {
     let tw = 0, wb = 0;
     if (st.atk >= 0) {
       const a = st.atk, W = ATTACK_BODY[st.style] || ATTACK_BODY.giant;
-      const wind = sm(0.08, 0.55, a) * (1 - sm(0.58, 0.66, a)), thru = sm(0.6, 0.7, a) * (1 - sm(0.8, 1, a));
+      const wind = sm(W.w0 ?? 0.08, 0.55, a) * (1 - sm(0.58, 0.66, a)), thru = sm(0.6, 0.7, a) * (1 - sm(0.8, 1, a));
       tw = W.twist * (-0.35 * wind + 0.42 * thru);
       wb = W.back * wind - W.drop * thru;
     }
