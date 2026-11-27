@@ -1,0 +1,739 @@
+<title>Sky String</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Layout: full-screen canvas sky, HUD chips floating on top, shop as a centered paper card */
+:root {
+  --ink: #16233f;
+  --paper: #fffaf0;
+  --paper-2: #f3ead6;
+  --kite: #ff5a4e;
+  --gold: #ffb627;
+  --ok: #2fb36b;
+  --line: rgba(22,35,63,.14);
+  --glass: rgba(255,255,255,.82);
+  --display: "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: #8fd3ff; color: var(--ink); font-family: var(--body);
+  overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none;
+}
+canvas#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+.hud {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 5; pointer-events: none;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;
+}
+.chip {
+  background: var(--glass); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  border-radius: 12px; padding: 6px 12px; box-shadow: 0 2px 8px rgba(22,35,63,.15);
+  display: flex; flex-direction: column; min-width: 84px;
+}
+.chip .lbl { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .6; }
+.chip .val { font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.chip.money .val { color: #b97800; }
+.chip.rope { min-width: 150px; flex: 1 1 150px; max-width: 260px; }
+.bar { height: 10px; border-radius: 6px; background: rgba(22,35,63,.12); overflow: hidden; margin-top: 5px; }
+.bar > i { display: block; height: 100%; width: 100%; background: var(--ok); border-radius: 6px; transition: background .2s; }
+.chip .sub { font-size: 11px; font-weight: 700; opacity: .7; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+.controls {
+  position: fixed; z-index: 5; right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+button { font-family: var(--display); font-weight: 800; cursor: pointer; border: 0; color: var(--ink); }
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.land {
+  background: var(--paper); border-radius: 14px; padding: 10px 18px; font-size: 18px;
+  box-shadow: 0 4px 0 #c9b98f, 0 6px 14px rgba(0,0,0,.2);
+}
+.land:active { transform: translateY(2px); box-shadow: 0 2px 0 #c9b98f; }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 6; pointer-events: none;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  background: var(--ink); color: #fff; font-weight: 800; padding: 8px 16px; border-radius: 999px;
+  font-size: 14px; opacity: 0; transition: opacity .25s; white-space: nowrap; max-width: calc(100% - 32px);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.toast.show { opacity: 1; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  background: rgba(22,35,63,.35);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: calc(env(safe-area-inset-top, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 16px);
+  overflow-y: auto; touch-action: pan-y;
+}
+.card {
+  background: var(--paper); border-radius: 22px; width: 100%; max-width: 640px; margin: auto;
+  padding: 22px 20px 20px; box-shadow: 0 10px 40px rgba(0,0,0,.3);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.card h1 { font-family: var(--display); font-size: 40px; line-height: 1; margin: 0; text-wrap: balance; }
+.card h1 span { color: var(--kite); }
+.tag { margin: 0; font-size: 15px; line-height: 1.45; max-width: 60ch; }
+.summary {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  background: var(--paper-2); border-radius: 14px; padding: 10px 12px;
+}
+.summary div { display: flex; flex-direction: column; min-width: 0; }
+.summary b { font-family: var(--display); font-size: 22px; font-variant-numeric: tabular-nums; }
+.summary small { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; opacity: .6; }
+.sumtitle { font-family: var(--display); font-weight: 800; font-size: 20px; margin: 0 0 -8px; }
+.wallet { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wallet .cash { font-family: var(--display); font-weight: 800; font-size: 26px; color: #b97800; font-variant-numeric: tabular-nums; }
+.wallet .best { font-size: 13px; font-weight: 700; opacity: .7; }
+.shop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.up {
+  border: 2px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.up .nm { font-family: var(--display); font-weight: 800; font-size: 18px; line-height: 1.1; }
+.up .lv { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .55; }
+.up .desc { font-size: 13px; line-height: 1.35; flex: 1; }
+.up .stat { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.up .stat em { font-style: normal; color: var(--ok); }
+.buy {
+  background: var(--gold); border-radius: 12px; padding: 8px 10px; font-size: 16px;
+  box-shadow: 0 3px 0 #c98a00;
+}
+.buy:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #c98a00; }
+.buy:disabled { background: #e4dcc8; box-shadow: none; color: rgba(22,35,63,.45); cursor: default; }
+.fly {
+  background: var(--kite); color: #fff; border-radius: 16px; padding: 14px; font-size: 24px;
+  box-shadow: 0 5px 0 #c23a30;
+}
+.fly:active { transform: translateY(3px); box-shadow: 0 2px 0 #c23a30; }
+.how { font-size: 13px; line-height: 1.5; margin: 0; opacity: .8; }
+.how kbd {
+  font-family: var(--body); font-weight: 800; font-size: 11px; background: var(--paper-2);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+}
+.reset { background: none; font-family: var(--body); font-size: 12px; font-weight: 700; opacity: .5; text-decoration: underline; align-self: center; padding: 4px; }
+.confirm { display: flex; gap: 8px; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-wrap: wrap; }
+.confirm button { font-size: 14px; padding: 4px 12px; border-radius: 8px; background: var(--paper-2); }
+.confirm button.yes { background: var(--kite); color: #fff; }
+
+@media (max-width: 560px) {
+  .shop { grid-template-columns: 1fr; }
+  .card h1 { font-size: 32px; }
+  .chip { min-width: 70px; padding: 5px 10px; }
+  .chip .val { font-size: 18px; }
+  .chip.wind { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+
+<canvas id="sky"></canvas>
+
+<div class="hud" id="hud">
+  <div class="chip"><span class="lbl">Score</span><span class="val" id="hScore">0</span></div>
+  <div class="chip money"><span class="lbl">Money</span><span class="val" id="hMoney">$0</span></div>
+  <div class="chip"><span class="lbl">Height</span><span class="val" id="hAlt">0 m</span><span class="sub" id="hMax">rope 60 m</span></div>
+  <div class="chip rope"><span class="lbl">Rope health</span><div class="bar"><i id="hRope"></i></div><span class="sub" id="hRopeTxt">100 / 100</span></div>
+  <div class="chip wind"><span class="lbl">Wind</span><span class="val" id="hWind" style="font-size:16px">Calm</span><span class="sub" id="hBft">Beaufort 0</span></div>
+</div>
+
+<div class="controls"><button class="land" id="landBtn" type="button">Reel in ⤓</button></div>
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <h1>Sky <span>String</span></h1>
+    <p class="tag" id="tagline">Fly your kite as high as the rope allows. Higher air pays more, but the wind up there chews through rope fast. Reel in before it snaps, then spend your money on a better kite and stronger rope.</p>
+    <div id="runBox" hidden>
+      <p class="sumtitle" id="runTitle">Rope snapped!</p>
+    </div>
+    <div class="summary" id="runSummary" hidden>
+      <div><small>Score</small><b id="sScore">0</b></div>
+      <div><small>Earned</small><b id="sEarn">$0</b></div>
+      <div><small>Top height</small><b id="sTop">0 m</b></div>
+    </div>
+    <div class="wallet"><span class="cash" id="wCash">$0</span><span class="best" id="wBest">Best score 0 · Highest 0 m</span></div>
+    <div class="shop" id="shop"></div>
+    <button class="fly" id="flyBtn" type="button">Fly! 🪁</button>
+    <p class="how"><b>How to fly:</b> hold <kbd>Space</kbd>, the mouse button, or your finger to climb. Let go to drift down. Steer with <kbd>←</kbd> <kbd>→</kbd> or by moving the pointer. Dodge the white wind gusts. Press <kbd>R</kbd> or “Reel in” to bring the kite home safely.</p>
+    <button class="reset" id="resetBtn" type="button">Reset progress</button>
+    <div class="confirm" id="confirmBox" hidden>Erase all money and upgrades? <button class="yes" id="resetYes" type="button">Erase</button><button id="resetNo" type="button">Keep</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Upgrade tables ----------
+  const KITES = [
+    { name: "Paper Diamond", speed: 6,  cost: 0,     color: "#ff5a4e", trim: "#ffd84d" },
+    { name: "Nylon Delta",   speed: 9,  cost: 60,    color: "#ff8a3d", trim: "#ffffff" },
+    { name: "Ripstop Sled",  speed: 13, cost: 180,   color: "#ffc93c", trim: "#2c6bff" },
+    { name: "Box Kite",      speed: 18, cost: 450,   color: "#3fc380", trim: "#16233f" },
+    { name: "Stunt Foil",    speed: 24, cost: 1000,  color: "#2fa8ff", trim: "#ffe14d" },
+    { name: "Carbon Delta",  speed: 32, cost: 2200,  color: "#7b5cff", trim: "#ffffff" },
+    { name: "Storm Falcon",  speed: 42, cost: 4800,  color: "#e8467c", trim: "#16233f" },
+    { name: "Jet Stream",    speed: 55, cost: 9500,  color: "#16233f", trim: "#ffb627" },
+    { name: "Aurora Wing",   speed: 70, cost: 19000, color: "#20d3c2", trim: "#ff5aa5" },
+    { name: "Star Glider",   speed: 90, cost: 38000, color: "#ffd700", trim: "#7b5cff" },
+  ];
+  const LENGTH = [
+    { v: 60, cost: 0 }, { v: 120, cost: 50 }, { v: 220, cost: 150 }, { v: 350, cost: 400 },
+    { v: 550, cost: 900 }, { v: 800, cost: 2000 }, { v: 1200, cost: 4500 }, { v: 1800, cost: 9000 },
+    { v: 2600, cost: 18000 }, { v: 4000, cost: 36000 },
+  ];
+  const STRENGTH = [
+    { v: 100, cost: 0, name: "Cotton string" }, { v: 150, cost: 40, name: "Twine" },
+    { v: 220, cost: 130, name: "Braided nylon" }, { v: 320, cost: 350, name: "Polyester line" },
+    { v: 450, cost: 800, name: "Spectra cord" }, { v: 650, cost: 1800, name: "Kevlar cord" },
+    { v: 900, cost: 4000, name: "Dyneema rope" }, { v: 1250, cost: 8500, name: "Steel-core rope" },
+    { v: 1700, cost: 17000, name: "Titan braid" }, { v: 2400, cost: 34000, name: "Sky cable" },
+  ];
+  const BEAUFORT = [
+    [0, "Calm"], [10, "Light air"], [30, "Light breeze"], [70, "Gentle breeze"], [140, "Moderate"],
+    [260, "Fresh breeze"], [450, "Strong breeze"], [700, "Near gale"], [1100, "Gale"],
+    [1600, "Strong gale"], [2200, "Storm"], [3000, "Violent storm"], [3600, "Jet stream"],
+  ];
+
+  // ---------- Save ----------
+  const SAVE_KEY = "skystring-save-v1";
+  const fresh = () => ({ money: 0, kite: 0, len: 0, str: 0, bestScore: 0, bestAlt: 0 });
+  let save = fresh();
+  try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && typeof s.money === "number") save = Object.assign(fresh(), s); } catch (e) {}
+  const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
+
+  // ---------- Canvas ----------
+  const cv = document.getElementById("sky");
+  const ctx = cv.getContext("2d");
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize); resize();
+
+  const PPM = 5; // pixels per meter
+  const $ = id => document.getElementById(id);
+
+  // ---------- State ----------
+  let mode = "menu"; // menu | flying | snapped | landing
+  let holding = false, keyL = false, keyR = false, pointerX = null;
+  let run = null;
+  let gusts = [];
+  let particles = [];
+  let t = 0;
+
+  function newRun() {
+    run = {
+      alt: 0, vy: 0, x: W / 2 + 40, vx: 0,
+      hp: STRENGTH[save.str].v, maxHp: STRENGTH[save.str].v,
+      ropeLen: LENGTH[save.len].v, speed: KITES[save.kite].speed,
+      score: 0, earned: 0, top: 0, hitFlash: 0, freeX: 0, freeY: 0, freeT: 0,
+      gustTimer: 2, maxedWarned: false, lowWarned: false,
+    };
+    gusts = []; particles = [];
+  }
+  newRun();
+
+  // ---------- Input ----------
+  const isUI = e => e.target.closest && e.target.closest("button, .overlay");
+  window.addEventListener("pointerdown", e => {
+    if (isUI(e)) return;
+    holding = true; pointerX = e.clientX;
+  });
+  window.addEventListener("pointermove", e => { if (e.pointerType === "mouse" || holding) pointerX = e.clientX; });
+  window.addEventListener("pointerup", () => { holding = false; });
+  window.addEventListener("pointercancel", () => { holding = false; });
+  window.addEventListener("blur", () => { holding = keyL = keyR = false; });
+  window.addEventListener("keydown", e => {
+    if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
+      if (mode === "menu") { if (e.code === "Space" && document.activeElement === document.body) { e.preventDefault(); startFlight(); } return; }
+      e.preventDefault(); holding = true; pointerX = null;
+    }
+    if (e.code === "ArrowLeft" || e.code === "KeyA") { keyL = true; pointerX = null; }
+    if (e.code === "ArrowRight" || e.code === "KeyD") { keyR = true; pointerX = null; }
+    if (e.code === "KeyR" && mode === "flying") reelIn();
+  });
+  window.addEventListener("keyup", e => {
+    if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") holding = false;
+    if (e.code === "ArrowLeft" || e.code === "KeyA") keyL = false;
+    if (e.code === "ArrowRight" || e.code === "KeyD") keyR = false;
+  });
+  $("landBtn").addEventListener("click", () => { if (mode === "flying") reelIn(); });
+
+  let toastTimer = 0;
+  function toast(msg, ms = 1800) {
+    const el = $("toast"); el.textContent = msg; el.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+  }
+
+  function reelIn() { mode = "landing"; toast("Reeling in…"); }
+
+  // ---------- Shop ----------
+  const fmt = n => Math.floor(n).toLocaleString("en-US");
+  function renderShop() {
+    $("wCash").textContent = "$" + fmt(save.money);
+    $("wBest").textContent = `Best score ${fmt(save.bestScore)} · Highest ${fmt(save.bestAlt)} m`;
+    const items = [
+      { key: "kite", title: "Kite", table: KITES, desc: "A better kite climbs faster.",
+        cur: l => `${KITES[l].name} · ${KITES[l].speed} m/s`, nxt: l => `${KITES[l].speed} m/s` },
+      { key: "len", title: "Rope length", table: LENGTH, desc: "More rope lets the kite fly higher.",
+        cur: l => `${fmt(LENGTH[l].v)} m of rope`, nxt: l => `${fmt(LENGTH[l].v)} m` },
+      { key: "str", title: "Rope strength", table: STRENGTH, desc: "Tougher rope lasts longer in strong wind.",
+        cur: l => `${STRENGTH[l].name} · ${fmt(STRENGTH[l].v)} HP`, nxt: l => `${fmt(STRENGTH[l].v)} HP` },
+    ];
+    const shop = $("shop"); shop.innerHTML = "";
+    for (const it of items) {
+      const lvl = save[it.key], max = it.table.length - 1, next = lvl < max ? it.table[lvl + 1] : null;
+      const d = document.createElement("div"); d.className = "up";
+      d.innerHTML = `<span class="lv">Level ${lvl + 1} of ${max + 1}</span>
+        <span class="nm">${it.title}</span>
+        <span class="desc">${it.desc}</span>
+        <span class="stat">${it.cur(lvl)}${next ? ` → <em>${it.nxt(lvl + 1)}</em>` : ""}</span>`;
+      const b = document.createElement("button"); b.type = "button"; b.className = "buy"; b.id = "buy-" + it.key;
+      if (!next) { b.textContent = "Maxed out"; b.disabled = true; }
+      else {
+        b.textContent = `Buy $${fmt(next.cost)}`; b.disabled = save.money < next.cost;
+        b.addEventListener("click", () => {
+          if (save.money < next.cost) return;
+          save.money -= next.cost; save[it.key]++; persist(); renderShop();
+        });
+      }
+      d.appendChild(b); shop.appendChild(d);
+    }
+  }
+
+  function showMenu(summary) {
+    mode = "menu";
+    if (summary) {
+      $("tagline").hidden = true;
+      $("runBox").hidden = false; $("runSummary").hidden = false;
+      $("runTitle").textContent = summary.title;
+      $("sScore").textContent = fmt(run.score);
+      $("sEarn").textContent = "$" + fmt(run.earned);
+      $("sTop").textContent = fmt(run.top) + " m";
+      $("flyBtn").textContent = "Fly again! 🪁";
+    }
+    renderShop();
+    $("overlay").hidden = false;
+    $("flyBtn").focus({ preventScroll: true });
+  }
+
+  function startFlight() {
+    $("overlay").hidden = true;
+    newRun(); mode = "flying"; holding = false;
+    document.activeElement && document.activeElement.blur && document.activeElement.blur();
+    toast("Hold to climb!");
+  }
+  $("flyBtn").addEventListener("click", startFlight);
+  $("resetBtn").addEventListener("click", () => { $("confirmBox").hidden = false; });
+  $("resetNo").addEventListener("click", () => { $("confirmBox").hidden = true; });
+  $("resetYes").addEventListener("click", () => { save = fresh(); persist(); $("confirmBox").hidden = true; renderShop(); });
+
+  function endRun(title) {
+    save.bestScore = Math.max(save.bestScore, Math.floor(run.score));
+    save.bestAlt = Math.max(save.bestAlt, Math.floor(run.top));
+    persist();
+    showMenu({ title });
+  }
+
+  // ---------- Helpers ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, k) => a + (b - a) * k;
+  function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+  function windName(alt) { let i = 0; for (let k = 0; k < BEAUFORT.length; k++) if (alt >= BEAUFORT[k][0]) i = k; return [i, BEAUFORT[i][1]]; }
+  const windPower = alt => 1 + alt / 120;            // how hard the wind hits
+  const ropeDrain = alt => alt < 3 ? 0 : 0.6 + Math.pow(alt / 40, 1.1); // HP per second
+  const payRate = alt => alt * 0.06;                  // $ per second
+
+  // sky gradient stops by altitude: [alt, top, bottom]
+  const SKY = [
+    [0, [94, 182, 255], [214, 240, 255]],
+    [300, [60, 140, 240], [160, 210, 255]],
+    [900, [40, 80, 190], [110, 160, 240]],
+    [1800, [34, 30, 110], [80, 70, 180]],
+    [2800, [14, 10, 50], [50, 30, 110]],
+    [4000, [3, 3, 14], [16, 12, 44]],
+  ];
+  function skyAt(alt) {
+    for (let i = 0; i < SKY.length - 1; i++) {
+      const a = SKY[i], b = SKY[i + 1];
+      if (alt <= b[0]) {
+        const k = clamp((alt - a[0]) / (b[0] - a[0]), 0, 1);
+        return [a[1].map((v, j) => lerp(v, b[1][j], k)), a[2].map((v, j) => lerp(v, b[2][j], k))];
+      }
+    }
+    const l = SKY[SKY.length - 1]; return [l[1], l[2]];
+  }
+  const rgb = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+
+  // ---------- Update ----------
+  function update(dt) {
+    t += dt;
+    if (mode === "menu") {
+      // idle: kite bobs gently near the ground behind the menu
+      run.alt = lerp(run.alt, 18 + Math.sin(t * 0.7) * 3, dt * 1.5);
+      run.x = W / 2 + 60 + Math.sin(t * 0.5) * 30;
+      return;
+    }
+    if (mode === "snapped") {
+      run.freeT += dt;
+      run.freeX += (140 + run.freeT * 80) * dt;
+      run.freeY -= (60 + run.freeT * 40) * dt;
+      if (run.freeT > 1.8) endRun("Rope snapped! 💥");
+      updateParticles(dt);
+      return;
+    }
+
+    const wp = windPower(run.alt);
+    // vertical motion
+    let target;
+    if (mode === "landing") target = -Math.max(25, run.speed * 2.5);
+    else target = holding ? run.speed : -Math.max(3, run.speed * 0.35);
+    run.vy = lerp(run.vy, target, clamp(dt * 3, 0, 1));
+    run.alt += run.vy * dt;
+    if (run.alt >= run.ropeLen) {
+      run.alt = run.ropeLen; run.vy = Math.min(run.vy, 0);
+      if (holding && !run.maxedWarned) { toast("Out of rope! Buy a longer rope to go higher."); run.maxedWarned = true; }
+    } else if (run.alt < run.ropeLen - 5) run.maxedWarned = false;
+    if (run.alt <= 0) {
+      run.alt = 0; run.vy = 0;
+      if (mode === "landing" || run.top > 5) { endRun("Safe landing! 🪁"); return; }
+    }
+    run.top = Math.max(run.top, run.alt);
+
+    // horizontal: steering + wind wobble
+    let ax = 0;
+    if (keyL) ax -= 1; if (keyR) ax += 1;
+    if (pointerX != null && (holding || !keyL && !keyR)) ax += clamp((pointerX - run.x) / 120, -1, 1);
+    run.vx = lerp(run.vx, ax * 260, clamp(dt * 4, 0, 1));
+    const wobble = Math.sin(t * 1.7) * 0.6 + Math.sin(t * 3.1 + 1) * 0.4;
+    run.x += (run.vx + wobble * 18 * Math.min(wp, 8)) * dt;
+    run.x = clamp(run.x, 30, W - 30);
+
+    // earnings and rope wear
+    if (run.alt > 2) {
+      run.score += run.alt * dt;
+      const pay = payRate(run.alt) * dt;
+      run.earned += pay; save.money += pay;
+      run.hp -= ropeDrain(run.alt) * dt;
+    }
+    run.hitFlash = Math.max(0, run.hitFlash - dt * 3);
+
+    // gusts
+    run.gustTimer -= dt;
+    if (run.alt > 20 && run.gustTimer <= 0 && mode === "flying") {
+      spawnGust();
+      const rate = Math.min(2.6, 0.35 + run.alt / 600);
+      run.gustTimer = (0.6 + Math.random() * 0.8) / rate;
+    }
+    const ky = kiteScreenY();
+    for (const g of gusts) {
+      g.x += g.dir * g.speed * dt;
+      g.life += dt;
+      const gy = ky - (g.alt - run.alt) * PPM;
+      if (!g.hit && Math.abs(gy - ky) < 18 + g.th / 2 &&
+          run.x > Math.min(g.x, g.x - g.dir * g.len) - 16 && run.x < Math.max(g.x, g.x - g.dir * g.len) + 16) {
+        g.hit = true;
+        const dmg = 4 + run.alt / 25;
+        run.hp -= dmg; run.hitFlash = 1;
+        run.vx += g.dir * 300; run.x += g.dir * 20;
+        burst(run.x, ky, 10, "#ffffff");
+        toast(`Gust! Rope −${Math.round(dmg)}`, 900);
+      }
+    }
+    gusts = gusts.filter(g => g.life < 8 && g.x > -400 && g.x < W + 400);
+
+    // rope warnings and snap
+    if (run.hp < run.maxHp * 0.25 && !run.lowWarned && mode === "flying") { toast("Rope is fraying! Reel in (R)", 2200); run.lowWarned = true; }
+    if (run.hp <= 0) {
+      run.hp = 0; mode = "snapped";
+      run.freeX = run.x; run.freeY = ky; run.freeT = 0;
+      burst(run.x, ky + 30, 24, "#ffd84d");
+      gusts = [];
+    }
+    updateParticles(dt);
+  }
+
+  function spawnGust() {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const wp = windPower(run.alt);
+    gusts.push({
+      dir, alt: run.alt + (Math.random() * 2 - 1) * 14 + (holding ? 6 : -2),
+      x: dir > 0 ? -40 : W + 40,
+      speed: 220 + Math.random() * 160 + Math.min(wp, 20) * 12,
+      len: 90 + Math.random() * 120, th: 6 + Math.random() * 6, life: 0, hit: false,
+    });
+  }
+  function burst(x, y, n, color) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 160;
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.6 + Math.random() * 0.4, color });
+    }
+  }
+  function updateParticles(dt) {
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt; p.life -= dt; }
+    particles = particles.filter(p => p.life > 0);
+  }
+
+  // ---------- Camera ----------
+  function kiteScreenY() { return Math.max(H * 0.42, H - 110 - run.alt * PPM); }
+  function groundScreenY() { return kiteScreenY() + run.alt * PPM + 70; }
+  const altToY = a => kiteScreenY() - (a - run.alt) * PPM;
+
+  // ---------- Draw ----------
+  function draw() {
+    const alt = run.alt;
+    const [top, bot] = skyAt(alt);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // stars high up
+    const starA = clamp((alt - 1400) / 1400, 0, 1);
+    if (starA > 0) {
+      for (let i = 0; i < 120; i++) {
+        const sx = hash(i) * W, sy = ((hash(i + 500) * H * 3 + alt * PPM * 0.05) % (H * 1.2));
+        const tw = 0.5 + 0.5 * Math.sin(t * 2 + i);
+        ctx.fillStyle = `rgba(255,255,255,${starA * (0.4 + tw * 0.6)})`;
+        ctx.fillRect(sx, sy, 2, 2);
+      }
+    }
+
+    // sun
+    ctx.fillStyle = `rgba(255,236,170,${0.85 - starA * 0.6})`;
+    ctx.beginPath(); ctx.arc(W - 90, 130 - Math.min(alt, 800) * 0.04, 34, 0, Math.PI * 2); ctx.fill();
+
+    // far parallax clouds
+    drawClouds(0.35, 60, 0.45, 1.6);
+    // altitude marker ticks
+    drawMarkers();
+    // gusts
+    for (const gu of gusts) drawGust(gu);
+    // near clouds
+    drawClouds(1, 45, 0.85, 1);
+
+    // ground + flyer
+    const gy = groundScreenY();
+    if (gy < H + 200) drawGround(gy);
+
+    // rope + kite
+    if (mode === "snapped") {
+      drawRope(W / 2 - 4, gy - 46, run.x, run.freeY + 30, true);
+      drawKite(run.freeX, run.freeY, run.freeT * 2, 0);
+    } else {
+      const ky = kiteScreenY();
+      drawRope(W / 2 - 4, gy - 46, run.x, ky + 26, false);
+      drawKite(run.x, ky, Math.sin(t * 2.2) * 0.12 * Math.min(windPower(alt), 4) + run.vx / 1500, run.hitFlash);
+    }
+
+    for (const p of particles) {
+      ctx.globalAlpha = clamp(p.life, 0, 1); ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    // gust warnings at screen edges
+    if (mode === "flying" || mode === "landing") {
+      for (const gu of gusts) {
+        const onScreen = gu.x > 0 && gu.x < W;
+        if (onScreen || gu.hit) continue;
+        const y = altToY(gu.alt);
+        if (y < 0 || y > H) continue;
+        const ex = gu.dir > 0 ? 14 : W - 14;
+        ctx.fillStyle = "rgba(255,255,255,.9)";
+        ctx.beginPath();
+        ctx.moveTo(ex + gu.dir * 10, y); ctx.lineTo(ex - gu.dir * 6, y - 9); ctx.lineTo(ex - gu.dir * 6, y + 9);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+  }
+
+  function drawClouds(par, band, alpha, scale) {
+    const fade = clamp(1 - (run.alt - 2200) / 1200, 0, 1);
+    if (fade <= 0) return;
+    const viewAlt = run.alt * par;
+    const ky = kiteScreenY();
+    const minB = Math.floor((viewAlt - (H - ky) / PPM) / band) - 1;
+    const maxB = Math.ceil((viewAlt + ky / PPM) / band) + 1;
+    for (let b = Math.max(1, minB); b <= maxB; b++) {
+      const seed = b * 7.31 + par * 100;
+      if (hash(seed) < 0.35) continue;
+      const cAlt = b * band + hash(seed + 1) * band;
+      const y = ky - (cAlt - viewAlt) * PPM;
+      const drift = (t * (8 + hash(seed + 3) * 14) * (par < 1 ? 0.5 : 1)) % (W + 400);
+      const x = ((hash(seed + 2) * (W + 400) + drift) % (W + 400)) - 200;
+      const s = (0.6 + hash(seed + 4) * 0.8) * (par < 1 ? 0.7 : 1);
+      ctx.fillStyle = `rgba(255,255,255,${alpha * fade})`;
+      cloud(x, y, s * 50);
+    }
+  }
+  function cloud(x, y, r) {
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.6, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.6, y - r * 0.25, r * 0.55, 0, Math.PI * 2);
+    ctx.arc(x + r * 1.2, y, r * 0.5, 0, Math.PI * 2);
+    ctx.arc(x - r * 0.55, y + r * 0.08, r * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawMarkers() {
+    const step = run.alt > 1200 ? 250 : run.alt > 300 ? 100 : 25;
+    const ky = kiteScreenY();
+    const lo = Math.floor((run.alt - (H - ky) / PPM) / step) * step;
+    const hi = run.alt + ky / PPM;
+    ctx.font = "800 12px Nunito, system-ui, sans-serif";
+    ctx.textAlign = "right";
+    for (let a = Math.max(step, lo); a <= hi; a += step) {
+      const y = altToY(a);
+      const dark = run.alt > 900;
+      ctx.strokeStyle = dark ? "rgba(255,255,255,.35)" : "rgba(22,35,63,.25)";
+      ctx.fillStyle = dark ? "rgba(255,255,255,.7)" : "rgba(22,35,63,.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(W - 14, y); ctx.lineTo(W - 4, y); ctx.stroke();
+      ctx.fillText(a + " m", W - 18, y + 4);
+    }
+    // rope limit line
+    const ly = altToY(run.ropeLen);
+    if (ly > -10 && ly < H + 10) {
+      ctx.setLineDash([8, 8]); ctx.strokeStyle = "rgba(255,90,78,.7)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, ly - 30); ctx.lineTo(W, ly - 30); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,90,78,.95)"; ctx.textAlign = "left";
+      ctx.fillText("Rope limit " + run.ropeLen + " m", 12, ly - 36);
+    }
+  }
+
+  function drawGust(g) {
+    const y = altToY(g.alt);
+    const tail = g.x - g.dir * g.len;
+    const grad = ctx.createLinearGradient(tail, 0, g.x, 0);
+    grad.addColorStop(0, "rgba(255,255,255,0)");
+    grad.addColorStop(1, g.hit ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.95)");
+    ctx.strokeStyle = grad; ctx.lineCap = "round";
+    for (let i = -1; i <= 1; i++) {
+      ctx.lineWidth = g.th * (i === 0 ? 1 : 0.45);
+      ctx.beginPath();
+      const off = i * g.th * 1.4;
+      ctx.moveTo(tail, y + off);
+      ctx.quadraticCurveTo((tail + g.x) / 2, y + off + Math.sin(t * 8 + i) * 4, g.x - g.dir * Math.abs(i) * 20, y + off);
+      ctx.stroke();
+    }
+  }
+
+  function drawGround(gy) {
+    // hills
+    ctx.fillStyle = "#7cc96b";
+    ctx.beginPath(); ctx.moveTo(0, gy + 10);
+    for (let x = 0; x <= W; x += 20) ctx.lineTo(x, gy - 12 - Math.sin(x / 140) * 14 - Math.sin(x / 57) * 5);
+    ctx.lineTo(W, H + 400); ctx.lineTo(0, H + 400); ctx.fill();
+    ctx.fillStyle = "#5fb455";
+    ctx.fillRect(0, gy, W, H + 400);
+    // little trees
+    for (let i = 0; i < 6; i++) {
+      const tx = hash(i + 40) * W; if (Math.abs(tx - W / 2) < 50) continue;
+      ctx.fillStyle = "#6b4a2b"; ctx.fillRect(tx - 3, gy - 18, 6, 18);
+      ctx.fillStyle = "#3f9a4a"; ctx.beginPath(); ctx.arc(tx, gy - 26, 14, 0, Math.PI * 2); ctx.fill();
+    }
+    // flyer
+    const px = W / 2, py = gy;
+    ctx.strokeStyle = "#16233f"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px, py - 20); ctx.lineTo(px + 7, py); ctx.stroke();
+    ctx.fillStyle = "#ff5a4e"; ctx.fillRect(px - 7, py - 38, 14, 20);
+    ctx.beginPath(); ctx.moveTo(px - 4, py - 34); ctx.lineTo(px - 4, py - 48); ctx.stroke();
+    ctx.fillStyle = "#f3c69b"; ctx.beginPath(); ctx.arc(px, py - 46, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#16233f"; ctx.beginPath(); ctx.arc(px, py - 49, 7, Math.PI, 0); ctx.fill();
+    // reel
+    ctx.fillStyle = "#c9a36b"; ctx.beginPath(); ctx.arc(px - 6, py - 46, 5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function drawRope(x1, y1, x2, y2, broken) {
+    const k = clamp(run.hp / run.maxHp, 0, 1);
+    let col = k > 0.5 ? "rgba(255,255,255,.95)" : k > 0.25 ? "#ffb627" : "#ff4b3e";
+    if (k <= 0.25 && !broken && Math.sin(t * 20) > 0.3) col = "#ffd0c8";
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6 + k;
+    const sag = 40 + run.alt * 0.04 + Math.sin(t * 1.3) * 6;
+    const cx = (x1 + x2) / 2 + 60, cy = (y1 + y2) / 2 + sag;
+    if (broken) {
+      // dangling broken end from the reel
+      ctx.beginPath(); ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(x1 + 50, y1 - 40, x1 + 30 + Math.sin(t * 4) * 8, y1 - 90 + run.freeT * 40);
+      ctx.stroke();
+      return;
+    }
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2); ctx.stroke();
+  }
+
+  function drawKite(x, y, tilt, flash) {
+    const K = KITES[mode === "menu" ? save.kite : save.kite];
+    const lvl = save.kite;
+    const s = 1 + lvl * 0.05;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(s, s);
+    // tail
+    const tailLen = 6 + lvl;
+    ctx.strokeStyle = K.trim; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 28);
+    const pts = [];
+    for (let i = 1; i <= tailLen; i++) {
+      const px = Math.sin(t * 5 - i * 0.7) * (4 + i * 1.2), py = 28 + i * 9;
+      ctx.lineTo(px, py); pts.push([px, py]);
+    }
+    ctx.stroke();
+    for (let i = 1; i < pts.length; i += 2) {
+      ctx.fillStyle = i % 4 === 1 ? K.color : K.trim;
+      ctx.save(); ctx.translate(pts[i][0], pts[i][1]); ctx.rotate(Math.sin(t * 5 - i) * 0.6);
+      ctx.fillRect(-6, -2, 12, 4); ctx.restore();
+    }
+    // body
+    ctx.fillStyle = K.color;
+    ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(22, -4); ctx.lineTo(0, 28); ctx.lineTo(-22, -4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = K.trim; ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(22, -4); ctx.lineTo(0, -4); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0, 28); ctx.lineTo(-22, -4); ctx.lineTo(0, -4); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "rgba(22,35,63,.6)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, 28); ctx.moveTo(-22, -4); ctx.lineTo(22, -4); ctx.stroke();
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${flash * 0.8})`;
+      ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(22, -4); ctx.lineTo(0, 28); ctx.lineTo(-22, -4); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---------- HUD ----------
+  let lastHud = 0;
+  function hud() {
+    $("hScore").textContent = fmt(run.score);
+    $("hMoney").textContent = "$" + fmt(save.money);
+    $("hAlt").textContent = fmt(run.alt) + " m";
+    $("hMax").textContent = "rope " + fmt(run.ropeLen) + " m";
+    const k = clamp(run.hp / run.maxHp, 0, 1);
+    const bar = $("hRope"); bar.style.width = (k * 100).toFixed(1) + "%";
+    bar.style.background = k > 0.5 ? "#2fb36b" : k > 0.25 ? "#ffb627" : "#ff4b3e";
+    const drain = ropeDrain(run.alt);
+    $("hRopeTxt").textContent = `${Math.ceil(run.hp)} / ${run.maxHp}` + (drain > 0 && mode !== "menu" ? ` · −${drain.toFixed(1)}/s` : "");
+    const [b, name] = windName(run.alt);
+    $("hWind").textContent = name; $("hBft").textContent = b <= 12 ? "Beaufort " + b : "Beaufort 12+";
+    $("landBtn").hidden = mode !== "flying";
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    update(dt); draw();
+    if (now - lastHud > 80) { hud(); lastHud = now; }
+    requestAnimationFrame(frame);
+  }
+  showMenu(null);
+  requestAnimationFrame(frame);
+  // save money periodically during flight
+  setInterval(() => { if (mode !== "menu") persist(); }, 3000);
+})();
+</script>
