@@ -165,7 +165,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     <div class="summary" id="runSummary" hidden>
       <div><small>Score</small><b id="sScore">0</b></div>
       <div><small>Earned</small><b id="sEarn">$0</b></div>
-      <div><small>Distance</small><b id="sTop">0 m</b></div>
+      <div><small>Top height</small><b id="sTop">0 m</b></div>
     </div>
     <div class="wallet"><span class="cash" id="wCash">$0</span><span class="best" id="wBest">Best score 0 · Farthest 0 m</span></div>
     <div class="shop" id="shop"></div>
@@ -179,42 +179,68 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 <script>
 (() => {
   // ---------- Tuning ----------
-  const GRAVITY = 22, ANGLE = 0.45; // launch angle in radians (~26°)
+  // Every upgrade level is a big jump. Heights shown to the player grow exponentially with the
+  // kite's real height on screen, so a strong kite climbs from the town to the clouds, space,
+  // the Moon, the planets, the Sun and finally the galaxy.
+  const GRAVITY = 22, ANGLE = 1.0; // launch angle in radians (~57°)
+  const SHOWN = y => { const v = Math.max(0, y); return v * Math.exp(v / 130); };
+  const unshown = Y => { let a = 0, b = 4000; for (let i = 0; i < 50; i++) { const m = (a + b) / 2; SHOWN(m) < Y ? a = m : b = m; } return a; };
   const WIND = [
-    { name: "Breeze",     v: 34,  cost: 0 },     { name: "Gust",      v: 46,  cost: 40 },
-    { name: "Squall",     v: 62,  cost: 120 },   { name: "Gale",      v: 82,  cost: 320 },
-    { name: "Storm",      v: 108, cost: 750 },   { name: "Tempest",   v: 140, cost: 1700 },
-    { name: "Cyclone",    v: 180, cost: 3800 },  { name: "Typhoon",   v: 230, cost: 8000 },
-    { name: "Hurricane",  v: 290, cost: 16000 }, { name: "Jet stream", v: 370, cost: 32000 },
+    { name: "Breeze", v: 30, cost: 0 },          { name: "Gust", v: 44, cost: 30 },
+    { name: "Squall", v: 60, cost: 65 },         { name: "Gale", v: 78, cost: 130 },
+    { name: "Storm", v: 98, cost: 250 },         { name: "Tempest", v: 120, cost: 480 },
+    { name: "Cyclone", v: 144, cost: 1000 },     { name: "Typhoon", v: 170, cost: 2600 },
+    { name: "Hurricane", v: 198, cost: 8500 },   { name: "Jet stream", v: 228, cost: 40000 },
+    { name: "Solar wind", v: 260, cost: 250000 },{ name: "Cosmic storm", v: 295, cost: 2300000 },
   ];
+  // the height a full-power blast reaches with a kite of the same level (shown in the shop)
+  const REACH = [19, 43, 95, 214, 519, 1404, 4416, 16874, 81820, 527032, 4730211, 67350049];
   const KITES = [
-    { name: "Paper Diamond", drag: .30,  sink: 16,  cost: 0,     color: "#ff5a4e", trim: "#ffd84d" },
-    { name: "Nylon Delta",   drag: .26,  sink: 15,  cost: 60,    color: "#ff8a3d", trim: "#ffffff" },
-    { name: "Ripstop Sled",  drag: .22,  sink: 14,  cost: 180,   color: "#ffc93c", trim: "#2c6bff" },
-    { name: "Box Kite",      drag: .18,  sink: 13,  cost: 450,   color: "#3fc380", trim: "#16233f" },
-    { name: "Stunt Foil",    drag: .15,  sink: 12,  cost: 1000,  color: "#2fa8ff", trim: "#ffe14d" },
-    { name: "Carbon Delta",  drag: .12,  sink: 11,  cost: 2200,  color: "#7b5cff", trim: "#ffffff" },
-    { name: "Storm Falcon",  drag: .10,  sink: 10,  cost: 4800,  color: "#e8467c", trim: "#16233f" },
-    { name: "Glide Master",  drag: .08,  sink: 9.5, cost: 9500,  color: "#16233f", trim: "#ffb627" },
-    { name: "Aurora Wing",   drag: .065, sink: 9,   cost: 19000, color: "#20d3c2", trim: "#ff5aa5" },
-    { name: "Star Glider",   drag: .05,  sink: 8.5, cost: 38000, color: "#ffd700", trim: "#7b5cff" },
+    { name: "Paper Diamond", drag: .30,  sink: 16,  cost: 0 },
+    { name: "Nylon Delta",   drag: .26,  sink: 15,  cost: 35 },
+    { name: "Ripstop Sled",  drag: .22,  sink: 14,  cost: 80 },
+    { name: "Box Kite",      drag: .19,  sink: 13,  cost: 150 },
+    { name: "Stunt Foil",    drag: .16,  sink: 12,  cost: 300 },
+    { name: "Carbon Delta",  drag: .135, sink: 11,  cost: 560 },
+    { name: "Storm Falcon",  drag: .115, sink: 10,  cost: 1200 },
+    { name: "Glide Master",  drag: .10,  sink: 9.5, cost: 3100 },
+    { name: "Aurora Wing",   drag: .088, sink: 9,   cost: 10000 },
+    { name: "Star Glider",   drag: .077, sink: 8.5, cost: 48000 },
+    { name: "Comet Sail",    drag: .068, sink: 8,   cost: 300000 },
+    { name: "Galaxy Kite",   drag: .06,  sink: 7.5, cost: 2800000 },
   ];
   const LENGTH = [
-    { v: 40, cost: 0 }, { v: 80, cost: 50 }, { v: 140, cost: 150 }, { v: 240, cost: 400 },
-    { v: 400, cost: 900 }, { v: 650, cost: 2000 }, { v: 1000, cost: 4500 }, { v: 1600, cost: 9000 },
-    { v: 2500, cost: 18000 }, { v: 4000, cost: 36000 },
+    { v: 40, cost: 0 }, { v: 75, cost: 25 }, { v: 135, cost: 60 }, { v: 220, cost: 115 },
+    { v: 340, cost: 220 }, { v: 500, cost: 430 }, { v: 720, cost: 900 }, { v: 990, cost: 2300 },
+    { v: 1320, cost: 7500 }, { v: 1740, cost: 36000 }, { v: 2250, cost: 220000 }, { v: 2900, cost: 2000000 },
   ];
   const STRENGTH = [
-    { v: 100, cost: 0, name: "Cotton string" }, { v: 150, cost: 40, name: "Twine" },
-    { v: 220, cost: 130, name: "Braided nylon" }, { v: 320, cost: 350, name: "Polyester line" },
-    { v: 450, cost: 800, name: "Spectra cord" }, { v: 650, cost: 1800, name: "Kevlar cord" },
-    { v: 900, cost: 4000, name: "Dyneema rope" }, { v: 1250, cost: 8500, name: "Steel-core rope" },
-    { v: 1700, cost: 17000, name: "Titan braid" }, { v: 2400, cost: 34000, name: "Sky cable" },
+    { v: 100, cost: 0, name: "Cotton string" }, { v: 150, cost: 20, name: "Twine" },
+    { v: 220, cost: 45, name: "Braided nylon" }, { v: 320, cost: 90, name: "Polyester line" },
+    { v: 450, cost: 170, name: "Spectra cord" }, { v: 650, cost: 330, name: "Kevlar cord" },
+    { v: 900, cost: 700, name: "Dyneema rope" }, { v: 1250, cost: 1800, name: "Steel-core rope" },
+    { v: 1700, cost: 6000, name: "Titan braid" }, { v: 2400, cost: 28000, name: "Sky cable" },
+    { v: 3300, cost: 170000, name: "Star thread" }, { v: 4500, cost: 1600000, name: "Comet cable" },
   ];
+  const ZONES = [
+    { at: 0, name: "Seaside town" },
+    { at: 300, name: "The clouds ☁️" },
+    { at: 3000, name: "High sky" },
+    { at: 20000, name: "Edge of space 🌌" },
+    { at: 100000, name: "Outer space 🛰️" },
+    { at: 400000, name: "The Moon 🌕" },
+    { at: 1800000, name: "The planets 🪐" },
+    { at: 12000000, name: "The Sun ☀️" },
+    { at: 40000000, name: "The galaxy 🌀" },
+  ];
+  const zoneOf = Y => { let z = 0; for (let i = 0; i < ZONES.length; i++) if (Y >= ZONES[i].at) z = i; return z; };
+  // where the big sky objects sit, in on-screen height
+  const OBJ = { sat1: unshown(130000), sat2: unshown(200000), moon: unshown(400000), mars: unshown(1800000),
+    ringed: unshown(4000000), sun: unshown(12000000), galaxy: unshown(40000000) };
 
   // ---------- Save ----------
   const SAVE_KEY = "skystring-save-v3";
-  const fresh = () => ({ money: 0, wind: 0, kite: 0, len: 0, str: 0, bestScore: 0, bestDist: 0 });
+  const fresh = () => ({ money: 0, wind: 0, kite: 0, len: 0, str: 0, bestScore: 0, bestDist: 0, bestHeight: 0, bestZone: 0 });
   let save = fresh();
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && typeof s.money === "number") save = Object.assign(fresh(), s); } catch (e) {}
   const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
@@ -242,7 +268,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     run = {
       x: 7, y: 9, vx: 0, vy: 0,
       hp: STRENGTH[save.str].v, maxHp: STRENGTH[save.str].v, ropeLen: LENGTH[save.len].v,
-      score: 0, earned: 0, far: 0, top: 0, perfect: false,
+      score: 0, earned: 0, far: 0, top: 0, peak: 0, zone: 0, perfect: false,
       meter: 0, meterDir: 1, taut: false, snapped: false, endT: 0, awayT: 0, spin: 0, snapAt: null,
       shake: 0, flash: 0, reeling: false, lowWarned: false,
     };
@@ -273,16 +299,17 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 
   // ---------- Shop ----------
   const fmt = n => Math.floor(n).toLocaleString("en-US");
+  const fmtM = m => m < 1000 ? `${fmt(m)} m` : m < 10000 ? `${(m / 1000).toFixed(1)} km` : `${fmt(m / 1000)} km`;
   function renderShop() {
     $("wCash").textContent = "$" + fmt(save.money);
-    $("wBest").textContent = `Best score ${fmt(save.bestScore)} · Farthest ${fmt(save.bestDist)} m`;
+    $("wBest").textContent = `Best score ${fmt(save.bestScore)} · Highest: ${ZONES[save.bestZone].name} (${fmtM(save.bestHeight)})`;
     const items = [
-      { key: "wind", title: "Wind blast", table: WIND, desc: "A stronger wind hits the kite harder.",
-        cur: l => `${WIND[l].name} · ${WIND[l].v} m/s`, nxt: l => `${WIND[l].v} m/s` },
+      { key: "wind", title: "Wind blast", table: WIND, desc: "A stronger wind blasts the kite much higher.",
+        cur: l => `${WIND[l].name} · up to ${ZONES[zoneOf(REACH[l])].name}`, nxt: l => `${WIND[l].name}, up to ${ZONES[zoneOf(REACH[l])].name}` },
       { key: "kite", title: "Kite", table: KITES, desc: "A better kite glides farther and falls slower.",
         cur: l => `${KITES[l].name} · glide ${Math.round(100 / KITES[l].drag / 3.33)}`, nxt: l => `glide ${Math.round(100 / KITES[l].drag / 3.33)}` },
       { key: "len", title: "Rope length", table: LENGTH, desc: "More rope lets the kite fly farther before it runs out.",
-        cur: l => `${fmt(LENGTH[l].v)} m of rope`, nxt: l => `${fmt(LENGTH[l].v)} m` },
+        cur: l => `${fmtM(SHOWN(LENGTH[l].v))} of rope`, nxt: l => fmtM(SHOWN(LENGTH[l].v)) },
       { key: "str", title: "Rope strength", table: STRENGTH, desc: "Tougher rope survives the jerk and the wind.",
         cur: l => `${STRENGTH[l].name} · ${fmt(STRENGTH[l].v)} HP`, nxt: l => `${fmt(STRENGTH[l].v)} HP` },
     ];
@@ -315,7 +342,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
       $("runTitle").textContent = title;
       $("sScore").textContent = fmt(run.score);
       $("sEarn").textContent = "$" + fmt(run.earned);
-      $("sTop").textContent = fmt(run.far) + " m";
+      $("sTop").textContent = fmtM(run.peak);
       $("flyBtn").textContent = "Fly again! 🪁";
     }
     renderShop();
@@ -337,9 +364,11 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     if (run.endT > 0) return;
     run.endT = 0.001;
     if (bonus) { const b = run.earned * 0.25; run.earned += b; save.money += b; toast(`Safe landing! +$${fmt(b)} bonus`, 1500); }
-    run.score = Math.floor(run.far * 10 * (run.perfect ? 1.2 : 1));
+    run.score = scoreOf();
     save.bestScore = Math.max(save.bestScore, run.score);
     save.bestDist = Math.max(save.bestDist, Math.floor(run.far));
+    save.bestHeight = Math.max(save.bestHeight, Math.floor(run.peak));
+    save.bestZone = Math.max(save.bestZone, run.zone);
     persist();
     setTimeout(() => showMenu(title), 1300);
   }
@@ -348,8 +377,8 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, k) => a + (b - a) * k;
   function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
-  const ropeDrain = (x, y) => Math.pow(Math.max(y, 0) / 30, 1.1) + x / 150; // HP/s, harder wind higher up
-  const payFor = (a0, a1) => (a1 - a0) * 0.8 * (1 + (a0 + a1) / 300);
+  const ropeDrain = (x, y) => Math.pow(Math.max(y, 0) / 40, 1.05) + x / 300; // HP/s, harder wind higher up
+  const scoreOf = () => Math.floor((run.peak + run.far) * (run.perfect ? 1.2 : 1));
 
   const PERFECT_LO = 0.86, PERFECT_HI = 0.97;
   function sendWind() {
@@ -395,8 +424,27 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     }
     if (blast) { blast.t += dt; if (blast.t > 1.2) blast = null; }
 
+    // high up the action speeds up so long trips to space don't drag on
+    const ts = 1 + Math.max(run.y, 0) / 500;
+    let rem = dt * ts;
+    while (rem > 1e-6 && run.endT === 0) { const h = Math.min(rem, 1 / 90); step(h); rem -= h; }
+    if (run.snapped) run.awayT += dt;
+
+    // money: paid for new height (shown) and new distance; half after the rope snaps
+    const Y = SHOWN(run.y);
+    const half = run.snapped ? 0.5 : 1;
+    if (Y > run.peak) { const pay = (Y - run.peak) * 0.5 * half; run.earned += pay; save.money += pay; run.peak = Y; }
+    if (run.x > run.far) { const pay = (run.x - run.far) * 0.8 * half; run.earned += pay; save.money += pay; run.far = run.x; }
+    run.top = Math.max(run.top, run.y);
+    if (run.endT === 0) run.score = scoreOf();
+    const z = zoneOf(run.peak);
+    if (z > run.zone) { run.zone = z; toast(`Welcome to ${ZONES[z].name}!`, 2200); run.flash = 0.6; }
+
+    followCam(dt); // keep watching the kite, even after it breaks loose
+  }
+
+  function step(dt) {
     const K = KITES[save.kite];
-    const prevX = run.x;
     // flight physics
     if (!run.snapped) {
       run.vx *= Math.exp(-K.drag * dt);
@@ -444,18 +492,12 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     if (run.y <= 0) {
       run.y = 0; run.vx = 0; run.vy = 0;
       if (!run.snapped) finish("Safe landing! 🪁", true);
-      else finish(`Rope snapped! The kite drifted to ${fmt(run.far)} m 💨`, false);
+      else finish(`Rope snapped! The kite drifted ${fmtM(run.far)} away 💨`, false);
+      return;
     }
-
-    // money: paid for each new metre of distance, even after the kite breaks loose
-    if (run.x > run.far) {
-      const pay = payFor(run.far, run.x) * (run.snapped ? 0.5 : 1); run.earned += pay; save.money += pay; run.far = run.x;
-    }
-    run.top = Math.max(run.top, run.y);
-    if (run.endT === 0) run.score = Math.floor(run.far * 10 * (run.perfect ? 1.2 : 1));
 
     // wind wears the rope
-    if (!run.snapped && run.endT === 0) run.hp -= ropeDrain(run.x, run.y) * dt;
+    if (!run.snapped) run.hp -= ropeDrain(run.x, run.y) * dt;
     if (run.hp < run.maxHp * 0.25 && run.hp > 0 && !run.lowWarned) { toast("Rope is fraying!", 1500); run.lowWarned = true; }
     if (run.hp <= 0 && !run.snapped) {
       run.hp = 0; run.snapped = true; run.shake = 0.6;
@@ -463,14 +505,11 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
       const [sx, sy] = toScreen(run.x, run.y); burst(sx, sy, 26, "#ff8a3d");
       toast("SNAP! 💥 The kite is flying free!", 1600);
     }
-    if (run.snapped) run.awayT += dt;
-
-    followCam(dt); // keep watching the kite, even after it breaks loose
   }
 
   function followCam(dt) {
     const speed = Math.hypot(run.vx, run.vy);
-    const targetPpm = clamp(8 - speed / 25, 2.2, 8);
+    const targetPpm = clamp(8 - speed / 25, 2, 8);
     cam.ppm = lerp(cam.ppm, targetPpm, clamp(dt * 1.5, 0, 1));
     const ground = H - 90;
     // kite sits 40% across; keep the flyer on screen at the start
@@ -494,7 +533,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ["#8fe7ff", "#b7a4ff", "#ffa8d8"], ["#a0f0e0", "#8fc7ff", "#d5a8ff"], ["#ffd59a", "#ffa8c8", "#c6a4ff"],
     ["#9ff5c2", "#8fe7ff", "#a9a4ff"], ["#8fd0ff", "#ff9fd6", "#ffe08a"], ["#c5a0ff", "#8fe7ff", "#ffb3e1"],
     ["#ff9fc4", "#ffd0a0", "#a4b8ff"], ["#7ff0ff", "#ff8fd6", "#b7ff9f"], ["#b9fffb", "#d7a8ff", "#ff9fb8"],
-    ["#fff0a0", "#ffb0e0", "#9fe8ff"],
+    ["#fff0a0", "#ffb0e0", "#9fe8ff"], ["#ffffff", "#9fe8ff", "#ffd36e"], ["#ff9fe0", "#a07bff", "#5fe0ff"],
   ];
   const PETAL = ["#ffc7dd", "#ffb3d1", "#ffe1ec"];
   let petals = [];
@@ -509,59 +548,20 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
   function draw() {
     ctx.save();
     if (run.shake > 0) ctx.translate((Math.random() - 0.5) * 14 * run.shake, (Math.random() - 0.5) * 14 * run.shake);
-    const hk = clamp(cam.y / 700, 0, 1);
     const gy = groundYs();
-    const hy = H * 0.6 + cam.y * cam.ppm * 0.12; // horizon
+    const hy = H * 0.6 + cam.y * cam.ppm * 0.5; // horizon sinks away as the kite climbs
+    const viewY = SHOWN(cam.y + (H * 0.5) / cam.ppm);
+    const lg = Math.log10(viewY + 1);
 
-    // sky
-    const g = ctx.createLinearGradient(0, 0, 0, hy);
-    g.addColorStop(0, mixc("#3d6fd6", "#221d6e", hk));
-    g.addColorStop(0.55, mixc("#9cb4f2", "#5a4fb8", hk));
-    g.addColorStop(0.85, mixc("#e9c3e6", "#9a7fd6", hk));
-    g.addColorStop(1, mixc("#ffd2b8", "#c99ad6", hk));
-    ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, hy + 22);
-    if (hk > 0.3) { // stars when very high
-      for (let i = 0; i < 60; i++) {
-        ctx.fillStyle = `rgba(255,255,255,${(hk - 0.3) * (0.5 + 0.5 * Math.sin(t * 2 + i))})`;
-        ctx.fillRect(hash(i) * W, hash(i + 9) * hy * 0.6, 2, 2);
-      }
-    }
+    // sky colour by zone
+    const [cTop, cMid, cBot] = skyColors(lg);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, cTop); g.addColorStop(0.55, cMid); g.addColorStop(1, cBot);
+    ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
+    drawSpace(lg);
 
-    // sun with glowing rings
-    const sx = W * 0.82, sy = hy - 26;
-    const sg = ctx.createRadialGradient(sx, sy, 4, sx, sy, 120);
-    sg.addColorStop(0, "rgba(255,248,210,.95)"); sg.addColorStop(0.3, "rgba(255,230,190,.5)"); sg.addColorStop(1, "rgba(255,210,200,0)");
-    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, 120, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#fff7d6"; ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "rgba(255,240,200,.8)"; ctx.lineWidth = 1.5;
-    for (let r = 34; r <= 58; r += 12) { ctx.beginPath(); ctx.arc(sx, sy, r + Math.sin(t + r) * 1.5, 0, Math.PI * 2); ctx.stroke(); }
-
-    // sea with scalloped waves
-    const sea = ctx.createLinearGradient(0, hy, 0, H);
-    sea.addColorStop(0, "#f3c3c8"); sea.addColorStop(0.12, "#a9b4ee"); sea.addColorStop(1, "#5b6fd0");
-    ctx.fillStyle = sea; ctx.fillRect(-20, hy, W + 40, H - hy + 20);
-    ctx.fillStyle = "rgba(255,245,215,.7)";
-    for (let i = 0; i < 6; i++) ctx.fillRect(sx - 40 + i * 4 - 30 * hash(i), hy + 6 + i * 7, 80 - i * 8 + 60 * hash(i), 2);
-    ctx.strokeStyle = "rgba(220,230,255,.45)"; ctx.lineWidth = 1.5;
-    const wo = (cam.x * cam.ppm * 0.05 + t * 6) % 28;
-    for (let row = 0, y = hy + 30; y < H + 20; row++, y += 14 + row * 1.5) {
-      const rr = 7 + row * 0.8;
-      for (let x = -wo - (row % 2) * rr; x < W + 30; x += rr * 2) { ctx.beginPath(); ctx.arc(x, y, rr, Math.PI, Math.PI * 2); ctx.stroke(); }
-    }
-    // islands
-    ctx.fillStyle = "#6f78c8";
-    const io = cam.x * cam.ppm * 0.04;
-    for (let i = 0; i < 6; i++) {
-      const ix = ((hash(i + 3) * W * 1.6 - io) % (W * 1.6) + W * 1.6) % (W * 1.6) - W * 0.3;
-      const iw = 40 + hash(i + 7) * 70;
-      ctx.beginPath(); ctx.ellipse(ix, hy + 2, iw, 6 + hash(i) * 6, 0, Math.PI, Math.PI * 2); ctx.fill();
-    }
-
-    drawClouds(0.06, 0.3, hy, 0.75);
-    drawBirds(hy);
-    drawTown(gy, hy);
-    drawClouds(0.16, 0.6, hy, 1);
-    drawTerraces(gy);
+    if (hy < H + 160) drawLowWorld(gy, hy);
+    drawCloudLayer(false);
 
     const speed = Math.hypot(run.vx, run.vy);
     if (mode === "fly" && speed > 30) {
@@ -593,9 +593,48 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
       ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
     }
     ctx.globalAlpha = 1;
-    drawPetals();
+    drawCloudLayer(true);
+    if (SHOWN(cam.y) < 600) drawPetals();
     ctx.restore();
     if (mode === "aim") drawMeter();
+  }
+
+  function drawLowWorld(gy, hy) {
+    // sun with glowing rings
+    const sx = W * 0.82, sy = hy - 26;
+    const sg = ctx.createRadialGradient(sx, sy, 4, sx, sy, 120);
+    sg.addColorStop(0, "rgba(255,248,210,.95)"); sg.addColorStop(0.3, "rgba(255,230,190,.5)"); sg.addColorStop(1, "rgba(255,210,200,0)");
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, 120, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff7d6"; ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,240,200,.8)"; ctx.lineWidth = 1.5;
+    for (let r = 34; r <= 58; r += 12) { ctx.beginPath(); ctx.arc(sx, sy, r + Math.sin(t + r) * 1.5, 0, Math.PI * 2); ctx.stroke(); }
+
+    // sea with scalloped waves
+    const sea = ctx.createLinearGradient(0, hy, 0, H);
+    sea.addColorStop(0, "#f3c3c8"); sea.addColorStop(0.12, "#a9b4ee"); sea.addColorStop(1, "#5b6fd0");
+    ctx.fillStyle = sea; ctx.fillRect(-20, hy, W + 40, H - hy + 20);
+    ctx.fillStyle = "rgba(255,245,215,.7)";
+    for (let i = 0; i < 6; i++) ctx.fillRect(sx - 40 + i * 4 - 30 * hash(i), hy + 6 + i * 7, 80 - i * 8 + 60 * hash(i), 2);
+    ctx.strokeStyle = "rgba(220,230,255,.45)"; ctx.lineWidth = 1.5;
+    const wo = (cam.x * cam.ppm * 0.05 + t * 6) % 28;
+    for (let row = 0, y = hy + 30; y < H + 20; row++, y += 14 + row * 1.5) {
+      const rr = 7 + row * 0.8;
+      for (let x = -wo - (row % 2) * rr; x < W + 30; x += rr * 2) { ctx.beginPath(); ctx.arc(x, y, rr, Math.PI, Math.PI * 2); ctx.stroke(); }
+    }
+    // islands
+    ctx.fillStyle = "#6f78c8";
+    const io = cam.x * cam.ppm * 0.04;
+    for (let i = 0; i < 6; i++) {
+      const ix = ((hash(i + 3) * W * 1.6 - io) % (W * 1.6) + W * 1.6) % (W * 1.6) - W * 0.3;
+      const iw = 40 + hash(i + 7) * 70;
+      ctx.beginPath(); ctx.ellipse(ix, hy + 2, iw, 6 + hash(i) * 6, 0, Math.PI, Math.PI * 2); ctx.fill();
+    }
+
+    if (SHOWN(cam.y) < 500) drawClouds(0.06, 0.3, hy, 0.75);
+    drawBirds(hy);
+    drawTown(gy, hy);
+    if (SHOWN(cam.y) < 500) drawClouds(0.16, 0.6, hy, 1);
+    drawTerraces(gy);
   }
 
   function drawPetals() {
@@ -976,6 +1015,197 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ctx.restore();
   }
 
+
+  // ---------- Sky zones ----------
+  const SKY_STOPS = [
+    [0,    "#3d6fd6", "#9cb4f2", "#ffd2b8"],
+    [2.5,  "#3d78e0", "#a9c4f5", "#f3d9ee"],
+    [3.4,  "#3466d0", "#8fb2f2", "#d2e2fb"],
+    [4.3,  "#1a2c86", "#3e5cc4", "#8ea8ee"],
+    [5.0,  "#070a2c", "#141c58", "#3a4aa0"],
+    [5.6,  "#04041a", "#0b0b2e", "#17183f"],
+    [6.4,  "#070520", "#160d3c", "#2a1650"],
+    [7.0,  "#1a0a24", "#5a1f30", "#c45a2e"],
+    [7.25, "#2a0a1c", "#8a2a22", "#f08a3a"],
+    [7.5,  "#0b0322", "#2a0f52", "#5c1f7c"],
+    [8.2,  "#050018", "#1d0a40", "#3d1260"],
+  ];
+  function skyColors(lg) {
+    let i = 0; while (i < SKY_STOPS.length - 2 && lg > SKY_STOPS[i + 1][0]) i++;
+    const a = SKY_STOPS[i], b = SKY_STOPS[i + 1];
+    const k = clamp((lg - a[0]) / (b[0] - a[0]), 0, 1);
+    return [1, 2, 3].map(j => mixc(a[j], b[j], k));
+  }
+  const objY = y => (H - 90) - (y - cam.y) * cam.ppm;
+  const objScale = () => clamp(cam.ppm / 2.6, 0.8, 1.8);
+
+  function drawSpace(lg) {
+    // stars
+    const sa = clamp((lg - 4.1) / 0.8, 0, 1);
+    if (sa > 0) {
+      for (let i = 0; i < 140; i++) {
+        const x = hash(i) * W, y = ((hash(i + 300) * H * 2 + cam.y * cam.ppm * 0.03) % (H + 10));
+        const tw = 0.55 + 0.45 * Math.sin(t * (1 + hash(i + 7) * 3) + i);
+        ctx.fillStyle = `rgba(255,255,255,${sa * tw})`;
+        const r = hash(i + 50) > 0.9 ? 2.4 : 1.4; ctx.fillRect(x, y, r, r);
+      }
+    }
+    // Earth's curve far below, shrinking as you leave
+    const ea = clamp((lg - 4.2) / 0.6, 0, 1) * clamp(1 - (lg - 6.6) / 0.6, 0, 1);
+    if (ea > 0) {
+      const R = W * 1.3 / (1 + Math.max(0, lg - 4.6) * 1.6);
+      const cy = H + R * 0.82 + Math.max(0, lg - 5.4) * H * 0.35;
+      ctx.globalAlpha = ea;
+      const glow = ctx.createRadialGradient(W / 2, cy, R * 0.98, W / 2, cy, R * 1.08);
+      glow.addColorStop(0, "rgba(140,200,255,.9)"); glow.addColorStop(1, "rgba(140,200,255,0)");
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(W / 2, cy, R * 1.08, 0, Math.PI * 2); ctx.fill();
+      const eg = ctx.createLinearGradient(0, cy - R, 0, cy);
+      eg.addColorStop(0, "#5fa8ff"); eg.addColorStop(0.4, "#3a78d8"); eg.addColorStop(1, "#1d3f8f");
+      ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(W / 2, cy, R, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(120,200,130,.75)";
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + (hash(i + 70) - 0.5) * 1.4;
+        ctx.beginPath(); ctx.ellipse(W / 2 + Math.cos(a) * R * 0.85, cy + Math.sin(a) * R * 0.85, R * 0.12, R * 0.05, a + 1.2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = "rgba(255,255,255,.55)";
+      for (let i = 0; i < 8; i++) {
+        const a = -Math.PI / 2 + (hash(i + 90) - 0.5) * 1.6;
+        ctx.beginPath(); ctx.ellipse(W / 2 + Math.cos(a) * R * 0.93, cy + Math.sin(a) * R * 0.93, R * 0.08, R * 0.015, a + Math.PI / 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    const sc = objScale();
+    // satellites
+    for (const [y, fx] of [[OBJ.sat1, 0.25], [OBJ.sat2, 0.72]]) {
+      const sy = objY(y); if (sy < -60 || sy > H + 60) continue;
+      const sx = W * fx + Math.sin(t * 0.3) * 20;
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(0.3 + t * 0.1); ctx.scale(sc, sc);
+      ctx.fillStyle = "#5b7fe0"; ctx.fillRect(-34, -6, 22, 12); ctx.fillRect(12, -6, 22, 12);
+      ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1;
+      for (let k = -30; k < -12; k += 6) { ctx.beginPath(); ctx.moveTo(k, -6); ctx.lineTo(k, 6); ctx.stroke(); }
+      for (let k = 16; k < 34; k += 6) { ctx.beginPath(); ctx.moveTo(k, -6); ctx.lineTo(k, 6); ctx.stroke(); }
+      ctx.fillStyle = "#d9dcf0"; ctx.fillRect(-12, -9, 24, 18);
+      ctx.fillStyle = "#ffd36e"; ctx.fillRect(-12, -9, 24, 4);
+      ctx.fillStyle = (t * 2) % 1 > 0.5 ? "#ff6b8b" : "#552"; ctx.fillRect(-2, 9, 4, 4);
+      ctx.restore();
+    }
+    // the Moon
+    { const sy = objY(OBJ.moon), r = 90 * sc;
+      if (sy > -r * 2 && sy < H + r * 2) {
+        const sx = W * 0.7;
+        const mg = ctx.createRadialGradient(sx, sy, r * 0.9, sx, sy, r * 1.5);
+        mg.addColorStop(0, "rgba(230,230,255,.35)"); mg.addColorStop(1, "rgba(230,230,255,0)");
+        ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(sx, sy, r * 1.5, 0, Math.PI * 2); ctx.fill();
+        const mb = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
+        mb.addColorStop(0, "#f4f2ff"); mb.addColorStop(1, "#b9b6d6");
+        ctx.fillStyle = mb; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(140,135,180,.45)";
+        for (const [cx, cy, cr] of [[-.35, -.2, .18], [.25, .15, .22], [-.05, .45, .12], [.4, -.4, .1], [-.5, .3, .09]]) {
+          ctx.beginPath(); ctx.arc(sx + cx * r, sy + cy * r, cr * r, 0, Math.PI * 2); ctx.fill();
+        }
+      } }
+    // red planet
+    { const sy = objY(OBJ.mars), r = 50 * sc;
+      if (sy > -r * 2 && sy < H + r * 2) {
+        const sx = W * 0.22;
+        const pg = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
+        pg.addColorStop(0, "#ffb08a"); pg.addColorStop(1, "#b8452f");
+        ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.ellipse(sx, sy - r * 0.85, r * 0.3, r * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+      } }
+    // ringed planet
+    { const sy = objY(OBJ.ringed), r = 75 * sc;
+      if (sy > -r * 3 && sy < H + r * 3) {
+        const sx = W * 0.72;
+        ctx.strokeStyle = "rgba(255,220,170,.8)"; ctx.lineWidth = 8 * sc;
+        ctx.beginPath(); ctx.ellipse(sx, sy, r * 1.9, r * 0.45, -0.3, Math.PI, Math.PI * 2); ctx.stroke();
+        const pg = ctx.createLinearGradient(sx, sy - r, sx, sy + r);
+        pg.addColorStop(0, "#ffe2a8"); pg.addColorStop(0.35, "#e7b27a"); pg.addColorStop(0.55, "#f6d39c"); pg.addColorStop(1, "#b9814f");
+        ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "rgba(255,230,190,.95)";
+        ctx.beginPath(); ctx.ellipse(sx, sy, r * 1.9, r * 0.45, -0.3, 0, Math.PI); ctx.stroke();
+      } }
+    // the Sun
+    { const sy = objY(OBJ.sun), r = 190 * sc;
+      if (sy > -r * 3 && sy < H + r * 3) {
+        const sx = W * 0.62;
+        const cg = ctx.createRadialGradient(sx, sy, r * 0.8, sx, sy, r * 2.6);
+        cg.addColorStop(0, "rgba(255,200,90,.7)"); cg.addColorStop(1, "rgba(255,120,60,0)");
+        ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(sx, sy, r * 2.6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "rgba(255,220,120,.5)"; ctx.lineWidth = 6 * sc;
+        for (let i = 0; i < 16; i++) {
+          const a = i / 16 * Math.PI * 2 + t * 0.15, l = r * (1.15 + 0.25 * Math.sin(t * 2 + i));
+          ctx.beginPath(); ctx.moveTo(sx + Math.cos(a) * r * 1.02, sy + Math.sin(a) * r * 1.02); ctx.lineTo(sx + Math.cos(a) * l, sy + Math.sin(a) * l); ctx.stroke();
+        }
+        const sg = ctx.createRadialGradient(sx - r * 0.2, sy - r * 0.2, r * 0.1, sx, sy, r);
+        sg.addColorStop(0, "#fffbe0"); sg.addColorStop(0.5, "#ffd55a"); sg.addColorStop(1, "#ff9a3a");
+        ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(255,150,60,.35)";
+        for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(sx + (hash(i + 3) - 0.5) * r * 1.2, sy + (hash(i + 8) - 0.5) * r * 1.2, r * 0.08, 0, Math.PI * 2); ctx.fill(); }
+      } }
+    // the galaxy
+    { const sy = objY(OBJ.galaxy), r = 230 * sc;
+      if (sy > -r * 2 && sy < H + r * 2) {
+        const sx = W * 0.5;
+        const ng = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 1.3);
+        ng.addColorStop(0, "rgba(255,230,255,.8)"); ng.addColorStop(0.25, "rgba(200,120,255,.35)"); ng.addColorStop(1, "rgba(80,40,160,0)");
+        ctx.fillStyle = ng; ctx.beginPath(); ctx.arc(sx, sy, r * 1.3, 0, Math.PI * 2); ctx.fill();
+        for (let arm = 0; arm < 3; arm++) for (let i = 0; i < 90; i++) {
+          const k = i / 90, a = arm * 2.09 + k * 5.2 + t * 0.08;
+          const rr = k * r, jit = (hash(arm * 100 + i) - 0.5) * 18 * sc;
+          const px = sx + Math.cos(a) * rr + jit, py = sy + Math.sin(a) * rr * 0.55 + jit * 0.5;
+          ctx.fillStyle = i % 3 ? `rgba(190,220,255,${0.9 - k * 0.5})` : `rgba(255,170,230,${0.9 - k * 0.5})`;
+          ctx.fillRect(px, py, 2.2, 2.2);
+        }
+      } }
+    // occasional comets in deep space
+    if (lg > 5.2) {
+      for (let i = 0; i < 2; i++) {
+        const period = 6 + i * 3, ph = ((t + i * 2.3) % period) / period;
+        const cx = lerp(-100, W + 100, ph), cy = H * (0.15 + 0.3 * hash(Math.floor((t + i * 2.3) / period) + i * 9));
+        const tg = ctx.createLinearGradient(cx - 120, cy - 40, cx, cy);
+        tg.addColorStop(0, "rgba(160,220,255,0)"); tg.addColorStop(1, "rgba(220,245,255,.9)");
+        ctx.strokeStyle = tg; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - 120, cy - 40); ctx.lineTo(cx, cy); ctx.stroke();
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+
+  function drawCloudLayer(front) {
+    // a thick band of clouds the kite flies through, between ~300 m and ~3 km
+    const y0 = unshownCache.c0, y1 = unshownCache.c1, rowH = 18, tile = 60;
+    const top = cam.y + (H - 90) / cam.ppm + 40, bot = cam.y - 100 / cam.ppm;
+    if (bot > y1 + 20 || top < y0 - 20) return;
+    const par = front ? 1.15 : 0.8;
+    const left = cam.x * par - (W * 0.4) / cam.ppm - tile, right = cam.x * par + (W * 0.6) / cam.ppm + tile;
+    for (let ry = Math.max(y0, Math.floor(bot / rowH) * rowH); ry <= Math.min(y1, top); ry += rowH) {
+      const dens = Math.sin((ry - y0) / (y1 - y0) * Math.PI);
+      for (let b = Math.floor(left / tile); b <= Math.ceil(right / tile); b++) {
+        const seed = b * 5.3 + ry * 0.71 + (front ? 99 : 0);
+        if (hash(seed) > dens * (front ? 0.35 : 0.8)) continue;
+        const wx = b * tile + hash(seed + 1) * tile, wy = ry + hash(seed + 2) * rowH;
+        const sx = W * 0.4 + (wx - cam.x * par) * cam.ppm, sy = (H - 90) - (wy - cam.y) * cam.ppm;
+        ctx.globalAlpha = front ? 0.75 : 1;
+        blockCloud(sx, sy, (90 + hash(seed + 3) * 130) * clamp(cam.ppm / 3.2, 0.7, 1.6));
+      }
+    }
+    ctx.globalAlpha = 1;
+    // wispy high-sky streaks above the cloud layer
+    if (!front) {
+      const w0 = unshownCache.c1 + 20, w1 = unshownCache.w1;
+      ctx.fillStyle = "rgba(255,255,255,.45)";
+      for (let ry = Math.max(w0, Math.floor(bot / 30) * 30); ry <= Math.min(w1, top); ry += 30) {
+        for (let b = Math.floor(left / 120); b <= Math.ceil(right / 120); b++) {
+          const seed = b * 2.9 + ry;
+          if (hash(seed) < 0.6) continue;
+          const sx = W * 0.4 + (b * 120 + hash(seed + 1) * 120 - cam.x * 0.8) * cam.ppm, sy = (H - 90) - (ry - cam.y) * cam.ppm;
+          ctx.beginPath(); ctx.ellipse(sx, sy, 90 + hash(seed + 2) * 80, 3, -0.05, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+  const unshownCache = { c0: unshown(300), c1: unshown(3000), w1: unshown(20000) };
+
   // ---------- HUD ----------
   let lastHud = 0;
   function hud() {
@@ -987,11 +1217,11 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     const flying = mode === "fly" && !run.snapped && run.endT === 0;
     const drain = ropeDrain(run.x, run.y);
     $("hRopeTxt").textContent = `${Math.ceil(run.hp)} / ${run.maxHp}` + (flying ? ` · −${drain.toFixed(1)}/s` : "");
-    $("hWind").textContent = WIND[save.wind].name; $("hBft").textContent = `Level ${save.wind + 1} · ${WIND[save.wind].v} m/s`;
+    $("hWind").textContent = WIND[save.wind].name; $("hBft").textContent = `Level ${save.wind + 1} of ${WIND.length} · ${WIND[save.wind].v} m/s`;
     $("landBtn").hidden = !(flying && run.taut && !run.reeling);
     const big = $("bigAlt");
     big.hidden = mode === "menu" || mode === "aim";
-    big.innerHTML = `${fmt(Math.max(run.far, 0))} m<small>height ${fmt(Math.max(run.y, 0))} m · rope ${fmt(run.ropeLen)} m</small>`;
+    big.innerHTML = `${fmtM(SHOWN(run.y))}<small>${ZONES[zoneOf(SHOWN(run.y))].name} · ${fmtM(run.far)} away</small>`;
   }
 
   // ---------- Loop ----------
