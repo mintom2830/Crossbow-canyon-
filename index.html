@@ -93,7 +93,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 .wallet { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .wallet .cash { font-family: var(--display); font-weight: 800; font-size: 26px; color: #b97800; font-variant-numeric: tabular-nums; }
 .wallet .best { font-size: 13px; font-weight: 700; opacity: .7; }
-.shop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.shop { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .up {
   border: 2px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
 }
@@ -147,9 +147,9 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
   <div class="chip"><span class="lbl">Score</span><span class="val" id="hScore">0</span></div>
   <div class="chip money"><span class="lbl">Money</span><span class="val" id="hMoney">$0</span></div>
   <div class="chip rope"><span class="lbl">Rope health</span><div class="bar"><i id="hRope"></i></div><span class="sub" id="hRopeTxt">100 / 100</span></div>
-  <div class="chip wind"><span class="lbl">Wind</span><span class="val" id="hWind" style="font-size:16px">Calm</span><span class="sub" id="hBft">Beaufort 0</span></div>
+  <div class="chip wind"><span class="lbl">Wind blast</span><span class="val" id="hWind" style="font-size:16px">Breeze</span><span class="sub" id="hBft">Level 1</span></div>
 </div>
-<div class="bigalt" id="bigAlt" hidden>0 m<small>rope 60 m</small></div>
+<div class="bigalt" id="bigAlt" hidden>0 m<small>rope 40 m</small></div>
 
 <div class="controls"><button class="land" id="landBtn" type="button">Reel in ⤓</button></div>
 <div class="toast" id="toast"></div>
@@ -157,19 +157,19 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 <div class="overlay" id="overlay">
   <div class="card">
     <h1>Sky <span>String</span></h1>
-    <p class="tag" id="tagline">Tap at the right moment to launch your kite into the sky. The higher it goes, the more money you earn. When the rope runs out, the kite jerks to a stop. If the rope holds, the kite falls back down. If the rope snaps, the kite flies away.</p>
+    <p class="tag" id="tagline">Tap at the right moment and a blast of wind hits your kite, sending it flying sideways across the fields. The farther it flies, the more money you earn. When the rope runs out, the kite jerks to a stop. If the rope holds, the kite swings down and lands. If it snaps, the kite flies away.</p>
     <div id="runBox" hidden>
       <p class="sumtitle" id="runTitle">Rope snapped!</p>
     </div>
     <div class="summary" id="runSummary" hidden>
       <div><small>Score</small><b id="sScore">0</b></div>
       <div><small>Earned</small><b id="sEarn">$0</b></div>
-      <div><small>Top height</small><b id="sTop">0 m</b></div>
+      <div><small>Distance</small><b id="sTop">0 m</b></div>
     </div>
-    <div class="wallet"><span class="cash" id="wCash">$0</span><span class="best" id="wBest">Best score 0 · Highest 0 m</span></div>
+    <div class="wallet"><span class="cash" id="wCash">$0</span><span class="best" id="wBest">Best score 0 · Farthest 0 m</span></div>
     <div class="shop" id="shop"></div>
     <button class="fly" id="flyBtn" type="button">Fly! 🪁</button>
-    <p class="how"><b>How to play:</b> a power bar slides back and forth. Tap, click, or press <kbd>Space</kbd> to launch. Stop it in the gold zone for a <b>Perfect</b> launch. While the kite is up, steer with <kbd>←</kbd> <kbd>→</kbd> or by moving your finger to dodge white wind gusts, which damage the rope. Wind is stronger higher up, so the rope wears out faster there.</p>
+    <p class="how"><b>How to play:</b> a power bar slides back and forth. Tap, click, or press <kbd>Space</kbd> to send the wind. Stop the bar in the gold ★ zone for a <b>Perfect</b> blast. Upgrade the wind to hit harder, the kite to glide farther, and the rope to go longer and stay strong. A safe landing pays a 25% bonus. If the rope snaps, you get no bonus.</p>
     <button class="reset" id="resetBtn" type="button">Reset progress</button>
     <div class="confirm" id="confirmBox" hidden>Erase all money and upgrades? <button class="yes" id="resetYes" type="button">Erase</button><button id="resetNo" type="button">Keep</button></div>
   </div>
@@ -177,25 +177,31 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 
 <script>
 (() => {
-  // ---------- Upgrade tables ----------
-  // lift = launch speed in m/s; with GRAVITY a full-power launch reaches lift²/(2g) metres
-  const GRAVITY = 30;
+  // ---------- Tuning ----------
+  const GRAVITY = 22, ANGLE = 0.45; // launch angle in radians (~26°)
+  const WIND = [
+    { name: "Breeze",     v: 34,  cost: 0 },     { name: "Gust",      v: 46,  cost: 40 },
+    { name: "Squall",     v: 62,  cost: 120 },   { name: "Gale",      v: 82,  cost: 320 },
+    { name: "Storm",      v: 108, cost: 750 },   { name: "Tempest",   v: 140, cost: 1700 },
+    { name: "Cyclone",    v: 180, cost: 3800 },  { name: "Typhoon",   v: 230, cost: 8000 },
+    { name: "Hurricane",  v: 290, cost: 16000 }, { name: "Jet stream", v: 370, cost: 32000 },
+  ];
   const KITES = [
-    { name: "Paper Diamond", reach: 80,   cost: 0,     color: "#ff5a4e", trim: "#ffd84d" },
-    { name: "Nylon Delta",   reach: 150,  cost: 60,    color: "#ff8a3d", trim: "#ffffff" },
-    { name: "Ripstop Sled",  reach: 260,  cost: 180,   color: "#ffc93c", trim: "#2c6bff" },
-    { name: "Box Kite",      reach: 420,  cost: 450,   color: "#3fc380", trim: "#16233f" },
-    { name: "Stunt Foil",    reach: 650,  cost: 1000,  color: "#2fa8ff", trim: "#ffe14d" },
-    { name: "Carbon Delta",  reach: 950,  cost: 2200,  color: "#7b5cff", trim: "#ffffff" },
-    { name: "Storm Falcon",  reach: 1400, cost: 4800,  color: "#e8467c", trim: "#16233f" },
-    { name: "Jet Stream",    reach: 2100, cost: 9500,  color: "#16233f", trim: "#ffb627" },
-    { name: "Aurora Wing",   reach: 3000, cost: 19000, color: "#20d3c2", trim: "#ff5aa5" },
-    { name: "Star Glider",   reach: 4500, cost: 38000, color: "#ffd700", trim: "#7b5cff" },
+    { name: "Paper Diamond", drag: .30,  sink: 16,  cost: 0,     color: "#ff5a4e", trim: "#ffd84d" },
+    { name: "Nylon Delta",   drag: .26,  sink: 15,  cost: 60,    color: "#ff8a3d", trim: "#ffffff" },
+    { name: "Ripstop Sled",  drag: .22,  sink: 14,  cost: 180,   color: "#ffc93c", trim: "#2c6bff" },
+    { name: "Box Kite",      drag: .18,  sink: 13,  cost: 450,   color: "#3fc380", trim: "#16233f" },
+    { name: "Stunt Foil",    drag: .15,  sink: 12,  cost: 1000,  color: "#2fa8ff", trim: "#ffe14d" },
+    { name: "Carbon Delta",  drag: .12,  sink: 11,  cost: 2200,  color: "#7b5cff", trim: "#ffffff" },
+    { name: "Storm Falcon",  drag: .10,  sink: 10,  cost: 4800,  color: "#e8467c", trim: "#16233f" },
+    { name: "Glide Master",  drag: .08,  sink: 9.5, cost: 9500,  color: "#16233f", trim: "#ffb627" },
+    { name: "Aurora Wing",   drag: .065, sink: 9,   cost: 19000, color: "#20d3c2", trim: "#ff5aa5" },
+    { name: "Star Glider",   drag: .05,  sink: 8.5, cost: 38000, color: "#ffd700", trim: "#7b5cff" },
   ];
   const LENGTH = [
-    { v: 60, cost: 0 }, { v: 120, cost: 50 }, { v: 220, cost: 150 }, { v: 350, cost: 400 },
-    { v: 550, cost: 900 }, { v: 800, cost: 2000 }, { v: 1200, cost: 4500 }, { v: 1800, cost: 9000 },
-    { v: 2600, cost: 18000 }, { v: 4000, cost: 36000 },
+    { v: 40, cost: 0 }, { v: 80, cost: 50 }, { v: 140, cost: 150 }, { v: 240, cost: 400 },
+    { v: 400, cost: 900 }, { v: 650, cost: 2000 }, { v: 1000, cost: 4500 }, { v: 1600, cost: 9000 },
+    { v: 2500, cost: 18000 }, { v: 4000, cost: 36000 },
   ];
   const STRENGTH = [
     { v: 100, cost: 0, name: "Cotton string" }, { v: 150, cost: 40, name: "Twine" },
@@ -204,15 +210,10 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     { v: 900, cost: 4000, name: "Dyneema rope" }, { v: 1250, cost: 8500, name: "Steel-core rope" },
     { v: 1700, cost: 17000, name: "Titan braid" }, { v: 2400, cost: 34000, name: "Sky cable" },
   ];
-  const BEAUFORT = [
-    [0, "Calm"], [10, "Light air"], [30, "Light breeze"], [70, "Gentle breeze"], [140, "Moderate"],
-    [260, "Fresh breeze"], [450, "Strong breeze"], [700, "Near gale"], [1100, "Gale"],
-    [1600, "Strong gale"], [2200, "Storm"], [3000, "Violent storm"], [3600, "Hurricane force"],
-  ];
 
   // ---------- Save ----------
-  const SAVE_KEY = "skystring-save-v2";
-  const fresh = () => ({ money: 0, kite: 0, len: 0, str: 0, bestScore: 0, bestAlt: 0 });
+  const SAVE_KEY = "skystring-save-v3";
+  const fresh = () => ({ money: 0, wind: 0, kite: 0, len: 0, str: 0, bestScore: 0, bestDist: 0 });
   let save = fresh();
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && typeof s.money === "number") save = Object.assign(fresh(), s); } catch (e) {}
   const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
@@ -228,75 +229,60 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
   window.addEventListener("resize", resize); resize();
-
-  const PPM = 5; // pixels per metre
   const $ = id => document.getElementById(id);
 
   // ---------- State ----------
-  // menu → aim (power bar) → up (rising) → down (falling on the rope) | away (snapped, flying off)
-  let mode = "menu";
-  let keyL = false, keyR = false, pointerX = null, touching = false;
-  let run = null, gusts = [], particles = [], speedLines = [];
-  let t = 0;
+  // menu → aim → blast (wind travelling) → fly → landed | away (rope snapped)
+  let mode = "menu", run, particles = [], blast = null, t = 0;
+  const cam = { x: 0, y: 0, ppm: 7 };
+  const ANCHOR = { x: 0, y: 1.6 }; // the flyer's hand, in metres
 
   function newRun() {
     run = {
-      alt: 0, vy: 0, x: W / 2 + 40, vx: 0,
-      hp: STRENGTH[save.str].v, maxHp: STRENGTH[save.str].v,
-      ropeLen: LENGTH[save.len].v,
-      score: 0, earned: 0, top: 0, hitFlash: 0, perfect: false, power: 0,
-      meter: 0, meterDir: 1, reeling: false,
-      awayX: 0, awayY: 0, awayVX: 0, awayVY: 0, awayT: 0,
-      gustTimer: 1.2, lowWarned: false, shake: 0, endT: 0,
+      x: 5, y: 4, vx: 0, vy: 0,
+      hp: STRENGTH[save.str].v, maxHp: STRENGTH[save.str].v, ropeLen: LENGTH[save.len].v,
+      score: 0, earned: 0, far: 0, top: 0, perfect: false,
+      meter: 0, meterDir: 1, taut: false, snapped: false, endT: 0, awayT: 0,
+      shake: 0, flash: 0, reeling: false, lowWarned: false,
     };
-    gusts = []; particles = [];
+    particles = []; blast = null;
+    cam.x = 0; cam.y = 0; cam.ppm = 7;
   }
   newRun();
 
   // ---------- Input ----------
   const isUI = e => e.target.closest && e.target.closest("button, .overlay");
-  function tap() { if (mode === "aim") launch(); }
-  window.addEventListener("pointerdown", e => {
-    if (isUI(e)) return;
-    touching = true; pointerX = e.clientX; tap();
-  });
-  window.addEventListener("pointermove", e => { if (e.pointerType === "mouse" || touching) pointerX = e.clientX; });
-  window.addEventListener("pointerup", () => { touching = false; });
-  window.addEventListener("pointercancel", () => { touching = false; });
-  window.addEventListener("blur", () => { keyL = keyR = touching = false; });
+  function tap() { if (mode === "aim") sendWind(); }
+  window.addEventListener("pointerdown", e => { if (!isUI(e)) tap(); });
   window.addEventListener("keydown", e => {
     if (e.code === "Space" || e.code === "Enter") {
       if (mode === "menu") { if (document.activeElement === document.body) { e.preventDefault(); startRun(); } return; }
       e.preventDefault(); if (!e.repeat) tap();
     }
-    if (e.code === "ArrowLeft" || e.code === "KeyA") { keyL = true; pointerX = null; }
-    if (e.code === "ArrowRight" || e.code === "KeyD") { keyR = true; pointerX = null; }
     if (e.code === "KeyR") reelIn();
   });
-  window.addEventListener("keyup", e => {
-    if (e.code === "ArrowLeft" || e.code === "KeyA") keyL = false;
-    if (e.code === "ArrowRight" || e.code === "KeyD") keyR = false;
-  });
   $("landBtn").addEventListener("click", reelIn);
+  function reelIn() { if (mode === "fly" && run.taut && !run.reeling) { run.reeling = true; toast("Reeling in…"); } }
 
   let toastTimer = 0;
   function toast(msg, ms = 1800) {
     const el = $("toast"); el.textContent = msg; el.classList.add("show");
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), ms);
   }
-  function reelIn() { if (mode === "down" && !run.reeling) { run.reeling = true; toast("Reeling in…"); } }
 
   // ---------- Shop ----------
   const fmt = n => Math.floor(n).toLocaleString("en-US");
   function renderShop() {
     $("wCash").textContent = "$" + fmt(save.money);
-    $("wBest").textContent = `Best score ${fmt(save.bestScore)} · Highest ${fmt(save.bestAlt)} m`;
+    $("wBest").textContent = `Best score ${fmt(save.bestScore)} · Farthest ${fmt(save.bestDist)} m`;
     const items = [
-      { key: "kite", title: "Kite", table: KITES, desc: "A better kite launches higher.",
-        cur: l => `${KITES[l].name} · ${fmt(KITES[l].reach)} m launch`, nxt: l => `${fmt(KITES[l].reach)} m` },
-      { key: "len", title: "Rope length", table: LENGTH, desc: "More rope lets the kite fly higher before it runs out.",
+      { key: "wind", title: "Wind blast", table: WIND, desc: "A stronger wind hits the kite harder.",
+        cur: l => `${WIND[l].name} · ${WIND[l].v} m/s`, nxt: l => `${WIND[l].v} m/s` },
+      { key: "kite", title: "Kite", table: KITES, desc: "A better kite glides farther and falls slower.",
+        cur: l => `${KITES[l].name} · glide ${Math.round(100 / KITES[l].drag / 3.33)}`, nxt: l => `glide ${Math.round(100 / KITES[l].drag / 3.33)}` },
+      { key: "len", title: "Rope length", table: LENGTH, desc: "More rope lets the kite fly farther before it runs out.",
         cur: l => `${fmt(LENGTH[l].v)} m of rope`, nxt: l => `${fmt(LENGTH[l].v)} m` },
-      { key: "str", title: "Rope strength", table: STRENGTH, desc: "Tougher rope survives the wind and the jerk at the end.",
+      { key: "str", title: "Rope strength", table: STRENGTH, desc: "Tougher rope survives the jerk and the wind.",
         cur: l => `${STRENGTH[l].name} · ${fmt(STRENGTH[l].v)} HP`, nxt: l => `${fmt(STRENGTH[l].v)} HP` },
     ];
     const shop = $("shop"); shop.innerHTML = "";
@@ -328,289 +314,237 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
       $("runTitle").textContent = title;
       $("sScore").textContent = fmt(run.score);
       $("sEarn").textContent = "$" + fmt(run.earned);
-      $("sTop").textContent = fmt(run.top) + " m";
+      $("sTop").textContent = fmt(run.far) + " m";
       $("flyBtn").textContent = "Fly again! 🪁";
     }
     renderShop();
     $("overlay").hidden = false;
     $("flyBtn").focus({ preventScroll: true });
   }
-
   function startRun() {
     $("overlay").hidden = true;
     newRun(); mode = "aim";
     document.activeElement && document.activeElement.blur && document.activeElement.blur();
-    toast("Tap to launch!");
+    toast("Tap to send the wind!");
   }
   $("flyBtn").addEventListener("click", e => { e.stopPropagation(); startRun(); });
   $("resetBtn").addEventListener("click", () => { $("confirmBox").hidden = false; });
   $("resetNo").addEventListener("click", () => { $("confirmBox").hidden = true; });
   $("resetYes").addEventListener("click", () => { save = fresh(); persist(); $("confirmBox").hidden = true; renderShop(); });
 
-  function finish(title) {
+  function finish(title, bonus) {
     if (run.endT > 0) return;
     run.endT = 0.001;
-    run.score = Math.floor(run.top * 10 * (run.perfect ? 1.2 : 1));
+    if (bonus) { const b = run.earned * 0.25; run.earned += b; save.money += b; toast(`Safe landing! +$${fmt(b)} bonus`, 1500); }
+    run.score = Math.floor(run.far * 10 * (run.perfect ? 1.2 : 1));
     save.bestScore = Math.max(save.bestScore, run.score);
-    save.bestAlt = Math.max(save.bestAlt, Math.floor(run.top));
+    save.bestDist = Math.max(save.bestDist, Math.floor(run.far));
     persist();
-    setTimeout(() => showMenu(title), 900);
+    setTimeout(() => showMenu(title), 1300);
   }
 
   // ---------- Helpers ----------
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, k) => a + (b - a) * k;
   function hash(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
-  function windName(alt) { let i = 0; for (let k = 0; k < BEAUFORT.length; k++) if (alt >= BEAUFORT[k][0]) i = k; return [i, BEAUFORT[i][1]]; }
-  const windPower = alt => 1 + alt / 120;
-  const ropeDrain = alt => alt < 3 ? 0 : Math.pow(alt / 30, 1.1);  // HP per second from wind
-  const payFor = (a0, a1) => (a1 - a0) * (1 + (a0 + a1) / 200);   // $ for climbing from a0 to a1
+  const ropeDrain = (x, y) => Math.pow(Math.max(y, 0) / 30, 1.1) + x / 150; // HP/s, harder wind higher up
+  const payFor = (a0, a1) => (a1 - a0) * 0.8 * (1 + (a0 + a1) / 300);
 
-  // meter: 0..1, perfect zone near the top
   const PERFECT_LO = 0.86, PERFECT_HI = 0.97;
-  function launch() {
+  function sendWind() {
     const m = run.meter;
     run.perfect = m >= PERFECT_LO && m <= PERFECT_HI;
-    run.power = run.perfect ? 1.12 : 0.25 + 0.75 * m;
-    const v0 = Math.sqrt(2 * GRAVITY * KITES[save.kite].reach) * Math.sqrt(run.power);
-    run.vy = v0; mode = "up"; run.shake = 0.4;
-    burst(run.x, kiteScreenY(), 16, run.perfect ? "#ffd84d" : "#ffffff");
-    toast(run.perfect ? "PERFECT LAUNCH! ✨" : m > 0.7 ? "Great launch!" : m > 0.4 ? "Good launch" : "Weak launch…", 1200);
+    const power = run.perfect ? 1.12 : 0.3 + 0.7 * m;
+    mode = "blast";
+    blast = { t: 0, power, lvl: save.wind, x0: -45 };
   }
-
-  const SKY = [
-    [0, [94, 182, 255], [214, 240, 255]],
-    [300, [60, 140, 240], [160, 210, 255]],
-    [900, [40, 80, 190], [110, 160, 240]],
-    [1800, [34, 30, 110], [80, 70, 180]],
-    [2800, [14, 10, 50], [50, 30, 110]],
-    [4000, [3, 3, 14], [16, 12, 44]],
-  ];
-  function skyAt(alt) {
-    for (let i = 0; i < SKY.length - 1; i++) {
-      const a = SKY[i], b = SKY[i + 1];
-      if (alt <= b[0]) {
-        const k = clamp((alt - a[0]) / (b[0] - a[0]), 0, 1);
-        return [a[1].map((v, j) => lerp(v, b[1][j], k)), a[2].map((v, j) => lerp(v, b[2][j], k))];
-      }
-    }
-    const l = SKY[SKY.length - 1]; return [l[1], l[2]];
+  function launch() {
+    const v0 = WIND[save.wind].v * blast.power;
+    run.vx = v0 * Math.cos(ANGLE); run.vy = v0 * Math.sin(ANGLE);
+    mode = "fly"; run.shake = 0.3 + save.wind * 0.05; run.flash = 1;
+    const [sx, sy] = toScreen(run.x, run.y);
+    burst(sx, sy, 14 + save.wind * 3, "#ffffff");
+    const m = run.meter;
+    toast(run.perfect ? "PERFECT BLAST! ✨" : m > 0.7 ? "Great hit!" : m > 0.4 ? "Good hit" : "Weak hit…", 1200);
   }
-  const rgb = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
 
   // ---------- Update ----------
   function update(dt) {
     t += dt;
     run.shake = Math.max(0, run.shake - dt);
-    run.hitFlash = Math.max(0, run.hitFlash - dt * 3);
-    updateParticles(dt);
+    run.flash = Math.max(0, run.flash - dt * 3);
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 120 * dt; p.life -= dt; }
+    particles = particles.filter(p => p.life > 0);
 
-    if (mode === "menu") {
-      run.alt = lerp(run.alt, 18 + Math.sin(t * 0.7) * 3, dt * 1.5);
-      run.x = W / 2 + 60 + Math.sin(t * 0.5) * 30;
-      return;
-    }
-    if (mode === "aim") {
-      const speed = 1.3;
-      run.meter += run.meterDir * speed * dt;
-      if (run.meter >= 1) { run.meter = 1; run.meterDir = -1; }
-      if (run.meter <= 0) { run.meter = 0; run.meterDir = 1; }
-      run.alt = 0; run.x = W / 2 + 40;
-      return;
-    }
-    if (mode === "away") {
-      // rope snapped: the kite tumbles off on the wind
-      run.awayT += dt;
-      run.awayVX += 40 * dt; run.awayVY = lerp(run.awayVY, -15, dt * 0.9);
-      run.awayX += run.awayVX * dt; run.awayY -= run.awayVY * dt * PPM * 0.35;
-      if (run.awayT > 2.2) finish("Rope snapped! Your kite flew away 💨");
-      updateGusts(dt);
-      return;
-    }
-
-    // up / down physics
-    const prev = run.alt;
-    if (mode === "up") {
-      run.vy -= GRAVITY * dt;
-      run.alt += run.vy * dt;
-      if (run.alt >= run.ropeLen) {
-        // rope runs out: sudden jerk
-        run.alt = run.ropeLen;
-        const jerk = run.vy;
-        const dmg = Math.max(0, jerk) * 1.3;
-        run.hp -= dmg; run.shake = 0.5; run.hitFlash = 1;
-        burst(run.x, kiteScreenY() + 28, 14, "#ffd84d");
-        if (run.hp <= 0) { snap(jerk); }
-        else {
-          toast(dmg > 1 ? `Out of rope! Rope −${Math.round(dmg)}` : "Out of rope!", 1500);
-          run.vy = -Math.min(jerk * 0.25, 15); mode = "down";
-        }
-      } else if (run.vy <= 0) {
-        mode = "down";
-        if (run.alt < run.ropeLen * 0.97) toast("Top height " + fmt(run.alt) + " m", 1200);
+    if (mode === "menu" || mode === "aim") {
+      run.x = 5 + Math.sin(t * 0.9) * 0.6; run.y = 4 + Math.sin(t * 1.4) * 0.5;
+      if (mode === "aim") {
+        run.meter += run.meterDir * 1.3 * dt;
+        if (run.meter >= 1) { run.meter = 1; run.meterDir = -1; }
+        if (run.meter <= 0) { run.meter = 0; run.meterDir = 1; }
       }
-    } else if (mode === "down") {
-      // falling back down, kite catches air and glides on the rope
-      const glide = -Math.max(12, Math.min(run.top * 0.08, 220)) * (run.reeling ? 3 : 1);
-      run.vy = lerp(run.vy, glide, clamp(dt * 1.5, 0, 1));
-      run.alt += run.vy * dt;
-      if (run.alt <= 0) { run.alt = 0; run.vy = 0; finish("Safe landing! 🪁"); }
+      followCam(dt);
+      return;
     }
-    if (run.alt > run.top) { run.earned += payFor(Math.max(prev, run.top), run.alt); save.money += payFor(Math.max(prev, run.top), run.alt); run.top = run.alt; }
-    if (mode === "up" || mode === "down") run.score = Math.floor(run.top * 10 * (run.perfect ? 1.2 : 1));
+    if (mode === "blast") {
+      blast.t += dt;
+      if (blast.t >= 0.28) launch();
+      followCam(dt);
+      return;
+    }
+    if (blast) { blast.t += dt; if (blast.t > 1.2) blast = null; }
 
-    // steering + wind wobble
-    const wp = windPower(run.alt);
-    let ax = 0;
-    if (keyL) ax -= 1; if (keyR) ax += 1;
-    if (pointerX != null && !keyL && !keyR) ax += clamp((pointerX - run.x) / 120, -1, 1);
-    run.vx = lerp(run.vx, ax * 280, clamp(dt * 4, 0, 1));
-    const wobble = Math.sin(t * 1.7) * 0.6 + Math.sin(t * 3.1 + 1) * 0.4;
-    run.x += (run.vx + wobble * 18 * Math.min(wp, 8)) * dt;
-    run.x = clamp(run.x, 30, W - 30);
+    const K = KITES[save.kite];
+    const prevX = run.x;
+    // flight physics
+    run.vx *= Math.exp(-K.drag * dt);
+    run.vy -= GRAVITY * dt;
+    const sink = (K.sink + run.y * 0.1) * (run.reeling ? 3 : 1);
+    if (run.vy < -sink) run.vy = -sink;
+    if (run.snapped) { run.vx = lerp(run.vx, 45, dt); run.vy = lerp(run.vy, 14, dt * 2); } // loose kite rides the wind away
+    run.x += run.vx * dt; run.y += run.vy * dt;
+
+    // rope
+    if (!run.snapped) {
+      const dx = run.x - ANCHOR.x, dy = run.y - ANCHOR.y, d = Math.hypot(dx, dy);
+      if (d >= run.ropeLen) {
+        const nx = dx / d, ny = dy / d;
+        const radial = run.vx * nx + run.vy * ny;
+        if (!run.taut && radial > 0) {
+          const dmg = radial * 1.2;
+          run.hp -= dmg; run.shake = 0.5; run.flash = 1;
+          const [sx, sy] = toScreen(run.x, run.y); burst(sx, sy, 16, "#ffd84d");
+          if (run.hp > 0) toast(`Out of rope! Rope −${Math.round(dmg)}`, 1500);
+          run.taut = true;
+        }
+        if (run.hp > 0) {
+          run.x = ANCHOR.x + nx * run.ropeLen; run.y = ANCHOR.y + ny * run.ropeLen;
+          if (radial > 0) { run.vx -= radial * nx; run.vy -= radial * ny; }
+          run.vx *= Math.exp(-1.5 * dt);
+        }
+      }
+    }
+    if (run.y <= 0) {
+      run.y = 0; run.vx = 0; run.vy = 0;
+      if (!run.snapped) finish("Safe landing! 🪁", true);
+    }
+
+    // money: paid for each new metre of distance (only while the rope still holds it)
+    if (!run.snapped && run.x > run.far) {
+      const pay = payFor(run.far, run.x); run.earned += pay; save.money += pay; run.far = run.x;
+    }
+    run.top = Math.max(run.top, run.y);
+    if (!run.snapped && run.endT === 0) run.score = Math.floor(run.far * 10 * (run.perfect ? 1.2 : 1));
 
     // wind wears the rope
-    if (run.endT === 0) run.hp -= ropeDrain(run.alt) * dt;
-
-    // gusts
-    run.gustTimer -= dt;
-    if (run.alt > 20 && run.gustTimer <= 0 && run.endT === 0) {
-      spawnGust();
-      const rate = Math.min(3, 0.5 + run.alt / 500);
-      run.gustTimer = (0.5 + Math.random() * 0.7) / rate;
+    if (!run.snapped && run.endT === 0) run.hp -= ropeDrain(run.x, run.y) * dt;
+    if (run.hp < run.maxHp * 0.25 && run.hp > 0 && !run.lowWarned) { toast("Rope is fraying!", 1500); run.lowWarned = true; }
+    if (run.hp <= 0 && !run.snapped) {
+      run.hp = 0; run.snapped = true; run.shake = 0.6;
+      run.vx = Math.max(run.vx, 30) * 1.2; run.vy = Math.max(run.vy, 10);
+      const [sx, sy] = toScreen(run.x, run.y); burst(sx, sy, 26, "#ff8a3d");
+      toast("SNAP! 💥 Your kite is flying away!", 1600);
     }
-    updateGusts(dt, true);
+    if (run.snapped) { run.awayT += dt; if (run.awayT > 2.4) finish("Rope snapped! Your kite flew away 💨", false); }
 
-    if (run.hp < run.maxHp * 0.25 && !run.lowWarned && run.hp > 0) { toast("Rope is fraying! Reel in (R)", 2000); run.lowWarned = true; }
-    if (run.hp <= 0 && mode !== "away") snap(Math.max(run.vy, 20));
+    followCam(dt); // keep watching the kite, even after it breaks loose
   }
 
-  function snap(speed) {
-    run.hp = 0; mode = "away";
-    run.awayX = run.x; run.awayY = kiteScreenY();
-    run.awayVX = 80 + Math.random() * 40; run.awayVY = clamp(speed, 25, 60);
-    run.awayT = 0; run.shake = 0.6;
-    burst(run.x, run.awayY + 30, 26, "#ff8a3d");
-    toast("SNAP! 💥", 1200);
+  function followCam(dt) {
+    const speed = Math.hypot(run.vx, run.vy);
+    const targetPpm = clamp(8 - speed / 25, 2.2, 8);
+    cam.ppm = lerp(cam.ppm, targetPpm, clamp(dt * 1.5, 0, 1));
+    const ground = H - 90;
+    // kite sits 40% across; keep the flyer on screen at the start
+    const minCamX = (W * 0.4 - W * 0.18) / cam.ppm;
+    cam.x = Math.max(run.x, minCamX);
+    cam.y = Math.max(0, run.y - (ground - H * 0.42) / cam.ppm);
   }
-
-  function updateGusts(dt, collide) {
-    const ky = kiteScreenY();
-    for (const g of gusts) {
-      g.x += g.dir * g.speed * dt; g.life += dt;
-      if (!collide || g.hit) continue;
-      const gy = ky - (g.alt - run.alt) * PPM;
-      const x0 = Math.min(g.x, g.x - g.dir * g.len), x1 = Math.max(g.x, g.x - g.dir * g.len);
-      if (Math.abs(gy - ky) < 20 + g.th / 2 && run.x > x0 - 16 && run.x < x1 + 16) {
-        g.hit = true;
-        const dmg = 4 + run.alt / 25;
-        run.hp -= dmg; run.hitFlash = 1; run.shake = 0.25;
-        run.vx += g.dir * 300; run.x += g.dir * 20;
-        burst(run.x, ky, 10, "#ffffff");
-        toast(`Gust! Rope −${Math.round(dmg)}`, 900);
-      }
-    }
-    gusts = gusts.filter(g => g.life < 8 && g.x > -400 && g.x < W + 400);
-  }
-
-  function spawnGust() {
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    // aim gusts where the kite will be in about a second
-    const ahead = clamp(run.vy * 0.9, -60, 60);
-    gusts.push({
-      dir, alt: clamp(run.alt + ahead + (Math.random() * 2 - 1) * 10, 10, run.ropeLen),
-      x: dir > 0 ? -40 : W + 40,
-      speed: 260 + Math.random() * 160 + Math.min(windPower(run.alt), 20) * 12,
-      len: 90 + Math.random() * 120, th: 6 + Math.random() * 6, life: 0, hit: false,
-    });
+  function toScreen(x, y) {
+    return [W * 0.4 + (x - cam.x) * cam.ppm, (H - 90) - (y - cam.y) * cam.ppm];
   }
   function burst(x, y, n, color) {
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 160;
-      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.6 + Math.random() * 0.4, color });
+      const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 180;
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.5, color });
     }
   }
-  function updateParticles(dt) {
-    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt; p.life -= dt; }
-    particles = particles.filter(p => p.life > 0);
-  }
-
-  // ---------- Camera ----------
-  function kiteScreenY() { return Math.max(H * 0.45, H - 110 - run.alt * PPM); }
-  function groundScreenY() { return kiteScreenY() + run.alt * PPM + 70; }
-  const altToY = a => kiteScreenY() - (a - run.alt) * PPM;
 
   // ---------- Draw ----------
   function draw() {
-    const alt = run.alt;
     ctx.save();
-    if (run.shake > 0) ctx.translate((Math.random() - 0.5) * 12 * run.shake, (Math.random() - 0.5) * 12 * run.shake);
-    const [top, bot] = skyAt(alt);
+    if (run.shake > 0) ctx.translate((Math.random() - 0.5) * 14 * run.shake, (Math.random() - 0.5) * 14 * run.shake);
+    const hk = clamp(cam.y / 600, 0, 1);
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+    g.addColorStop(0, `rgb(${lerp(94, 40, hk) | 0},${lerp(182, 90, hk) | 0},${lerp(255, 200, hk) | 0})`);
+    g.addColorStop(1, `rgb(${lerp(214, 120, hk) | 0},${lerp(240, 170, hk) | 0},255)`);
     ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
 
-    const starA = clamp((alt - 1400) / 1400, 0, 1);
-    if (starA > 0) {
-      for (let i = 0; i < 120; i++) {
-        const sx = hash(i) * W, sy = ((hash(i + 500) * H * 3 + alt * PPM * 0.05) % (H * 1.2));
-        const tw = 0.5 + 0.5 * Math.sin(t * 2 + i);
-        ctx.fillStyle = `rgba(255,255,255,${starA * (0.4 + tw * 0.6)})`;
-        ctx.fillRect(sx, sy, 2, 2);
+    ctx.fillStyle = "rgba(255,236,170,.85)";
+    ctx.beginPath(); ctx.arc(W - 80, 150 + cam.y * cam.ppm * 0.02, 34, 0, Math.PI * 2); ctx.fill();
+
+    drawClouds(0.15, 0.4, 0.7);
+    drawClouds(0.5, 0.75, 1);
+    const groundY = (H - 90) + cam.y * cam.ppm;
+    if (groundY < H + 300) { drawHills(groundY); drawGround(groundY); }
+    drawRopeLimit();
+
+    // speed streaks
+    const speed = Math.hypot(run.vx, run.vy);
+    if (mode === "fly" && speed > 30) {
+      ctx.strokeStyle = `rgba(255,255,255,${clamp(speed / 300, 0.12, 0.45)})`; ctx.lineWidth = 2;
+      for (let i = 0; i < 16; i++) {
+        const len = 30 + speed * 0.5;
+        const sx = ((hash(i * 3.3) * W - t * speed * cam.ppm * 0.6) % (W + len) + W + len) % (W + len) - len;
+        const sy = hash(i * 9.1) * H;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + len, sy); ctx.stroke();
       }
     }
-    ctx.fillStyle = `rgba(255,236,170,${0.85 - starA * 0.6})`;
-    ctx.beginPath(); ctx.arc(W - 90, 150 - Math.min(alt, 800) * 0.04, 34, 0, Math.PI * 2); ctx.fill();
 
-    drawClouds(0.35, 60, 0.45);
-    drawMarkers();
-    // speed streaks while rocketing up
-    if (mode === "up" && run.vy > 25) {
-      ctx.strokeStyle = `rgba(255,255,255,${clamp(run.vy / 200, 0.1, 0.45)})`; ctx.lineWidth = 2;
-      for (let i = 0; i < 14; i++) {
-        const sx = hash(i * 3.3) * W, len = 40 + run.vy * 0.6;
-        const sy = ((hash(i * 9.1) * H + t * run.vy * PPM * 0.8) % (H + len)) - len;
-        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + len); ctx.stroke();
-      }
-    }
-    for (const gu of gusts) drawGust(gu);
-    drawClouds(1, 45, 0.85);
+    // rope + kite
+    const [ax, ay] = toScreen(ANCHOR.x, ANCHOR.y);
+    const [kx, ky] = toScreen(run.x, run.y);
+    if (run.snapped) drawBrokenRope(ax, ay);
+    else drawRope(ax, ay, kx, ky);
+    let tilt;
+    if (run.snapped) tilt = run.awayT * 4;
+    else if (mode === "fly" && run.y > 0) tilt = clamp(Math.atan2(-run.vy, run.vx + 1) * 0.5, -0.8, 0.8) + 0.5;
+    else tilt = 0.25 + Math.sin(t * 2) * 0.08;
+    drawKite(kx, ky, tilt, run.flash);
 
-    const gy = groundScreenY();
-    if (gy < H + 200) drawGround(gy);
-
-    if (mode === "away") {
-      drawRope(W / 2 - 4, gy - 46, 0, 0, true);
-      drawKite(run.awayX, run.awayY, run.awayT * 3, 0);
-    } else {
-      const ky = kiteScreenY();
-      const tight = mode === "up" ? 1 : 0;
-      drawRope(W / 2 - 4, gy - 46, run.x, ky + 26, false, tight);
-      const tilt = mode === "up" ? run.vx / 1500 : Math.sin(t * 2.2) * 0.12 * Math.min(windPower(alt), 4) + run.vx / 1500;
-      drawKite(run.x, ky, tilt, run.hitFlash);
-    }
+    if (blast) drawBlast(ax, ay, kx, ky);
 
     for (const p of particles) {
       ctx.globalAlpha = clamp(p.life, 0, 1); ctx.fillStyle = p.color;
       ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
     }
     ctx.globalAlpha = 1;
-
-    if (mode === "up" || mode === "down") {
-      for (const gu of gusts) {
-        if ((gu.x > 0 && gu.x < W) || gu.hit) continue;
-        const y = altToY(gu.alt);
-        if (y < 0 || y > H) continue;
-        const ex = gu.dir > 0 ? 14 : W - 14;
-        ctx.fillStyle = "rgba(255,255,255,.9)";
-        ctx.beginPath();
-        ctx.moveTo(ex + gu.dir * 10, y); ctx.lineTo(ex - gu.dir * 6, y - 9); ctx.lineTo(ex - gu.dir * 6, y + 9);
-        ctx.closePath(); ctx.fill();
-      }
-    }
     ctx.restore();
-
     if (mode === "aim") drawMeter();
+  }
+
+  function drawBlast(ax, ay, kx, ky) {
+    // a swirl of wind sweeping in from the left; bigger and thicker with each wind upgrade
+    const k = clamp(blast.t / 0.28, 0, 1.6);
+    const lines = 4 + blast.lvl;
+    const thick = 3 + blast.lvl * 1.2;
+    const reach = lerp(-80, kx + 120, Math.min(k, 1));
+    const fade = blast.t > 0.28 ? clamp(1 - (blast.t - 0.28) / 0.8, 0, 1) : 1;
+    ctx.lineCap = "round";
+    for (let i = 0; i < lines; i++) {
+      const off = (i - (lines - 1) / 2) * (10 + blast.lvl * 2.5);
+      const y = ky + off + Math.sin(t * 9 + i) * 4;
+      const tail = reach - 140 - hash(i) * 100;
+      const grad = ctx.createLinearGradient(tail, 0, reach, 0);
+      grad.addColorStop(0, "rgba(255,255,255,0)");
+      grad.addColorStop(1, `rgba(255,255,255,${0.9 * fade})`);
+      ctx.strokeStyle = grad; ctx.lineWidth = thick * (i % 2 ? 0.6 : 1);
+      ctx.beginPath(); ctx.moveTo(tail, y);
+      ctx.quadraticCurveTo((tail + reach) / 2, y - 18, reach, y);
+      ctx.stroke();
+      // curl at the front
+      ctx.beginPath(); ctx.arc(reach - 8, y - 8, 8 + blast.lvl, Math.PI * 0.5, Math.PI * 2); ctx.stroke();
+    }
   }
 
   function drawMeter() {
@@ -619,16 +553,14 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ctx.fillStyle = "rgba(22,35,63,.75)";
     roundRect(bx - 8, by - 40, bw + 16, bh + 56, 16); ctx.fill();
     ctx.fillStyle = "#fff"; ctx.font = "800 18px 'Baloo 2', system-ui, sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("TAP TO LAUNCH", W / 2, by - 14);
+    ctx.fillText("TAP TO SEND THE WIND", W / 2, by - 14);
     const grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
     grad.addColorStop(0, "#6fb7ff"); grad.addColorStop(0.6, "#3fc380"); grad.addColorStop(1, "#ff5a4e");
     ctx.fillStyle = grad; roundRect(bx, by, bw, bh, 8); ctx.fill();
-    // perfect zone
     ctx.fillStyle = "#ffd84d";
     ctx.fillRect(bx + bw * PERFECT_LO, by - 3, bw * (PERFECT_HI - PERFECT_LO), bh + 6);
-    ctx.fillStyle = "#16233f"; ctx.font = "800 10px Nunito, system-ui, sans-serif";
+    ctx.fillStyle = "#16233f"; ctx.font = "800 12px Nunito, system-ui, sans-serif";
     ctx.fillText("★", bx + bw * (PERFECT_LO + PERFECT_HI) / 2, by + bh / 2 + 4);
-    // marker
     const mx = bx + bw * run.meter;
     ctx.fillStyle = "#fff"; ctx.strokeStyle = "#16233f"; ctx.lineWidth = 2;
     roundRect(mx - 4, by - 8, 8, bh + 16, 3); ctx.fill(); ctx.stroke();
@@ -638,23 +570,22 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
 
-  function drawClouds(par, band, alpha) {
-    const fade = clamp(1 - (run.alt - 2200) / 1200, 0, 1);
-    if (fade <= 0) return;
-    const viewAlt = run.alt * par;
-    const ky = kiteScreenY();
-    const minB = Math.floor((viewAlt - (H - ky) / PPM) / band) - 1;
-    const maxB = Math.ceil((viewAlt + ky / PPM) / band) + 1;
-    for (let b = Math.max(1, minB); b <= maxB; b++) {
-      const seed = b * 7.31 + par * 100;
-      if (hash(seed) < 0.35) continue;
-      const cAlt = b * band + hash(seed + 1) * band;
-      const y = ky - (cAlt - viewAlt) * PPM;
-      const drift = (t * (8 + hash(seed + 3) * 14) * (par < 1 ? 0.5 : 1)) % (W + 400);
-      const x = ((hash(seed + 2) * (W + 400) + drift) % (W + 400)) - 200;
-      const s = (0.6 + hash(seed + 4) * 0.8) * (par < 1 ? 0.7 : 1);
-      ctx.fillStyle = `rgba(255,255,255,${alpha * fade})`;
-      cloud(x, y, s * 50);
+  function drawClouds(par, alpha, size) {
+    // clouds placed in world metres with parallax; tile every 80 m
+    const span = 80;
+    const left = cam.x * par - (W * 0.4) / cam.ppm - span, right = cam.x * par + (W * 0.6) / cam.ppm + span;
+    for (let b = Math.floor(left / span); b <= Math.ceil(right / span); b++) {
+      for (let j = 0; j < 2; j++) {
+        const seed = b * 3.7 + j * 11 + par * 50;
+        if (hash(seed) < 0.3) continue;
+        const wx = b * span + hash(seed + 1) * span;
+        const wy = 25 + hash(seed + 2) * 140 + j * 120;
+        const sx = W * 0.4 + (wx - cam.x * par) * cam.ppm;
+        const sy = (H - 90) - (wy - cam.y * par) * cam.ppm * 0.8;
+        if (sy < -100 || sy > H + 60) continue;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        cloud(sx, sy, (16 + hash(seed + 3) * 18) * size * clamp(cam.ppm / 5, 0.5, 1.4));
+      }
     }
   }
   function cloud(x, y, r) {
@@ -666,89 +597,102 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ctx.fill();
   }
 
-  function drawMarkers() {
-    const step = run.alt > 1200 ? 250 : run.alt > 300 ? 100 : 25;
-    const ky = kiteScreenY();
-    const lo = Math.floor((run.alt - (H - ky) / PPM) / step) * step;
-    const hi = run.alt + ky / PPM;
-    ctx.font = "800 12px Nunito, system-ui, sans-serif";
-    ctx.textAlign = "right";
-    const dark = run.alt > 900;
-    for (let a = Math.max(step, lo); a <= hi; a += step) {
-      const y = altToY(a);
-      ctx.strokeStyle = dark ? "rgba(255,255,255,.35)" : "rgba(22,35,63,.25)";
-      ctx.fillStyle = dark ? "rgba(255,255,255,.7)" : "rgba(22,35,63,.55)";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(W - 14, y); ctx.lineTo(W - 4, y); ctx.stroke();
-      ctx.fillText(a + " m", W - 18, y + 4);
+  function drawHills(gy) {
+    ctx.fillStyle = "#9bd88a";
+    ctx.beginPath(); ctx.moveTo(0, gy);
+    for (let x = 0; x <= W; x += 16) {
+      const wx = (x - W * 0.4) / cam.ppm + cam.x * 0.3;
+      ctx.lineTo(x, gy - 30 - Math.sin(wx / 25) * 18 - Math.sin(wx / 9) * 6);
     }
-    const ly = altToY(run.ropeLen);
-    if (ly > -40 && ly < H + 40) {
-      ctx.setLineDash([8, 8]); ctx.strokeStyle = "rgba(255,90,78,.8)"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = "rgba(255,90,78,.95)"; ctx.textAlign = "left";
-      ctx.fillText("End of rope · " + run.ropeLen + " m", 12, ly - 8);
-    }
-  }
-
-  function drawGust(g) {
-    const y = altToY(g.alt);
-    const tail = g.x - g.dir * g.len;
-    const grad = ctx.createLinearGradient(tail, 0, g.x, 0);
-    grad.addColorStop(0, "rgba(255,255,255,0)");
-    grad.addColorStop(1, g.hit ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.95)");
-    ctx.strokeStyle = grad; ctx.lineCap = "round";
-    for (let i = -1; i <= 1; i++) {
-      ctx.lineWidth = g.th * (i === 0 ? 1 : 0.45);
-      ctx.beginPath();
-      const off = i * g.th * 1.4;
-      ctx.moveTo(tail, y + off);
-      ctx.quadraticCurveTo((tail + g.x) / 2, y + off + Math.sin(t * 8 + i) * 4, g.x - g.dir * Math.abs(i) * 20, y + off);
-      ctx.stroke();
-    }
+    ctx.lineTo(W, gy + 10); ctx.closePath(); ctx.fill();
   }
 
   function drawGround(gy) {
-    ctx.fillStyle = "#7cc96b";
-    ctx.beginPath(); ctx.moveTo(0, gy + 10);
-    for (let x = 0; x <= W; x += 20) ctx.lineTo(x, gy - 12 - Math.sin(x / 140) * 14 - Math.sin(x / 57) * 5);
-    ctx.lineTo(W, H + 400); ctx.lineTo(0, H + 400); ctx.fill();
     ctx.fillStyle = "#5fb455"; ctx.fillRect(0, gy, W, H + 400);
-    for (let i = 0; i < 6; i++) {
-      const tx = hash(i + 40) * W; if (Math.abs(tx - W / 2) < 50) continue;
-      ctx.fillStyle = "#6b4a2b"; ctx.fillRect(tx - 3, gy - 18, 6, 18);
-      ctx.fillStyle = "#3f9a4a"; ctx.beginPath(); ctx.arc(tx, gy - 26, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4fa047"; ctx.fillRect(0, gy, W, 6);
+    // distance flags
+    const step = cam.ppm > 5 ? 10 : cam.ppm > 3 ? 25 : 50;
+    const left = cam.x - (W * 0.4) / cam.ppm, right = cam.x + (W * 0.6) / cam.ppm;
+    ctx.font = "800 12px Nunito, system-ui, sans-serif"; ctx.textAlign = "center";
+    for (let m = Math.max(step, Math.ceil(left / step) * step); m <= right; m += step) {
+      const [sx] = toScreen(m, 0);
+      const big = m % (step * 5) === 0;
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(sx, gy); ctx.lineTo(sx, gy - (big ? 26 : 14)); ctx.stroke();
+      if (big) {
+        ctx.fillStyle = "#ff5a4e"; ctx.beginPath(); ctx.moveTo(sx, gy - 26); ctx.lineTo(sx + 14, gy - 21); ctx.lineTo(sx, gy - 16); ctx.fill();
+      }
+      ctx.fillStyle = "rgba(255,255,255,.95)";
+      ctx.fillText(m + " m", sx, gy + 22);
     }
-    const px = W / 2, py = gy;
-    ctx.strokeStyle = "#16233f"; ctx.lineWidth = 4; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px, py - 20); ctx.lineTo(px + 7, py); ctx.stroke();
-    ctx.fillStyle = "#ff5a4e"; ctx.fillRect(px - 7, py - 38, 14, 20);
-    ctx.beginPath(); ctx.moveTo(px - 4, py - 34); ctx.lineTo(px - 4, py - 48); ctx.stroke();
-    ctx.fillStyle = "#f3c69b"; ctx.beginPath(); ctx.arc(px, py - 46, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#16233f"; ctx.beginPath(); ctx.arc(px, py - 49, 7, Math.PI, 0); ctx.fill();
-    // spinning reel
-    ctx.save(); ctx.translate(px - 6, py - 46); ctx.rotate(mode === "up" ? t * 30 : 0);
-    ctx.fillStyle = "#c9a36b"; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "#7a5a33"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.stroke();
-    ctx.restore();
+    // best distance marker
+    if (save.bestDist > 0) {
+      const [bx] = toScreen(save.bestDist, 0);
+      if (bx > -20 && bx < W + 20) {
+        ctx.strokeStyle = "#ffd84d"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(bx, gy); ctx.lineTo(bx, gy - 40); ctx.stroke();
+        ctx.fillStyle = "#ffd84d"; ctx.fillText("BEST", bx, gy - 46);
+      }
+    }
+    // trees
+    for (let b = Math.floor(left / 30) - 1; b <= Math.ceil(right / 30); b++) {
+      if (hash(b + 77) < 0.5 || Math.abs(b * 30) < 8) continue;
+      const [tx] = toScreen(b * 30 + hash(b) * 20, 0);
+      const s = clamp(cam.ppm / 6, 0.45, 1.2);
+      ctx.fillStyle = "#6b4a2b"; ctx.fillRect(tx - 3 * s, gy - 18 * s, 6 * s, 18 * s);
+      ctx.fillStyle = "#3f9a4a"; ctx.beginPath(); ctx.arc(tx, gy - 26 * s, 14 * s, 0, Math.PI * 2); ctx.fill();
+    }
+    // flyer at x = 0
+    const [px] = toScreen(0, 0), py = gy;
+    if (px > -40 && px < W + 40) {
+      ctx.strokeStyle = "#16233f"; ctx.lineWidth = 4; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px, py - 20); ctx.lineTo(px + 7, py); ctx.stroke();
+      ctx.fillStyle = "#ff5a4e"; ctx.fillRect(px - 7, py - 38, 14, 20);
+      ctx.beginPath(); ctx.moveTo(px + 4, py - 34); ctx.lineTo(px + 8, py - 46); ctx.stroke();
+      ctx.fillStyle = "#f3c69b"; ctx.beginPath(); ctx.arc(px, py - 46, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#16233f"; ctx.beginPath(); ctx.arc(px, py - 49, 7, Math.PI, 0); ctx.fill();
+      ctx.save(); ctx.translate(px + 8, py - 46); ctx.rotate(mode === "fly" && !run.taut ? t * 30 : 0);
+      ctx.fillStyle = "#c9a36b"; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#7a5a33"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.stroke();
+      ctx.restore();
+    }
   }
 
-  function drawRope(x1, y1, x2, y2, broken, tight = 0) {
+  function drawRopeLimit() {
+    // dashed arc showing how far the rope reaches
+    const [ax, ay] = toScreen(ANCHOR.x, ANCHOR.y);
+    const r = run.ropeLen * cam.ppm;
+    ctx.setLineDash([8, 8]); ctx.strokeStyle = "rgba(255,90,78,.7)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ax, ay, r, -Math.PI / 2, 0.02); ctx.stroke(); ctx.setLineDash([]);
+    const [lx] = toScreen(run.ropeLen, 0);
+    if (lx > 0 && lx < W) {
+      ctx.fillStyle = "rgba(255,90,78,.95)"; ctx.font = "800 12px Nunito, system-ui, sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Rope ends " + run.ropeLen + " m", lx, (H - 90) + cam.y * cam.ppm - 52);
+    }
+  }
+
+  function ropeColor() {
     const k = clamp(run.hp / run.maxHp, 0, 1);
     let col = k > 0.5 ? "rgba(255,255,255,.95)" : k > 0.25 ? "#ffb627" : "#ff4b3e";
-    if (k <= 0.25 && !broken && Math.sin(t * 20) > 0.3) col = "#ffd0c8";
-    ctx.strokeStyle = col; ctx.lineWidth = 1.6 + k;
-    if (broken) {
-      // the snapped end falls back to the flyer
-      ctx.beginPath(); ctx.moveTo(x1, y1);
-      const droop = Math.min(run.awayT * 120, 160);
-      ctx.quadraticCurveTo(x1 + 60, y1 - 160 + droop, x1 + 90, y1 - 260 + droop * 1.6);
-      ctx.stroke();
-      return;
-    }
-    const sag = (40 + run.alt * 0.04) * (1 - tight * 0.8) + Math.sin(t * 1.3) * 6;
-    const cx = (x1 + x2) / 2 + 60 * (1 - tight), cy = (y1 + y2) / 2 + sag;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2); ctx.stroke();
+    if (k <= 0.25 && Math.sin(t * 20) > 0.3) col = "#ffd0c8";
+    ctx.lineWidth = 1.6 + k;
+    return col;
+  }
+  function drawRope(x1, y1, x2, y2) {
+    ctx.strokeStyle = ropeColor();
+    const d = Math.hypot(run.x - ANCHOR.x, run.y - ANCHOR.y);
+    const slack = clamp(1 - d / run.ropeLen, 0, 1);
+    const sag = 10 + slack * 80 + Math.sin(t * 1.3) * 3;
+    ctx.beginPath(); ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo((x1 + x2) / 2, Math.max(y1, y2) + sag * (run.taut ? 0.2 : 1), x2, y2 + 24);
+    ctx.stroke();
+  }
+  function drawBrokenRope(x1, y1) {
+    ctx.strokeStyle = "#ff4b3e"; ctx.lineWidth = 2;
+    const droop = Math.min(run.awayT * 1.2, 1);
+    ctx.beginPath(); ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(x1 + 80, y1 - 80 * (1 - droop), x1 + 140, y1 - 120 * (1 - droop) + droop * 40);
+    ctx.stroke();
   }
 
   function drawKite(x, y, tilt, flash) {
@@ -791,15 +735,14 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     const k = clamp(run.hp / run.maxHp, 0, 1);
     const bar = $("hRope"); bar.style.width = (k * 100).toFixed(1) + "%";
     bar.style.background = k > 0.5 ? "#2fb36b" : k > 0.25 ? "#ffb627" : "#ff4b3e";
-    const drain = ropeDrain(run.alt);
-    const flying = mode === "up" || mode === "down";
-    $("hRopeTxt").textContent = `${Math.ceil(run.hp)} / ${run.maxHp}` + (drain > 0 && flying ? ` · −${drain.toFixed(1)}/s` : "");
-    const [b, name] = windName(run.alt);
-    $("hWind").textContent = name; $("hBft").textContent = "Beaufort " + b;
-    $("landBtn").hidden = mode !== "down" || run.reeling || run.endT > 0;
+    const flying = mode === "fly" && !run.snapped && run.endT === 0;
+    const drain = ropeDrain(run.x, run.y);
+    $("hRopeTxt").textContent = `${Math.ceil(run.hp)} / ${run.maxHp}` + (flying ? ` · −${drain.toFixed(1)}/s` : "");
+    $("hWind").textContent = WIND[save.wind].name; $("hBft").textContent = `Level ${save.wind + 1} · ${WIND[save.wind].v} m/s`;
+    $("landBtn").hidden = !(flying && run.taut && !run.reeling);
     const big = $("bigAlt");
     big.hidden = mode === "menu";
-    big.innerHTML = `${fmt(run.alt)} m<small>rope ${fmt(run.ropeLen)} m</small>`;
+    big.innerHTML = `${fmt(Math.max(run.far, 0))} m<small>height ${fmt(Math.max(run.y, 0))} m · rope ${fmt(run.ropeLen)} m</small>`;
   }
 
   // ---------- Loop ----------
