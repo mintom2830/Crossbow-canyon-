@@ -170,7 +170,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     <div class="wallet"><span class="cash" id="wCash">$0</span><span class="best" id="wBest">Best score 0 · Farthest 0 m</span></div>
     <div class="shop" id="shop"></div>
     <button class="fly" id="flyBtn" type="button">Fly! 🪁</button>
-    <p class="how"><b>How to play:</b> a power bar slides back and forth. Tap, click, or press <kbd>Space</kbd> to send the wind. Stop the bar in the gold ★ zone for a <b>Perfect</b> blast. Upgrade the wind to hit harder, the kite to glide farther, and the rope to go longer and stay strong. A safe landing pays a 25% bonus. If the rope snaps, you get no bonus.</p>
+    <p class="how"><b>How to play:</b> a power bar slides back and forth. Tap, click, or press <kbd>Space</kbd> to send the wind. Stop the bar in the gold ★ zone for a <b>Perfect</b> blast. Upgrade the wind to hit harder, the kite to glide farther, and the rope to go longer and stay strong. A safe landing pays a 25% bonus. If the rope snaps, the loose kite keeps flying on its own until it lands, but every metre after the snap pays half.</p>
     <button class="reset" id="resetBtn" type="button">Reset progress</button>
     <div class="confirm" id="confirmBox" hidden>Erase all money and upgrades? <button class="yes" id="resetYes" type="button">Erase</button><button id="resetNo" type="button">Keep</button></div>
   </div>
@@ -243,7 +243,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
       x: 7, y: 9, vx: 0, vy: 0,
       hp: STRENGTH[save.str].v, maxHp: STRENGTH[save.str].v, ropeLen: LENGTH[save.len].v,
       score: 0, earned: 0, far: 0, top: 0, perfect: false,
-      meter: 0, meterDir: 1, taut: false, snapped: false, endT: 0, awayT: 0,
+      meter: 0, meterDir: 1, taut: false, snapped: false, endT: 0, awayT: 0, spin: 0, snapAt: null,
       shake: 0, flash: 0, reeling: false, lowWarned: false,
     };
     particles = []; blast = null;
@@ -398,11 +398,24 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     const K = KITES[save.kite];
     const prevX = run.x;
     // flight physics
-    run.vx *= Math.exp(-K.drag * dt);
-    run.vy -= GRAVITY * dt;
-    const sink = (K.sink + run.y * 0.1) * (run.reeling ? 3 : 1);
-    if (run.vy < -sink) run.vy = -sink;
-    if (run.snapped) { run.vx = lerp(run.vx, 45, dt); run.vy = lerp(run.vy, 14, dt * 2); } // loose kite rides the wind away
+    if (!run.snapped) {
+      run.vx *= Math.exp(-K.drag * dt);
+      run.vy -= GRAVITY * dt;
+      const sink = (K.sink + run.y * 0.1) * (run.reeling ? 3 : 1);
+      if (run.vy < -sink) run.vy = -sink;
+    } else {
+      // free flight: air drag pulls the kite's speed toward the breeze, gravity pulls it down,
+      // and the tumbling sail catches air in bursts, so it flutters as it falls
+      const breeze = 10 + run.y * 0.04;
+      const relX = run.vx - breeze;
+      run.vx -= relX * (1 - Math.exp(-K.drag * 1.6 * dt));
+      const flutter = Math.max(0, Math.sin(run.spin * 2)) * 18;
+      run.vy -= (GRAVITY - flutter) * dt;
+      run.vy *= Math.exp(-0.35 * dt);
+      const sink = (K.sink * 1.6 + run.y * 0.12);
+      if (run.vy < -sink) run.vy = -sink;
+      run.spin += (1.5 + Math.hypot(run.vx, run.vy) * 0.04) * dt;
+    }
     run.x += run.vx * dt; run.y += run.vy * dt;
 
     // rope
@@ -428,25 +441,26 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     if (run.y <= 0) {
       run.y = 0; run.vx = 0; run.vy = 0;
       if (!run.snapped) finish("Safe landing! 🪁", true);
+      else finish(`Rope snapped! The kite drifted to ${fmt(run.far)} m 💨`, false);
     }
 
-    // money: paid for each new metre of distance (only while the rope still holds it)
-    if (!run.snapped && run.x > run.far) {
-      const pay = payFor(run.far, run.x); run.earned += pay; save.money += pay; run.far = run.x;
+    // money: paid for each new metre of distance, even after the kite breaks loose
+    if (run.x > run.far) {
+      const pay = payFor(run.far, run.x) * (run.snapped ? 0.5 : 1); run.earned += pay; save.money += pay; run.far = run.x;
     }
     run.top = Math.max(run.top, run.y);
-    if (!run.snapped && run.endT === 0) run.score = Math.floor(run.far * 10 * (run.perfect ? 1.2 : 1));
+    if (run.endT === 0) run.score = Math.floor(run.far * 10 * (run.perfect ? 1.2 : 1));
 
     // wind wears the rope
     if (!run.snapped && run.endT === 0) run.hp -= ropeDrain(run.x, run.y) * dt;
     if (run.hp < run.maxHp * 0.25 && run.hp > 0 && !run.lowWarned) { toast("Rope is fraying!", 1500); run.lowWarned = true; }
     if (run.hp <= 0 && !run.snapped) {
       run.hp = 0; run.snapped = true; run.shake = 0.6;
-      run.vx = Math.max(run.vx, 30) * 1.2; run.vy = Math.max(run.vy, 10);
+      run.spin = 0; run.snapAt = [run.x, run.y]; // it keeps the speed it had when the rope broke
       const [sx, sy] = toScreen(run.x, run.y); burst(sx, sy, 26, "#ff8a3d");
-      toast("SNAP! 💥 Your kite is flying away!", 1600);
+      toast("SNAP! 💥 The kite is flying free!", 1600);
     }
-    if (run.snapped) { run.awayT += dt; if (run.awayT > 2.4) finish("Rope snapped! Your kite flew away 💨", false); }
+    if (run.snapped) run.awayT += dt;
 
     followCam(dt); // keep watching the kite, even after it breaks loose
   }
@@ -565,9 +579,10 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     if (run.snapped) drawBrokenRope(ax, ay);
     else drawRope(ax, ay, kx, ky);
     let tilt;
-    if (run.snapped) tilt = run.awayT * 4;
+    if (run.snapped) tilt = run.y > 0 ? run.spin : run.spin % (Math.PI * 2);
     else if (mode === "fly" && run.y > 0) tilt = clamp(Math.atan2(-run.vy, run.vx + 1) * 0.4, -0.6, 0.6) - 0.35;
     else tilt = -0.35 + Math.sin(t * 2) * 0.06;
+    if (run.snapped) drawLooseLine(kx, ky);
     drawKite(kx, ky, tilt, run.flash);
     if (blast) drawBlast(ax, ay, kx, ky);
 
@@ -873,10 +888,26 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     ctx.stroke();
   }
   function drawBrokenRope(x1, y1) {
-    ctx.strokeStyle = "#ff6b8b"; ctx.lineWidth = 1.6;
-    const droop = Math.min(run.awayT * 1.2, 1);
+    // the flyer's half of the rope falls slack to the ground
+    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.4;
+    const droop = Math.min(run.awayT * 0.8, 1);
+    const gy = groundYs();
     ctx.beginPath(); ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(x1 + 80, y1 - 80 * (1 - droop), x1 + 140, y1 - 120 * (1 - droop) + droop * 60);
+    ctx.quadraticCurveTo(x1 + 60, lerp(y1 - 90, gy, droop), x1 + 120, lerp(y1 - 160, gy - 2, droop));
+    ctx.stroke();
+  }
+  function drawLooseLine(kx, ky) {
+    // the snapped piece still tied to the kite whips along behind it
+    const sp = Math.hypot(run.vx, run.vy) || 1;
+    const dx = -run.vx / sp * 0.6, dy = run.vy / sp + 1.6; // heavier than the ribbons, so it hangs lower
+    const m = Math.hypot(dx, dy), ux = dx / m, uy = dy / m;
+    const len = 110;
+    ctx.strokeStyle = "rgba(70,55,160,.75)"; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(kx, ky + 8);
+    for (let i = 1; i <= 10; i++) {
+      const k = i / 10, w = Math.sin(t * 9 - i * 0.9) * 8 * k;
+      ctx.lineTo(kx + ux * len * k - uy * w, ky + 8 + uy * len * k + ux * w);
+    }
     ctx.stroke();
   }
 
@@ -887,7 +918,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     // ribbons trail behind the direction of travel (screen space)
     const sp = Math.hypot(run.vx, run.vy);
     let dx = -0.75, dy = 0.66;
-    if (mode === "fly" && sp > 3 && !run.snapped) { dx = -run.vx / sp; dy = run.vy / sp; const m = Math.hypot(dx, dy + 0.4); dx /= m; dy = (dy + 0.4) / m; }
+    if (mode === "fly" && sp > 3) { dx = -run.vx / sp; dy = run.vy / sp; const m = Math.hypot(dx, dy + 0.4); dx /= m; dy = (dy + 0.4) / m; }
     const bxp = x - 10 * s, byp = y + 22 * s; // bottom-left corner where the ribbons attach
     for (let r = 0; r < nRib; r++) {
       const len = (80 + r * 14 + lvl * 10) * s;
