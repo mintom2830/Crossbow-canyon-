@@ -41,6 +41,11 @@ kbd { font-family: var(--display); font-size: 15px; border: 1.5px solid var(--in
 .pad:active { transform: translate(1px, 2px); box-shadow: 1px 1px 0 var(--ink); }
 #bJump { right: max(26px, calc(env(safe-area-inset-right, 0px) + 16px)); bottom: calc(28px + env(safe-area-inset-bottom, 0px)); background: #ffd93d; width: 88px; height: 88px; }
 #bDash { right: max(124px, calc(env(safe-area-inset-right, 0px) + 114px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); background: #b9dbf8; }
+#bShoot { right: max(124px, calc(env(safe-area-inset-right, 0px) + 114px)); bottom: calc(112px + env(safe-area-inset-bottom, 0px)); background: #f7a8bb; }
+#bDie { right: max(40px, calc(env(safe-area-inset-right, 0px) + 30px)); bottom: calc(202px + env(safe-area-inset-bottom, 0px)); width: 56px; height: 56px; font-size: 16px; background: #e6e2d6; }
+#note { position: fixed; left: 50%; top: calc(18% + env(safe-area-inset-top, 0px)); transform: translateX(-50%) rotate(-2deg); font-family: var(--display); font-size: 30px; background: var(--marker); border: 2.5px solid var(--ink); border-radius: 8px 5px 9px 6px; padding: 2px 16px 4px; box-shadow: 3px 4px 0 var(--ink); pointer-events: none; white-space: nowrap; }
+#score { margin-left: 10px; }
+body.aiming #view { cursor: crosshair; }
 #bCheer { right: max(40px, calc(env(safe-area-inset-right, 0px) + 30px)); bottom: calc(128px + env(safe-area-inset-bottom, 0px)); width: 62px; height: 62px; font-size: 17px; background: #b5ea9f; }
 @media (hover: hover) and (pointer: fine) { #touch { display: none; } }
 @media (hover: none), (pointer: coarse) { #keys { display: none; } #title p.kb { display: none; } }
@@ -49,10 +54,11 @@ kbd { font-family: var(--display); font-size: 15px; border: 1.5px solid var(--in
 
 <canvas id="view" aria-label="3D playground with the Classic Doodle"></canvas>
 <div id="loading">Sharpening pencils…</div>
+<div id="note" role="status" aria-live="polite" hidden></div>
 <header class="card" id="title">
   <h1>Doodle Playground</h1>
   <p class="kb">Your 3D Classic Doodle, ready to run around the page.</p>
-  <div id="state">Move: <b id="stateName">idle</b></div>
+  <div id="state">Move: <b id="stateName">idle</b><span id="score">Targets hit: 0</span></div>
 </header>
 <aside class="card" id="keys" aria-label="Controls">
   <dl id="keyList">
@@ -60,8 +66,12 @@ kbd { font-family: var(--display); font-size: 15px; border: 1.5px solid var(--in
     <dt><kbd>Shift</kbd></dt><dd>Hold to walk</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice for a double jump</dd>
     <dt><kbd>K</kbd> <kbd>E</kbd></dt><dd>Dash</dd>
+    <dt>Right mouse</dt><dd>Hold to aim your finger gun</dd>
+    <dt>Left click</dt><dd>Shoot while aiming</dd>
+    <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest target</dd>
+    <dt><kbd>X</kbd></dt><dd>Fall over</dd>
     <dt><kbd>V</kbd></dt><dd>Cheer</dd>
-    <dt>Drag</dt><dd>Turn the camera, scroll to zoom</dd>
+    <dt>Left drag</dt><dd>Turn the camera, scroll to zoom</dd>
   </dl>
   <button id="hide" type="button">Hide controls</button>
 </aside>
@@ -70,6 +80,8 @@ kbd { font-family: var(--display); font-size: 15px; border: 1.5px solid var(--in
   <button class="pad" id="bDash" type="button">dash</button>
   <button class="pad" id="bJump" type="button">jump</button>
   <button class="pad" id="bCheer" type="button">yay!</button>
+  <button class="pad" id="bShoot" type="button">shoot</button>
+  <button class="pad" id="bDie" type="button">oof</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -129,10 +141,10 @@ function rulerTexture() {
   for (let i = 0; i <= 64; i++) { const x = 8 + i * 7.5; g.lineWidth = i % 8 ? 1 : 2; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, i % 8 ? 12 : 24); g.stroke(); if (!(i % 8)) g.fillText(String(i / 8), x + 2, 42); }
   const t = new THREE.CanvasTexture(c); return t;
 }
-const PLATFORMS = [];
+const PLATFORMS = [], aimables = [];
 function block(x, z, w, d, h, color, opts = {}) {
   const m = inked(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), opts.map ? toon('#ffffff', { map: opts.map }) : toon(color)));
-  m.position.set(x, (opts.y || 0) + h / 2, z); m.castShadow = m.receiveShadow = true; scene.add(m);
+  m.position.set(x, (opts.y || 0) + h / 2, z); m.castShadow = m.receiveShadow = true; scene.add(m); aimables.push(m);
   PLATFORMS.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top: (opts.y || 0) + h, bottom: opts.y || 0 });
   return m;
 }
@@ -158,10 +170,11 @@ for (const [x, z, r] of [[-7, 3, 0.4], [7.5, -4, -0.9], [-1, 7.5, 1.4]]) {
 // ---------------------------------------------------------------- the character
 const hero = new THREE.Group(); scene.add(hero);
 // the body turns about its middle for the double-jump flip
-const spin = new THREE.Group(); hero.add(spin);
+const tip = new THREE.Group(); hero.add(tip);      // falls over about the feet
+const spin = new THREE.Group(); tip.add(spin);
 const shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshBasicMaterial({ color: '#1e1d2b', transparent: true, opacity: 0.18, depthWrite: false }));
 shadowBlob.rotation.x = -Math.PI / 2; scene.add(shadowBlob);
-let mixer = null, acts = {}, current = '', model = null;
+let mixer = null, acts = {}, current = '', model = null, armR = null, handR = null;
 const HEIGHT = 1.5; // metres, about
 
 function b64ToBuf(b64) { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; }
@@ -180,7 +193,8 @@ new THREE.GLTFLoader().parse(b64ToBuf(MODEL_B64), '', gltf => {
   spin.add(model);
   mixer = new THREE.AnimationMixer(model);
   for (const clip of gltf.animations) { const a = mixer.clipAction(clip); acts[clip.name] = a; }
-  for (const n of ['jump', 'dash', 'win']) if (acts[n]) { acts[n].setLoop(THREE.LoopRepeat); }
+  if (acts.hurt) { acts.hurt.setLoop(THREE.LoopOnce); acts.hurt.clampWhenFinished = true; }
+  armR = model.getObjectByName('ArmR'); handR = model.getObjectByName('HandR');
   play('idle', 0);
   loading.hidden = true;
 }, err => { loading.textContent = 'The model could not be read: ' + (err && err.message || err); loading.className = 'err'; });
@@ -190,12 +204,18 @@ function play(name, fade = 0.18) {
   const next = acts[name], prev = acts[current];
   next.reset().setEffectiveWeight(1).fadeIn(fade).play();
   if (prev) prev.fadeOut(fade);
-  current = name; $('#stateName').textContent = { win: 'cheer' }[name] || name;
+  current = name;
 }
+let shownState = '';
+function showState(n) { if (n !== shownState) { shownState = n; $('#stateName').textContent = n; } }
+let noteT = 0;
+function note(text, t = 1.6) { const el = $('#note'); el.textContent = text; el.hidden = false; noteT = t; }
 
 // ---------------------------------------------------------------- input: keyboard, thumb stick, buttons, camera drag
 const keys = {};
-let jumpPressed = false, dashPressed = false, cheerPressed = false;
+let jumpPressed = false, dashPressed = false, cheerPressed = false, shootPressed = false, diePressed = false;
+let aimHeld = false;
+const mouse = new THREE.Vector2(0, 0); let mouseSeen = false;
 addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'BUTTON' && (e.code === 'Space' || e.code === 'Enter')) return;
   keys[e.code] = true;
@@ -203,6 +223,8 @@ addEventListener('keydown', e => {
     if (e.code === 'Space') jumpPressed = true;
     if (e.code === 'KeyK' || e.code === 'KeyE') dashPressed = true;
     if (e.code === 'KeyV') cheerPressed = true;
+    if (e.code === 'KeyJ') shootPressed = true;
+    if (e.code === 'KeyX') diePressed = true;
   }
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
 });
@@ -224,11 +246,21 @@ function moveStick(e) {
 }
 const tap = (id, fn) => $(id).addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fn(); });
 tap('#bJump', () => { jumpPressed = true; }); tap('#bDash', () => { dashPressed = true; }); tap('#bCheer', () => { cheerPressed = true; });
+tap('#bShoot', () => { shootPressed = true; }); tap('#bDie', () => { diePressed = true; });
+// mouse: hold the right button to aim, click the left button to shoot while aiming
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 2) { aimHeld = true; document.body.classList.add('aiming'); }
+  else if (e.button === 0 && aimHeld) aimShot = true;
+});
+addEventListener('mouseup', e => { if (e.button === 2) { aimHeld = false; document.body.classList.remove('aiming'); } });
+addEventListener('mousemove', e => { mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); mouseSeen = true; });
+let aimShot = false;
 
 // the camera orbits the doodle: drag anywhere on the page, pinch or scroll to zoom
 const cam = { yaw: 0.35, pitch: 0.32, dist: 7.5 };
 const drags = new Map(); let pinch = 0;
-canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); drags.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
+canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && (e.button !== 0 || aimHeld)) return; canvas.setPointerCapture(e.pointerId); drags.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
 canvas.addEventListener('pointermove', e => {
   const d = drags.get(e.pointerId); if (!d) return;
   if (drags.size === 1) { cam.yaw -= (e.clientX - d.x) * 0.006; cam.pitch = Math.min(1.2, Math.max(0.05, cam.pitch + (e.clientY - d.y) * 0.004)); }
@@ -240,8 +272,13 @@ canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointerc
 canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.min(14, Math.max(3.5, cam.dist * (1 + Math.sign(e.deltaY) * 0.08))); }, { passive: false });
 
 // ---------------------------------------------------------------- the controller
-const P = { pos: new THREE.Vector3(0, 0, 2), vel: new THREE.Vector3(), yaw: 0, ground: true, airJumps: 1, dashT: 0, dashCd: 0, coyote: 0, cheerT: 0, landT: 0 };
-const C = { run: 5.2, walk: 2.2, accel: 30, airAccel: 12, jump: 7.4, jump2: 6.6, gravity: 20, dash: 12, radius: 0.32 };
+const START = new THREE.Vector3(0, 0, 2);
+const P = { pos: START.clone(), vel: new THREE.Vector3(), yaw: 0, ground: true, airJumps: 1, dashT: 0, dashCd: 0, coyote: 0, cheerT: 0, landT: 0,
+  aimW: 0, quickAimT: 0, fireCd: 0, kick: 0, recoilT: 0, pendingShot: false, dead: false, deadT: 0, blinkT: 0 };
+const aimPoint = new THREE.Vector3(0, 1, 6);
+let hits = 0;
+const C = { run: 5.2, walk: 2.2, accel: 30, airAccel: 12, jump: 7.4, jump2: 6.6, gravity: 20, dash: 12, radius: 0.32,
+  bulletSpeed: 20, recoil: 2.6, fireEvery: 0.16, respawn: 2.6 };
 const tmp = new THREE.Vector3();
 
 function inputDir() {
@@ -278,10 +315,138 @@ function pushOut() {
   const lim = 30; P.pos.x = Math.max(-lim, Math.min(lim, P.pos.x)); P.pos.z = Math.max(-lim, Math.min(lim, P.pos.z));
 }
 
+// ---------------------------------------------------------------- aiming, shooting, falling over
+const ray = new THREE.Raycaster(), aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitV = new THREE.Vector3();
+function aimFromMouse() {
+  ray.setFromCamera(mouse, camera);
+  // whatever is under the cursor first (a target or a block), otherwise a flat sheet at chest height
+  const hit = ray.intersectObjects(aimables, false).find(h => h.object.material !== outline);
+  if (hit && hit.point.distanceTo(P.pos) > 0.6) { aimPoint.copy(hit.point); return; }
+  aimPlane.constant = -(P.pos.y + 1.0); // a flat sheet at chest height
+  if (!ray.ray.intersectPlane(aimPlane, hitV) || hitV.distanceTo(P.pos) > 30) hitV.copy(ray.ray.origin).addScaledVector(ray.ray.direction, 16);
+  aimPoint.copy(hitV);
+}
+function quickAim() {
+  // the nearest standing target in front, or straight ahead
+  const fwd = new THREE.Vector3(Math.sin(P.yaw), 0, Math.cos(P.yaw));
+  let best = null, bd = 14;
+  for (const t of targets) {
+    if (t.down) continue;
+    const c = t.center(), d = c.distanceTo(P.pos), to = c.clone().sub(P.pos).setY(0).normalize();
+    if (to.dot(fwd) > 0.2 && d < bd) { bd = d; best = c; }
+  }
+  if (best) aimPoint.copy(best);
+  else aimPoint.set(P.pos.x + fwd.x * 10, P.pos.y + 1.0, P.pos.z + fwd.z * 10);
+  P.quickAimT = 0.45; P.aimW = Math.max(P.aimW, 0.85);
+}
+function respawn() {
+  P.dead = false; P.deadT = 0; P.pos.copy(START); P.vel.set(0, 0, 0); P.yaw = 0; P.blinkT = 1;
+  if (acts.hurt) acts.hurt.stop();
+  current = ''; play('idle', 0.05);
+}
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), ARM_OUT = new THREE.Vector3(-1, 0, 0);
+// the right arm points straight at the aim, like a finger gun (after the clip has posed it)
+function applyAim(dt) {
+  const want = !P.dead && (aimHeld || P.quickAimT > 0) ? 1 : 0;
+  P.aimW += (want - P.aimW) * Math.min(1, dt * 14);
+  if (!armR || P.aimW < 0.01) return;
+  hero.updateMatrixWorld(true);
+  const sh = armR.getWorldPosition(_v1), dir = _v2.copy(aimPoint).sub(sh).normalize();
+  dir.y += P.kick * 0.35; dir.normalize(); // the shot kicks the arm up a little
+  armR.parent.getWorldQuaternion(_q1).invert();
+  dir.applyQuaternion(_q1);
+  _q2.setFromUnitVectors(ARM_OUT, dir);
+  armR.quaternion.slerp(_q2, P.aimW);
+  armR.updateMatrixWorld(true);
+}
+// ink bullets
+const bullets = [], puffs = [];
+const bulletGeo = new THREE.SphereGeometry(0.09, 10, 8), bulletMat = new THREE.MeshBasicMaterial({ color: '#2b2d4a' });
+const puffGeo = new THREE.SphereGeometry(0.12, 8, 6);
+function fire() {
+  const from = handR ? handR.getWorldPosition(new THREE.Vector3()) : P.pos.clone().setY(P.pos.y + 1);
+  const dir = aimPoint.clone().sub(from);
+  if (dir.lengthSq() < 0.04) dir.set(Math.sin(P.yaw), 0, Math.cos(P.yaw));
+  dir.normalize();
+  from.addScaledVector(dir, 0.12);
+  const m = new THREE.Mesh(bulletGeo, bulletMat); m.position.copy(from); scene.add(m);
+  bullets.push({ m, v: dir.clone().multiplyScalar(C.bulletSpeed), life: 1.5 });
+  // recoil: you get pushed back, the arm kicks, the camera jolts
+  P.vel.x -= dir.x * C.recoil; P.vel.z -= dir.z * C.recoil; if (!P.ground) P.vel.y -= dir.y * C.recoil * 0.5;
+  P.kick = 1; P.recoilT = 0.14; camJolt = reduceMotion ? 0 : 0.08;
+  puff(from, '#ffd93d', 0.6, 0.12);
+}
+function puff(at, color, size = 1, life = 0.3) {
+  const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false }));
+  m.position.copy(at); m.scale.setScalar(size * 0.5); scene.add(m); puffs.push({ m, t: 0, life, size });
+}
+function updateShots(dt) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.m.position.addScaledVector(b.v, dt); b.life -= dt;
+    const p = b.m.position;
+    let hit = p.y < 0.05 || b.life <= 0;
+    if (!hit) for (const pl of PLATFORMS) if (p.x > pl.minX && p.x < pl.maxX && p.z > pl.minZ && p.z < pl.maxZ && p.y > pl.bottom && p.y < pl.top) { hit = true; break; }
+    if (!hit) for (const t of targets) if (!t.down && t.center().distanceTo(p) < 0.5) { t.knock(); hits++; $('#score').textContent = `Targets hit: ${hits}`; note(hits % 5 === 0 ? `${hits} targets!` : 'Bullseye!', 0.9); hit = true; break; }
+    if (hit) { if (b.life > 0) for (let k = 0; k < 3; k++) puff(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.2)), '#2b2d4a', 0.9, 0.35); scene.remove(b.m); bullets.splice(i, 1); }
+  }
+  for (let i = puffs.length - 1; i >= 0; i--) {
+    const f = puffs[i]; f.t += dt; const u = f.t / f.life;
+    f.m.scale.setScalar(f.size * (0.5 + u)); f.m.material.opacity = 0.9 * (1 - u);
+    if (u >= 1) { scene.remove(f.m); f.m.material.dispose(); puffs.splice(i, 1); }
+  }
+}
+// paper targets on sticks: they fold down when hit and pop back up
+function bullseyeTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  ['#e63946', '#fffdf4', '#e63946', '#fffdf4', '#e63946'].forEach((col, i) => { g.fillStyle = col; g.beginPath(); g.arc(64, 64, 62 - i * 12, 0, Math.PI * 2); g.fill(); });
+  g.strokeStyle = '#1e1d2b'; g.lineWidth = 4; g.beginPath(); g.arc(64, 64, 61, 0, Math.PI * 2); g.stroke();
+  return new THREE.CanvasTexture(c);
+}
+const eyeTex = bullseyeTexture(), targets = [];
+function addTarget(x, y, z, face) {
+  const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = face;
+  const hinge = new THREE.Group(); g.add(hinge);
+  const stickM = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 6), toon('#c9a26b')), 0.015); stickM.position.y = 0.55;
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 28), [toon('#fffdf4'), toon('#ffffff', { map: eyeTex }), toon('#ffffff', { map: eyeTex })]);
+  disc.rotation.x = Math.PI / 2; disc.position.y = 1.35; disc.castShadow = true;
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.04, 28), outline); ring.rotation.x = Math.PI / 2; ring.position.y = 1.35;
+  stickM.castShadow = true; hinge.add(stickM, disc, ring); scene.add(g); aimables.push(disc);
+  const t = { g, hinge, down: false, t: 0,
+    center: () => disc.getWorldPosition(new THREE.Vector3()),
+    knock() { t.down = true; t.t = 0; } };
+  targets.push(t); return t;
+}
+addTarget(6.5, 0, -6, -0.6); addTarget(-7.5, 0, -4.5, 0.7); addTarget(8, 0, 5, -2.2); addTarget(-1.2, 1.85, -5.1, 0); addTarget(-6, 0, 6, 2.4);
+function updateTargets(dt) {
+  for (const t of targets) {
+    t.t += dt;
+    if (t.down) { t.hinge.rotation.x = -(Math.min(1, t.t / 0.25) ** 2) * (Math.PI / 2 - 0.1); if (t.t > 3) { t.down = false; t.t = 0; } }
+    else if (t.hinge.rotation.x < 0) t.hinge.rotation.x = Math.min(0, t.hinge.rotation.x + dt * 6);
+  }
+}
+let camJolt = 0;
+
 function step(dt) {
-  const inp = inputDir(), walking = keys.ShiftLeft || keys.ShiftRight;
-  const top = (walking ? C.walk : C.run) * inp.amount;
+  // falling over: no control until you get back up
+  if (diePressed && !P.dead) { P.dead = true; P.deadT = 0; P.cheerT = 0; P.dashT = 0; aimHeld = false; document.body.classList.remove('aiming'); note('Oof! Erased.', 1.6); }
+  if (P.dead) { P.deadT += dt; if (P.deadT > C.respawn) respawn(); }
+  const inp = P.dead ? { x: 0, z: 0, amount: 0 } : inputDir(), walking = keys.ShiftLeft || keys.ShiftRight;
+  // aiming: hold the right mouse button (or a quick shot raises the arm for a moment)
+  if (P.quickAimT > 0) P.quickAimT -= dt;
+  if (P.fireCd > 0) P.fireCd -= dt;
+  if (P.recoilT > 0) P.recoilT -= dt;
+  P.kick = Math.max(0, P.kick - dt * 8);
+  const aiming = !P.dead && (aimHeld || P.quickAimT > 0);
+  if (aimHeld && mouseSeen) aimFromMouse();
+  if (!P.dead && (shootPressed || aimShot) && P.fireCd <= 0) {
+    if (!aimHeld || shootPressed && !aimShot && !aimHeld) quickAim();
+    P.pendingShot = true; P.fireCd = C.fireEvery;
+  }
+  shootPressed = aimShot = diePressed = false;
+  const top = aiming && aimHeld ? 0 : (walking ? C.walk : C.run) * inp.amount;
   if (P.dashCd > 0) P.dashCd -= dt;
+  if (P.dead) dashPressed = jumpPressed = cheerPressed = false;
   if (dashPressed && P.dashCd <= 0) {
     const f = inp.amount > 0.1 ? new THREE.Vector3(inp.x, 0, inp.z).normalize() : new THREE.Vector3(Math.sin(P.yaw), 0, Math.cos(P.yaw));
     P.vel.x = f.x * C.dash; P.vel.z = f.z * C.dash; if (!P.ground) P.vel.y = Math.max(P.vel.y, 1.5);
@@ -315,17 +480,21 @@ function step(dt) {
   } else if (P.pos.y > floor + 0.02) P.ground = false;
   // face where you go
   const sp = Math.hypot(P.vel.x, P.vel.z);
-  if (sp > 0.3) { let d = Math.atan2(P.vel.x, P.vel.z) - P.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); P.yaw += d * Math.min(1, dt * 14); }
+  const faceAim = aiming && !P.dead;
+  if (faceAim) { let d = Math.atan2(aimPoint.x - P.pos.x, aimPoint.z - P.pos.z) - P.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); P.yaw += d * Math.min(1, dt * 18); }
+  else if (sp > 0.3 && !P.dead) { let d = Math.atan2(P.vel.x, P.vel.z) - P.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); P.yaw += d * Math.min(1, dt * 14); }
   if (P.cheerT > 0) { P.cheerT -= dt; if (sp > 0.5) P.cheerT = 0; }
   // which clip
   let anim;
-  if (P.dashT > 0) anim = 'dash';
+  if (P.dead) anim = 'hurt';
+  else if (P.dashT > 0) anim = 'dash';
   else if (!P.ground) anim = P.vel.y > 0 ? 'jump' : 'fall';
   else if (P.cheerT > 0) anim = 'win';
   else if (sp > 3.4) anim = 'run';
   else if (sp > 0.25) anim = 'walk';
   else anim = 'idle';
-  play(anim, anim === 'jump' || anim === 'dash' ? 0.08 : 0.18);
+  play(anim, anim === 'jump' || anim === 'dash' || anim === 'hurt' ? 0.08 : 0.18);
+  showState(P.dead ? 'fallen over' : P.recoilT > 0 ? 'shoot' : aiming ? 'aim' : { win: 'cheer' }[anim] || anim);
   if (acts.walk) acts.walk.timeScale = Math.max(0.6, sp / 2.2);
   if (acts.run) acts.run.timeScale = Math.max(0.8, sp / C.run);
   // the double-jump flip and a little squash when landing
@@ -336,6 +505,12 @@ function step(dt) {
   hero.position.copy(P.pos);
   hero.rotation.set(0, P.yaw, 0);
   spin.rotation.x = flipA ? -(flipA * flipA * (3 - 2 * flipA)) * Math.PI * 2 : 0;
+  // falling over onto its back, with a small bounce when it lands
+  if (P.dead) {
+    const u = Math.min(1, P.deadT / 0.55), ease = u * u, bounce = u >= 1 ? Math.sin(Math.min(1, (P.deadT - 0.55) / 0.3) * Math.PI) * 0.08 : 0;
+    tip.rotation.x = -(ease * Math.PI / 2) + bounce;
+  } else tip.rotation.x = 0;
+  if (P.blinkT > 0) { P.blinkT -= dt; spin.visible = Math.floor(P.blinkT * 12) % 2 === 0 || P.blinkT <= 0; } else spin.visible = true;
   hero.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
   shadowBlob.position.set(P.pos.x, groundAt(P.pos.x, P.pos.z, P.pos.y) + 0.01, P.pos.z);
   const hgt = P.pos.y - shadowBlob.position.y; shadowBlob.scale.setScalar(Math.max(0.4, 1 - hgt * 0.25));
@@ -349,12 +524,18 @@ addEventListener('resize', resize); resize();
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (model && mixer) { step(dt); mixer.update(dt); }
+  if (model && mixer) {
+    step(dt); mixer.update(dt); applyAim(dt);
+    if (P.pendingShot) { P.pendingShot = false; fire(); }
+  }
+  updateShots(dt); updateTargets(dt);
+  if (noteT > 0) { noteT -= dt; if (noteT <= 0) $('#note').hidden = true; }
   // camera follows with a little lag (none if reduced motion is on)
   look.lerp(tmp.set(P.pos.x, P.pos.y + 0.9, P.pos.z), reduceMotion ? 1 : 1 - Math.exp(-dt * 8));
   const cp = Math.cos(cam.pitch);
   camera.position.set(look.x + Math.sin(cam.yaw) * cp * cam.dist, look.y + Math.sin(cam.pitch) * cam.dist, look.z + Math.cos(cam.yaw) * cp * cam.dist);
   camera.lookAt(look);
+  if (camJolt > 0) { camera.translateZ(camJolt); camJolt = Math.max(0, camJolt - dt * 0.8); }
   sun.position.set(P.pos.x + 6, 12, P.pos.z + 8); sun.target.position.copy(P.pos);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
