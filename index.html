@@ -158,7 +158,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 <div class="overlay" id="overlay">
   <div class="card">
     <h1>Sky <span>String</span></h1>
-    <p class="tag" id="tagline">Tap at the right moment and a blast of wind hits your kite, sending it flying sideways across the fields. The farther it flies, the more money you earn. When the rope runs out, the kite jerks to a stop. If the rope holds, the kite swings down and lands. If it snaps, the kite flies away.</p>
+    <p class="tag" id="tagline">Tap at the right moment and a blast of wind hits your kite, sending it flying sideways across the fields. The farther it flies, the more money you earn. When the rope runs out, it stretches tight and swings the kite around. If the rope holds, the kite swings down and lands. If it snaps, the kite flies away.</p>
     <div id="runBox" hidden>
       <p class="sumtitle" id="runTitle">Rope snapped!</p>
     </div>
@@ -170,7 +170,7 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     <div class="wallet"><span class="cash" id="wCash">$0</span><span class="best" id="wBest">Best score 0 · Farthest 0 m</span></div>
     <div class="shop" id="shop"></div>
     <button class="fly" id="flyBtn" type="button">Fly! 🪁</button>
-    <p class="how"><b>How to play:</b> a power bar slides back and forth. Tap, click, or press <kbd>Space</kbd> to send the wind. Stop the bar in the gold ★ zone for a <b>Perfect</b> blast. Upgrade the wind to hit harder, the kite to glide farther, and the rope to go longer and stay strong. A safe landing pays a 25% bonus. If the rope snaps, the loose kite keeps flying on its own until it lands, but every metre after the snap pays half.</p>
+    <p class="how"><b>How to play:</b> a power bar slides back and forth. Tap, click, or press <kbd>Space</kbd> to send the wind. Stop the bar in the gold ★ zone for a <b>Perfect</b> blast. Upgrade the wind to hit harder, the kite to glide farther, and the rope to go longer and stay strong. Rope that runs out stretches tight and swings the kite round. A safe landing pays a 25% bonus. If the rope snaps, the loose kite keeps flying on its own until it lands, but every metre after the snap pays half.</p>
     <button class="reset" id="resetBtn" type="button">Reset progress</button>
     <div class="confirm" id="confirmBox" hidden>Erase all money and upgrades? <button class="yes" id="resetYes" type="button">Erase</button><button id="resetNo" type="button">Keep</button></div>
   </div>
@@ -418,23 +418,26 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     }
     run.x += run.vx * dt; run.y += run.vy * dt;
 
-    // rope
+    // rope: a stretchy line. Past its length it pulls back like a spring, so the kite slows,
+    // swings round on the line and the rope takes strain, instead of stopping dead
     if (!run.snapped) {
       const dx = run.x - ANCHOR.x, dy = run.y - ANCHOR.y, d = Math.hypot(dx, dy);
-      if (d >= run.ropeLen) {
+      if (d > run.ropeLen) {
         const nx = dx / d, ny = dy / d;
+        const stretch = d - run.ropeLen;
         const radial = run.vx * nx + run.vy * ny;
-        if (!run.taut && radial > 0) {
-          const dmg = radial * 1.2;
-          run.hp -= dmg; run.shake = 0.5; run.flash = 1;
-          const [sx, sy] = toScreen(run.x, run.y); burst(sx, sy, 16, "#ffd84d");
-          if (run.hp > 0) toast(`Out of rope! Rope −${Math.round(dmg)}`, 1500);
+        const tension = 90 * stretch + 7 * Math.max(radial, 0);
+        run.vx -= tension * nx * dt; run.vy -= tension * ny * dt;
+        run.hp -= tension * 1.2 * dt;           // strain on the rope
+        run.shake = Math.max(run.shake, Math.min(tension / 900, 0.35));
+        if (!run.taut) {
           run.taut = true;
+          if (run.hp > 0) toast(radial > 40 ? "The rope pulls tight! 😬" : "Out of rope!", 1300);
         }
-        if (run.hp > 0) {
-          run.x = ANCHOR.x + nx * run.ropeLen; run.y = ANCHOR.y + ny * run.ropeLen;
+        const maxStretch = run.ropeLen * 0.12;  // a rope only stretches so far
+        if (stretch > maxStretch) {
+          run.x = ANCHOR.x + nx * (run.ropeLen + maxStretch); run.y = ANCHOR.y + ny * (run.ropeLen + maxStretch);
           if (radial > 0) { run.vx -= radial * nx; run.vy -= radial * ny; }
-          run.vx *= Math.exp(-1.5 * dt);
         }
       }
     }
@@ -559,7 +562,6 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
     drawTown(gy, hy);
     drawClouds(0.16, 0.6, hy, 1);
     drawTerraces(gy);
-    drawRopeLimit();
 
     const speed = Math.hypot(run.vx, run.vy);
     if (mode === "fly" && speed > 30) {
