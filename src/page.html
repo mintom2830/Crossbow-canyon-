@@ -122,7 +122,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 
 <section class="screen card" id="menu" hidden aria-labelledby="menuTitle">
   <h1 id="menuTitle">Doodle Playground</h1>
-  <p class="sub">Free-for-all on a giant page of notebook paper: four doodlers, three lives each. Don't fall off the edge. The last one standing wins.</p>
+  <p class="sub">Free-for-all on a huge page of notebook paper: four doodlers, three lives each. Don't fall off the edge. The last one standing wins.</p>
   <div class="field"><label for="nameIn">Your name</label><input id="nameIn" maxlength="14" autocomplete="off" spellcheck="false"></div>
   <div class="stack">
     <button class="btn primary" id="bQuick" type="button" disabled>Quick match online</button>
@@ -165,7 +165,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 <section class="screen card" id="pause" hidden aria-labelledby="pauseTitle">
   <h2 id="pauseTitle">Paused</h2>
   <p class="hint" id="pauseNote" hidden>The online match keeps going while this is open.</p>
-  <div class="stack"><button class="btn primary" id="bResume" type="button">Resume</button><button class="btn" id="bHelp" type="button">Show or hide controls</button><button class="btn ghost" id="bQuit" type="button">Leave match</button></div>
+  <div class="stack"><button class="btn primary" id="bResume" type="button">Resume</button><button class="btn" id="bFollow" type="button" aria-pressed="true">Camera follows your doodle: on</button><button class="btn" id="bHelp" type="button">Show or hide controls</button><button class="btn ghost" id="bQuit" type="button">Leave match</button></div>
 </section>
 
 <div id="hud" hidden>
@@ -184,6 +184,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
     <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Run (<kbd>Shift</kbd> walks)</dd>
     <dt>Mouse</dt><dd>Aim, click or hold to shoot</dd>
     <dt>Right mouse</dt><dd>Drag to turn the camera, hold still for steady aim</dd>
+    <dt>Camera</dt><dd>Turns with your doodle (switch it off in pause)</dd>
     <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest rival</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice to double jump</dd>
     <dt><kbd>K</kbd> <kbd>E</kbd></dt><dd>Dash (shoves rivals)</dd>

@@ -53,7 +53,7 @@ function clientView(net, dt) {
   }
   return { t: est, state: c.state, sd: c.sd, zone: zoneRadius(est), practice: c.practice, players, localSlot: ls, crates: c.crates, spawners: c.spawners, drops: c.drops, targets: c.targets, ranking: c.ranking, shotTime: rt, ownShotTime: est };
 }
-const camGame = { dist: 7.5, pitch: 0.32 };
+const camGame = { dist: 8, pitch: 0.32 };
 let last = performance.now(), lobbyRefresh = 0, lastFrame = performance.now();
 // a host whose tab is in the background still has to run the match for everyone: browsers stop animation frames there, so a timer takes over
 setInterval(() => {
@@ -96,8 +96,17 @@ function loop(now) {
     if (view.state === 'lobby' || view.state === 'ended') view.spectating = 0;
   }
   view.focus = focus;
+  // the camera swings round behind your doodle as it turns (not while you aim, shoot or turn the camera yourself)
+  if (playing && meV.alive && GFX.cam.follow && cur === 'game') {
+    const sp = Math.hypot(meV.vx, meV.vz), st = Input.st;
+    const busy = st.mouseL || st.mouseR || st.touchFire || st.overrideT > 0 || (st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3) || meV.aim;
+    if (sp > 1 && !busy && now - GFX.cam.manualT > 1200) {
+      const d = angDiff(GFX.cam.yaw, meV.yaw + Math.PI);
+      if (Math.abs(d) < 2.1) GFX.cam.yaw += d * Math.min(1, dt * 2.4 * Math.min(1, sp / RUN));
+    }
+  }
   if (App.mode === 'menu' || !focus) {
-    GFX.cam.yaw += dt * 0.05; GFX.cam.dist += (34 - GFX.cam.dist) * Math.min(1, dt * 2); GFX.cam.pitch += (0.48 - GFX.cam.pitch) * Math.min(1, dt * 2);
+    GFX.cam.yaw += dt * 0.05; GFX.cam.dist += (48 - GFX.cam.dist) * Math.min(1, dt * 2); GFX.cam.pitch += (0.48 - GFX.cam.pitch) * Math.min(1, dt * 2);
     focus = { x: 0, y: 0, z: 0 };
   } else if (GFX.cam.dist > 15.5) { GFX.cam.dist = camGame.dist; GFX.cam.pitch = camGame.pitch; GFX.cam.init = false; }
   GFX.frame(view, dt, now / 1000, focus, aim);
@@ -147,6 +156,10 @@ function loop(now) {
   $('#bResume').onclick = click(() => App.togglePause());
   $('#bQuit').onclick = click(() => App.toMenu());
   $('#bHelp').onclick = click(() => { $('#keys').hidden = !$('#keys').hidden; });
+  try { GFX.cam.follow = localStorage.getItem('dp.camfollow') !== 'off'; } catch { /* */ }
+  const paintFollow = () => { $('#bFollow').textContent = `Camera follows your doodle: ${GFX.cam.follow ? 'on' : 'off'}`; $('#bFollow').setAttribute('aria-pressed', String(GFX.cam.follow)); };
+  paintFollow();
+  $('#bFollow').onclick = click(() => { GFX.cam.follow = !GFX.cam.follow; try { localStorage.setItem('dp.camfollow', GFX.cam.follow ? 'on' : 'off'); } catch { /* */ } paintFollow(); });
   const mute = () => { const on = SFX.toggle(); $('#bMute').setAttribute('aria-pressed', String(!on)); $('#bMute').textContent = on ? '♪' : '♪̸'; };
   $('#bMute').onclick = () => { SFX.unlock(); mute(); };
   if (!SFX.on) { $('#bMute').setAttribute('aria-pressed', 'true'); $('#bMute').textContent = '♪̸'; }

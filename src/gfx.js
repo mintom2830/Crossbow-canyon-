@@ -17,7 +17,7 @@ const GFX = (() => {
   const sun = new THREE.DirectionalLight('#fff1d8', 0.85);
   sun.position.set(13, 26, 9); sun.castShadow = true;
   sun.shadow.mapSize.set(LOW ? 1024 : 2048, LOW ? 1024 : 2048);
-  Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 4, far: 70 });  // follows the camera's focus
+  Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 4, far: 90 });  // follows the camera's focus
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
 
@@ -82,7 +82,7 @@ const GFX = (() => {
   // ---- canvas textures (each object gets its own)
   const ctex = (w, h, draw, rep) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); } t.anisotropy = 4; return t; };
   scene.background = new THREE.Color('#f4efe0');
-  scene.fog = new THREE.Fog('#f4efe0', 34, 100);
+  scene.fog = new THREE.Fog('#f4efe0', 46, 150);
   const paperSide = ctex(256, 128, (g, w, h) => { g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h); g.strokeStyle = '#a9c9ee'; g.lineWidth = 3; for (let y = 18; y < h; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } g.strokeStyle = '#e8838a'; g.lineWidth = 4; g.beginPath(); g.moveTo(30, 0); g.lineTo(30, h); g.stroke(); }, [2, 1]);
   const paperTop = ctex(512, 512, (g, w, h) => {
     g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h); g.strokeStyle = '#a9c9ee'; g.lineWidth = 3; for (let y = 32; y < h; y += 48) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
@@ -113,24 +113,26 @@ const GFX = (() => {
     g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h);
     g.strokeStyle = '#9fc1ea'; g.lineWidth = 4; for (let y = 32; y < h; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
     g.strokeStyle = 'rgba(226,112,122,0.85)'; g.lineWidth = 5; g.beginPath(); g.moveTo(96, 0); g.lineTo(96, h); g.stroke();
-  }, [PAGE / 8, PAGE / 8]);
+  }, [PAGE / (8 * SC), PAGE / (8 * SC)]);
   const edgeMat = toon('#f1ece0');
   add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(PAGE, 0.3, PAGE), [edgeMat, edgeMat, toon('#fff', { map: pageTex }), edgeMat, edgeMat, edgeMat]), 0.05), false, true), 0, -0.15, 0);
   const deskTex = ctex(256, 256, (g, w, h) => { g.fillStyle = '#b98552'; g.fillRect(0, 0, w, h); for (let i = 0; i < 40; i++) { g.strokeStyle = i % 3 ? 'rgba(120,75,40,0.35)' : 'rgba(225,175,120,0.3)'; g.lineWidth = rand(1, 4); g.beginPath(); const y = Math.random() * h; g.moveTo(0, y); g.bezierCurveTo(w * 0.3, y + rand(-12, 12), w * 0.7, y + rand(-12, 12), w, y); g.stroke(); } }, [40, 40]);
-  const desk = add(new THREE.Mesh(new THREE.PlaneGeometry(500, 500), toon('#fff', { map: deskTex })), 0, -7, 0); desk.rotation.x = -Math.PI / 2;
+  const deskG = new THREE.Group(); deskG.scale.setScalar(SC); scene.add(deskG);
+  const addD = (o, x = 0, y = 0, z = 0) => { o.position.set(x, y, z); deskG.add(o); return o; };
+  const desk = addD(new THREE.Mesh(new THREE.PlaneGeometry(500, 500), toon('#fff', { map: deskTex })), 0, -7, 0); desk.rotation.x = -Math.PI / 2;
   // things on the desk around the page, for scale
   {
     const giantPencil = (x, z, ry, color) => {
-      const g = new THREE.Group(); g.position.set(x, -7 + 1.6, z); g.rotation.set(0, ry, Math.PI / 2); scene.add(g);
+      const g = new THREE.Group(); g.position.set(x, -7 + 1.6, z); g.rotation.set(0, ry, Math.PI / 2); deskG.add(g);
       const body = inked(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 26, 6), toon(color)), 0.15);
       const wood = inked(new THREE.Mesh(new THREE.ConeGeometry(1.6, 4, 6), toon('#f2d2a6')), 0.15); wood.position.y = -15; wood.rotation.z = Math.PI;
       const rub = inked(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.4, 12), toon('#f7a8bb')), 0.15); rub.position.y = 14.2;
       g.add(body, wood, rub);
     };
     giantPencil(-52, 18, 0.4, '#ffcf3a'); giantPencil(48, -40, -0.9, '#5b8def'); giantPencil(20, 56, 1.4, '#e63946');
-    const er = add(inked(new THREE.Mesh(new THREE.BoxGeometry(16, 6, 9), toon('#f7a8bb')), 0.15), 52, -4, 24); er.rotation.y = 0.5;
-    const mug = add(inked(new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 16, 24), toon('#7fb3ff')), 0.15), -46, 1, -48);
-    const sharp = add(inked(new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), toon('#ffcf3a')), 0.15), -60, -4, -6); sharp.rotation.y = 1.1;
+    const er = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(16, 6, 9), toon('#f7a8bb')), 0.15), 52, -4, 24); er.rotation.y = 0.5;
+    const mug = addD(inked(new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 16, 24), toon('#7fb3ff')), 0.15), -46, 1, -48);
+    const sharp = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), toon('#ffcf3a')), 0.15), -60, -4, -6); sharp.rotation.y = 1.1;
   }
   const playerU = { value: [new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0)] };
 
@@ -154,7 +156,7 @@ const GFX = (() => {
     const BN = T.length * 2, bush = new THREE.InstancedMesh(blobGeo, swayToon(toon('#ffffff'), 0.02), BN), bushOl = new THREE.InstancedMesh(blobGeo, outlineMat(0.05, 0.02), BN);
     T.forEach((t, i) => {
       for (let j = 0; j < 2; j++) {
-        const a = i * 2.3 + j * 2.6, x = t.x + Math.cos(a) * 1.1, z = t.z + Math.sin(a) * 1.1, sc = 0.3 + 0.08 * j;
+        const a = i * 2.3 + j * 2.6, x = t.x + Math.cos(a) * 1.1 * SC, z = t.z + Math.sin(a) * 1.1 * SC, sc = (0.3 + 0.08 * j) * SC;
         m4.compose(new THREE.Vector3(x, sc * 0.35, z), q.identity(), new THREE.Vector3(sc, sc * 0.75, sc)); bush.setMatrixAt(i * 2 + j, m4); bushOl.setMatrixAt(i * 2 + j, m4); bush.setColorAt(i * 2 + j, col.setHSL(0.27 + j * 0.03, 0.6, 0.44));
       }
     });
@@ -166,7 +168,7 @@ const GFX = (() => {
   paperSide.repeat.set(3, 1.5);
   const tower = add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(TW.w, TW.top, TW.d), [toon('#fff', { map: paperSide }), toon('#fff', { map: paperSide }), toon('#fff', { map: paperTop }), toon('#fff'), toon('#fff', { map: paperSide }), toon('#fff', { map: paperSide })]), 0.05)), 0, TW.top / 2, 0);
   {
-    const N = 15, ring = new THREE.TorusGeometry(0.3, 0.06, 6, 14), rings = new THREE.InstancedMesh(ring, toon('#c3c9d4'), N), m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
+    const N = 15, ring = new THREE.TorusGeometry(0.3 * SC, 0.06 * SC, 6, 14), rings = new THREE.InstancedMesh(ring, toon('#c3c9d4'), N), m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
     for (let i = 0; i < N; i++) { m4.compose(new THREE.Vector3(-TW.w / 2, TW.top, -TW.d / 2 + 0.6 + i * (TW.d - 1.2) / (N - 1)), q, new THREE.Vector3(1, 1, 1)); rings.setMatrixAt(i, m4); }
     rings.castShadow = true; scene.add(rings);
   }
@@ -195,8 +197,8 @@ const GFX = (() => {
       // two pencils lying on the lid (scenery)
       const long = b.d > b.w;
       for (const [o, c] of [[-0.35, '#ffcf3a'], [0.35, '#e63946']]) {
-        const pc = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, (long ? b.d : b.w) * 0.8, 6), toon(c)), 0.02);
-        pc.rotation.set(long ? Math.PI / 2 : 0, 0, long ? 0 : Math.PI / 2); add(pc, b.cx + (long ? o : 0), h + 0.09, b.cz + (long ? 0 : o)); pc.castShadow = true;
+        const pc = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.09 * SC, 0.09 * SC, (long ? b.d : b.w) * 0.8, 6), toon(c)), 0.02);
+        pc.rotation.set(long ? Math.PI / 2 : 0, 0, long ? 0 : Math.PI / 2); add(pc, b.cx + (long ? o * SC : 0), h + 0.09 * SC, b.cz + (long ? 0 : o * SC)); pc.castShadow = true;
       }
     } else if (b.kind === 'bridge') {
       const tex = rulerTex.clone(); tex.needsUpdate = true; if (b.w < b.d) { tex.center.set(0.5, 0.5); tex.rotation = Math.PI / 2; }
@@ -205,11 +207,12 @@ const GFX = (() => {
       // two legs so it reads as a bridge
       // legs only on the outer half, so the sweeping pencil passes under cleanly
       const ol = Math.hypot(b.cx, b.cz) || 1, ux = b.cx / ol, uz = b.cz / ol;
-      for (const k of [1.3, 4.5]) add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, b.bottom, 8), toon('#c3c9d4')), 0.025)), b.cx + ux * k, b.bottom / 2, b.cz + uz * k);
+      for (const k of [1.3 * SC, 4.5 * SC]) add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, b.bottom, 8), toon('#c3c9d4')), 0.025)), b.cx + ux * k, b.bottom / 2, b.cz + uz * k);
     } else if (b.kind === 'pad') {
       const g = new THREE.Group(); g.position.set(b.cx, 0, b.cz); scene.add(g);
-      const base = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.9, 0.14, 28), toon('#f7a8bb')), 0.03)); base.position.y = 0.07;
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.78, 0.07, 28), [toon('#7fb3ff'), toon('#fff', { map: arrowTex }), toon('#7fb3ff')]); top.position.y = 0.17;
+      const pr = b.w / 2;
+      const base = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(pr * 1.01, pr * 1.06, 0.14, 28), toon('#f7a8bb')), 0.03)); base.position.y = 0.07;
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(pr * 0.87, pr * 0.92, 0.07, 28), [toon('#7fb3ff'), toon('#fff', { map: arrowTex }), toon('#7fb3ff')]); top.position.y = 0.17;
       top.rotation.y = Math.atan2(-b.cx, -b.cz) + Math.PI;
       g.add(base, top); padMeshes.push({ g, top, t: 0, q: b.q });
     }
@@ -222,7 +225,7 @@ const GFX = (() => {
     return m;
   });
   const tpMeshes = MAP.tps.map(tp => {
-    const g = new THREE.Group(); g.position.set(tp.x, 0, tp.z); scene.add(g);
+    const g = new THREE.Group(); g.position.set(tp.x, 0, tp.z); g.scale.setScalar(tp.r / 0.75); scene.add(g);
     const color = tp.q % 2 ? '#3ad1c4' : '#a05cff';
     g.add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.1, 28), toon('#2b2d4a')), 0.025)));
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.08, 8, 32), toon(color, { emissive: new THREE.Color(color).multiplyScalar(0.35) })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12; g.add(ring);
@@ -231,7 +234,7 @@ const GFX = (() => {
     return { g, disc, ring, color, x: tp.x, z: tp.z };
   });
   MAP.spawns.forEach((s, i) => {
-    const r = add(new THREE.Mesh(new THREE.RingGeometry(0.75, 1.0, 32), new THREE.MeshBasicMaterial({ color: COLORS[i].hex, transparent: true, opacity: 0.85, depthWrite: false })), s.x, 0.02, s.z); r.rotation.x = -Math.PI / 2;
+    const r = add(new THREE.Mesh(new THREE.RingGeometry(0.75 * SC, 1.0 * SC, 32), new THREE.MeshBasicMaterial({ color: COLORS[i].hex, transparent: true, opacity: 0.85, depthWrite: false })), s.x, 0.02, s.z); r.rotation.x = -Math.PI / 2;
   });
   // all crates in one instanced draw (plus one for their ink outline)
   const crateGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -244,12 +247,13 @@ const GFX = (() => {
   const arm = new THREE.Group(); scene.add(arm);
   {
     // eraser end toward the tower, the point outward: it reaches from ARM_IN to ARM_OUT
-    const p = new THREE.Group(); p.position.set((ARM_IN + ARM_OUT) / 2, 0.4, 0); p.rotation.z = Math.PI / 2; arm.add(p);
-    const body = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 3.4, 6), toon('#ffcf3a')), 0.03));
-    const wood = shadowy(inked(new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.8, 6), toon('#f2d2a6')), 0.03)); wood.position.y = -2.1; wood.rotation.z = Math.PI;
-    const lead = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.26, 6), toon('#2b2d4a')); lead.position.y = -2.52; lead.rotation.z = Math.PI;
-    const band = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.3, 12), toon('#c3c9d4')), 0.02)); band.position.y = 1.85;
-    const rub = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.5, 12), toon('#f7a8bb')), 0.03)); rub.position.y = 2.25;
+    const L = ARM_OUT - ARM_IN, R = 0.42;
+    const p = new THREE.Group(); p.position.set((ARM_IN + ARM_OUT) / 2, 0.45, 0); p.rotation.z = Math.PI / 2; arm.add(p);
+    const body = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(R, R, L * 0.72, 6), toon('#ffcf3a')), 0.035));
+    const wood = shadowy(inked(new THREE.Mesh(new THREE.ConeGeometry(R, L * 0.16, 6), toon('#f2d2a6')), 0.035)); wood.position.y = -L * 0.44; wood.rotation.z = Math.PI;
+    const lead = new THREE.Mesh(new THREE.ConeGeometry(R * 0.33, L * 0.05, 6), toon('#2b2d4a')); lead.position.y = -L * 0.53; lead.rotation.z = Math.PI;
+    const band = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(R * 1.03, R * 1.03, L * 0.04, 12), toon('#c3c9d4')), 0.02)); band.position.y = L * 0.38;
+    const rub = shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(R, R, L * 0.08, 12), toon('#f7a8bb')), 0.035)); rub.position.y = L * 0.44;
     p.add(body, wood, lead, band, rub);
   }
   // ---- sudden death: the ink wall
@@ -259,7 +263,7 @@ const GFX = (() => {
     fragmentShader: `uniform float uTime; varying vec2 vUv; void main() { float s = step(0.5, fract(vUv.x * 60.0 + vUv.y * 3.0 - uTime * 0.8)); float a = (0.25 + 0.35 * s) * (1.0 - vUv.y * 0.7); gl_FragColor = vec4(mix(vec3(0.42, 0.18, 0.62), vec3(0.85, 0.2, 0.4), s), a); }`,
   });
   zoneMat.uniforms = { uTime: timeU };
-  const zone = add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 7, 96, 1, true), zoneMat), 0, 3.2, 0); zone.visible = false;
+  const zone = add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 10, 96, 1, true), zoneMat), 0, 4.6, 0); zone.visible = false;
 
   // ---- items: plinths with the item floating above
   function itemMesh(k) {
@@ -296,11 +300,11 @@ const GFX = (() => {
 
   // ---- sky life: drifting clouds and floating pollen
   const CN = 9, PUFFS = 5, cloudGeo = new THREE.IcosahedronGeometry(1, 1), clouds = new THREE.InstancedMesh(cloudGeo, toon('#ffffff', { emissive: new THREE.Color('#9ab6d6') }), CN * PUFFS), cloudOl = new THREE.InstancedMesh(cloudGeo, outlineMat(0.04), CN * PUFFS);
-  const cloudData = Array.from({ length: CN }, (_, i) => ({ a: i / CN * TAU, r: rand(40, 75), y: rand(16, 26), s: rand(2.2, 3.6), v: rand(0.006, 0.014), p: Array.from({ length: PUFFS }, (_, j) => [rand(-1.6, 1.6), rand(-0.3, 0.5), rand(-0.8, 0.8), rand(0.7, 1.2)]) }));
+  const cloudData = Array.from({ length: CN }, (_, i) => ({ a: i / CN * TAU, r: rand(60, 110), y: rand(22, 34), s: rand(3, 5), v: rand(0.006, 0.014), p: Array.from({ length: PUFFS }, (_, j) => [rand(-1.6, 1.6), rand(-0.3, 0.5), rand(-0.8, 0.8), rand(0.7, 1.2)]) }));
   scene.add(clouds, cloudOl); clouds.frustumCulled = cloudOl.frustumCulled = false;
   const pollen = (() => {
     const N = LOW ? 120 : 260, pos = new Float32Array(N * 3), seed = new Float32Array(N);
-    for (let i = 0; i < N; i++) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 32; pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = rand(0.3, 6); pos[i * 3 + 2] = Math.sin(a) * r; seed[i] = Math.random() * 100; }
+    for (let i = 0; i < N; i++) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * HALF * 1.05; pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = rand(0.3, 6); pos[i * 3 + 2] = Math.sin(a) * r; seed[i] = Math.random() * 100; }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
     const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime: timeU, uMap: { value: dotTex }, uScale: { value: 1 } },
       vertexShader: `uniform float uTime; uniform float uScale; attribute float seed; void main() { vec3 p = position; p.x += sin(uTime * 0.3 + seed) * 1.5; p.y += mod(uTime * 0.25 + seed, 6.0) - 3.0; p.z += cos(uTime * 0.27 + seed * 1.3) * 1.5; vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = uScale * 110.0 / -mv.z; gl_Position = projectionMatrix * mv; }`,
@@ -350,7 +354,7 @@ const GFX = (() => {
       const p = debPool[i]; if (!p.on) continue;
       p.t += dt; if (p.t > p.life) { p.on = false; debMesh.setMatrixAt(i, hide); continue; }
       p.vy -= GRAV * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.rx += p.wr * dt; p.ry += p.wr * 0.7 * dt;
-      const fl = onPage(p.x, p.z) ? p.s / 2 : -6.9;
+      const fl = onPage(p.x, p.z) ? p.s / 2 : -7 * SC + 0.1;
       if (p.y < fl) { p.y = fl; p.vy = -p.vy * 0.35; p.vx *= 0.6; p.vz *= 0.6; p.wr *= 0.5; }
       const s = p.s * (p.t > p.life - 0.3 ? (p.life - p.t) / 0.3 : 1);
       _q.setFromEuler(_e.set(p.rx, p.ry, 0)); _m4.compose(_v.set(p.x, p.y, p.z), _q, _s.set(s, s, s)); debMesh.setMatrixAt(i, _m4);
@@ -554,7 +558,7 @@ const GFX = (() => {
   }
 
   // ---- camera: follows your doodle (or whoever you spectate), rotatable and zoomable
-  const cam = { yaw: 0.6, pitch: 0.32, dist: 7.5, eff: 7.5, look: new THREE.Vector3(0, 1, 0), shake: 0, init: false, t: 0 };
+  const cam = { yaw: 0.6, pitch: 0.32, dist: 8, eff: 8, follow: true, manualT: 0, look: new THREE.Vector3(0, 1, 0), shake: 0, init: false, t: 0 };
   const camBoxes = MAP.boxes.filter(b => b.kind !== 'pad'), _cl = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, bottom: 0, top: 0 };
   function camClear(lx, ly, lz, px, py, pz) {
     let t = 1;
@@ -666,7 +670,7 @@ const GFX = (() => {
       _m4.compose(_v, _q, _s.set(C.w * (k + w) + 0.06 * k, C.top * (k - w) + 0.06 * k, C.d * (k + w) + 0.06 * k)); crateHull.setMatrixAt(i, _m4);
     });
     crateInst.instanceMatrix.needsUpdate = true; crateHull.instanceMatrix.needsUpdate = true;
-    zone.visible = !!view.sd; if (view.sd) { const r = Math.min(62, view.zone); zone.scale.set(r, 1, r); }
+    zone.visible = !!view.sd; if (view.sd) { const r = Math.min(95, view.zone); zone.scale.set(r, 1, r); }
     spawnerViews.forEach((sv, i) => {
       const k = view.spawners ? view.spawners[i] || '' : '';
       if (k !== sv.k) { if (sv.mesh) sv.holder.remove(sv.mesh); sv.mesh = k ? itemMesh(k) : null; if (sv.mesh) { sv.holder.add(sv.mesh); sv.pop = 0; } sv.k = k; }

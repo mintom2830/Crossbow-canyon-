@@ -1,9 +1,9 @@
 // ===================================================================== core: rules, map, physics, match, bots
 // Shared by the offline game, the online host (the authority) and the online clients (for prediction).
-const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, HALF = 30, GRAV = 20;  // the page is 60 m by 60 m
-const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 130, END_T = 200, ZONE_R0 = 44, ZONE_R1 = 4.5, ZONE_DUR = 60;
-const RUN = 5.4, WALK = 2.3, ACC = 34, AIR_ACC = 13, JUMP = 7.4, JUMP2 = 6.6, DASH = 12.5;
-const BULLET_V = 25, BULLET_LIFE = 1.15, DMG = 12, FIRE_EVERY = 0.2;
+const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, SC = 1.5, HALF = 30 * SC, GRAV = 20;  // the page is 90 m by 90 m; SC scales the whole world, the doodles stay their size
+const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 150, END_T = 230, ZONE_R0 = 66, ZONE_R1 = 6, ZONE_DUR = 70;
+const RUN = 6.2, WALK = 2.5, ACC = 36, AIR_ACC = 14, JUMP = 7.4, JUMP2 = 6.6, DASH = 14;
+const BULLET_V = 26, BULLET_LIFE = 1.3, DMG = 13, FIRE_EVERY = 0.2;
 const COLORS = [
   { name: 'Blue', hex: '#3b7bff', hue: null },
   { name: 'Red', hex: '#ff4d5e', hue: 354 },
@@ -20,15 +20,15 @@ const POWERS = {
 };
 const PW_CODES = ['', 's', 't', 'p'];
 const BOT = {
-  easy: { err: 1.0, react: 0.6, fire: 0.45, dodge: 0, keep: 8, jumpy: 0.15, lead: 0.4, range: 12 },
-  normal: { err: 0.5, react: 0.32, fire: 0.75, dodge: 0.2, keep: 7, jumpy: 0.45, lead: 0.85, range: 15 },
-  hard: { err: 0.22, react: 0.16, fire: 0.95, dodge: 0.45, keep: 6.5, jumpy: 0.8, lead: 1, range: 17 },
+  easy: { err: 1.0, react: 0.6, fire: 0.45, dodge: 0, keep: 8, jumpy: 0.15, lead: 0.4, range: 15 },
+  normal: { err: 0.5, react: 0.32, fire: 0.75, dodge: 0.2, keep: 7, jumpy: 0.45, lead: 0.85, range: 18 },
+  hard: { err: 0.22, react: 0.16, fire: 0.95, dodge: 0.45, keep: 6.5, jumpy: 0.8, lead: 1, range: 20 },
 };
 const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 
 // ---- the arena: one big sheet of notebook paper on a desk. Every quarter is the same layout turned by 90 degrees, so all four spawns are equal.
 // Fall off the edge of the page and you lose a life.
-const ARM_IN = 6.5, ARM_OUT = 11.5, ARM_H = 0.75;  // the sweeping pencil reaches from 6.5 to 11.5 m out
+const ARM_IN = 6.5 * SC, ARM_OUT = 11.5 * SC, ARM_H = 0.8;  // the sweeping pencil reaches from 9.75 to 17.25 m out (low enough to jump)
 const MAP = (() => {
   const boxes = [], lifts = [], pads = [], tps = [], spawns = [], spawners = [], crates = [], trees = [], decor = [], targets = [];
   const rq = (x, z, q) => { for (let i = 0; i < q; i++) [x, z] = [-z, x]; return [x, z]; };
@@ -36,34 +36,36 @@ const MAP = (() => {
     const [x, z] = rq(cx, cz, q), [ww, dd] = q % 2 ? [d, w] : [w, d];
     return { minX: x - ww / 2, maxX: x + ww / 2, minZ: z - dd / 2, maxZ: z + dd / 2, bottom, top, kind, q, cx: x, cz: z, w: ww, d: dd, ...extra };
   };
-  const TOWER = 3.6, MID = 1.9;
-  boxes.push(box(0, 0, 8, 8, 0, TOWER, 'tower'));
+  // the layout is drawn at 1x and scaled by SC: positions, widths and heights alike
+  const k = v => v * SC;
+  const TOWER = k(3.6), MID = k(1.9);
+  boxes.push(box(0, 0, k(8), k(8), 0, TOWER, 'tower'));
   // a pad launch: up from the pad, landing at (tx, tz) on a top at height `land`
   const padLaunch = (vy, land) => { const dh = land - 0.2; return (vy + Math.sqrt(vy * vy - 2 * GRAV * dh)) / GRAV; };
   for (let q = 0; q < 4; q++) {
     // along each axis: a sticky-note lift beside the tower, a long ruler bridge (you can walk under it), a big book at the far end
-    lifts.push(box(5, 0, 2, 2, 0, MID, 'lift', q, { lo: MID, hi: TOWER }));
-    boxes.push(box(11, 0, 10, 1.5, 1.6, MID, 'bridge', q));
-    boxes.push(box(18, 0, 4, 5, 0, MID, 'book', q));
-    // in each quarter: the spawn, a pad up to the tower, crates, eraser cover, a pencil box, a stack of books, a tree, a teleporter
-    { const [x, z] = rq(19, 19, q); spawns.push({ x, z, yaw: Math.atan2(-x, -z) }); }
-    { const [x, z] = rq(7.4, 7.4, q), [tx, tz] = rq(2.2, 2.2, q); pads.push({ x, z, r: 0.85, top: 0.2, tx, tz, q, vy: 12.5, tt: padLaunch(12.5, TOWER) }); boxes.push(box(7.4, 7.4, 1.7, 1.7, 0, 0.2, 'pad', q)); }
-    for (const [cx, cz] of [[12.6, 5.6], [13.8, 5.6], [5.6, 12.6], [5.6, 13.8], [11.4, 11.4]]) crates.push(box(cx, cz, 1.0, 1.0, 0, 1.0, 'crate', q));
-    boxes.push(box(15.2, 12.2, 1.4, 2.6, 0, 1.1, 'eraser', q));
-    boxes.push(box(12.2, 15.2, 2.6, 1.4, 0, 1.1, 'eraser', q));
-    boxes.push(box(24.5, 13, 2, 6, 0, 1.4, 'pbox', q));
-    boxes.push(box(12.5, 23.5, 4.2, 3.2, 0, 1.0, 'book2', q));
-    boxes.push(box(12.8, 23.8, 3, 2.2, 1.0, 2.0, 'book3', q));
-    { const [x, z] = rq(17.5, 7.5, q); trees.push({ x, z, r: 0.38, s: 1.2 }); }
-    for (const [cx, cz, s] of [[27.2, 3.5, 1.1], [26.5, 26.5, 1.3], [7, 27.2, 1.0]]) { const [x, z] = rq(cx, cz, q); trees.push({ x, z, r: 0.34, s }); }
-    { const [x, z] = rq(26, 8.5, q); tps.push({ x, z, r: 0.75, q, to: (q + 2) % 4 }); }
-    { const [x, z] = rq(15, 19.5, q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
-    { const [x, z] = rq(18, 0, q); spawners.push({ x, y: MID, z, kinds: 'stb', every: 14 }); }
-    { const [x, z] = rq(12.8, 23.8, q); spawners.push({ x, y: 2.0, z, kinds: 'sb', every: 16 }); }
+    lifts.push(box(k(5), 0, k(2), k(2), 0, MID, 'lift', q, { lo: MID, hi: TOWER }));
+    boxes.push(box(k(11), 0, k(10), k(1.5), k(1.6), MID, 'bridge', q));
+    boxes.push(box(k(18), 0, k(4), k(5), 0, MID, 'book', q));
+    // in each quarter: the spawn, a pad up to the tower, crates, eraser cover, a pencil box, a stack of books, trees, a teleporter
+    { const [x, z] = rq(k(19), k(19), q); spawns.push({ x, z, yaw: Math.atan2(-x, -z) }); }
+    { const [x, z] = rq(k(7.4), k(7.4), q), [tx, tz] = rq(k(2.2), k(2.2), q); pads.push({ x, z, r: k(0.85), top: 0.2, tx, tz, q, vy: 16, tt: padLaunch(16, TOWER) }); boxes.push(box(k(7.4), k(7.4), k(1.7), k(1.7), 0, 0.2, 'pad', q)); }
+    for (const [cx, cz] of [[12.6, 5.6], [13.8, 5.6], [5.6, 12.6], [5.6, 13.8], [11.4, 11.4]]) crates.push(box(k(cx), k(cz), k(1.0), k(1.0), 0, k(1.0), 'crate', q));
+    boxes.push(box(k(15.2), k(12.2), k(1.4), k(2.6), 0, k(1.1), 'eraser', q));
+    boxes.push(box(k(12.2), k(15.2), k(2.6), k(1.4), 0, k(1.1), 'eraser', q));
+    boxes.push(box(k(24.5), k(13), k(2), k(6), 0, k(1.4), 'pbox', q));
+    boxes.push(box(k(12.5), k(23.5), k(4.2), k(3.2), 0, k(1.0), 'book2', q));
+    boxes.push(box(k(12.8), k(23.8), k(3), k(2.2), k(1.0), k(2.0), 'book3', q));
+    { const [x, z] = rq(k(17.5), k(7.5), q); trees.push({ x, z, r: k(0.38), s: k(1.2) }); }
+    for (const [cx, cz, s] of [[27.2, 3.5, 1.1], [26.5, 26.5, 1.3], [7, 27.2, 1.0]]) { const [x, z] = rq(k(cx), k(cz), q); trees.push({ x, z, r: k(0.34), s: k(s) }); }
+    { const [x, z] = rq(k(26), k(8.5), q); tps.push({ x, z, r: k(0.75), q, to: (q + 2) % 4 }); }
+    { const [x, z] = rq(k(15), k(19.5), q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
+    { const [x, z] = rq(k(18), 0, q); spawners.push({ x, y: MID, z, kinds: 'stb', every: 14 }); }
+    { const [x, z] = rq(k(12.8), k(23.8), q); spawners.push({ x, y: k(2.0), z, kinds: 'sb', every: 16 }); }
   }
   spawners.push({ x: 0, y: TOWER, z: 0, kinds: 'pt', every: 16, big: true });
-  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, TOWER, 2.6], [18, MID, 1.6], [-18, MID, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8]]) targets.push({ x, y, z });
-  for (const t of trees) boxes.push({ minX: t.x - t.r, maxX: t.x + t.r, minZ: t.z - t.r, maxZ: t.z + t.r, bottom: 0, top: 2.4 * t.s, kind: 'trunk', bulletOnly: true });
+  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, 3.6, 2.6], [18, 1.9, 1.6], [-18, 1.9, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8]]) targets.push({ x: k(x), y: k(y), z: k(z) });
+  for (const t of trees) boxes.push({ minX: t.x - t.r, maxX: t.x + t.r, minZ: t.z - t.r, maxZ: t.z + t.r, bottom: 0, top: 2.3 * t.s, kind: 'trunk', bulletOnly: true });
   return { boxes, lifts, pads, tps, spawns, spawners, crates, trees, decor, targets, rq, TOWER, MID };
 })();
 const onPage = (x, z, m = 0) => Math.abs(x) < HALF + m && Math.abs(z) < HALF + m;
@@ -74,7 +76,7 @@ function liftTop(l, t) {
   const s = c < 1.5 ? 0 : c < 3 ? smooth((c - 1.5) / 1.5) : c < 4.5 ? 1 : 1 - smooth((c - 4.5) / 1.5);
   return l.lo + (l.hi - l.lo) * s;
 }
-const armAngle = t => t * 0.4 + Math.max(0, t - SD_T) * 0.3;
+const armAngle = t => t * 0.3 + Math.max(0, t - SD_T) * 0.22;
 const zoneRadius = t => t < SD_T ? 99 : lerp(ZONE_R0, ZONE_R1, clamp((t - SD_T) / ZONE_DUR, 0, 1));
 
 // the page as it is at time t: fixed boxes, lifts where they are now, crates that are standing
@@ -113,7 +115,8 @@ function pushOut(p, W) {
       p.x += o[1] * (o[0] + RAD); p.z += o[2] * (o[0] + RAD);
     }
   }
-  if (p.y < 2.4) for (const t of W.trees) {
+  for (const t of W.trees) {
+    if (p.y > 2.3 * t.s) continue;
     const dx = p.x - t.x, dz = p.z - t.z, d = Math.hypot(dx, dz), m = RAD + t.r;
     if (d < m && d > 1e-6) { p.x = t.x + dx / d * m; p.z = t.z + dz / d * m; const nx = dx / d, nz = dz / d, vn = p.vx * nx + p.vz * nz; if (vn < 0) { p.vx -= vn * nx; p.vz -= vn * nz; } }
   }
@@ -505,7 +508,7 @@ class Match {
       if (p.armCd > 0) p.armCd -= DT;
       if (!p.alive || p.y > ARM_H || p.armCd > 0) continue;
       const along = clamp(p.x * ca + p.z * sa, ARM_IN, ARM_OUT), qx = ca * along, qz = sa * along;
-      if (Math.hypot(p.x - qx, p.z - qz) > RAD + 0.38) continue;
+      if (Math.hypot(p.x - qx, p.z - qz) > RAD + 0.44) continue;
       p.armCd = 0.9;
       this.hurt(p, 8, -1, -sa * 8 + ca * 2, 6.5, ca * 8 + sa * 2, 0.45, 'arm');
       this.ev('arm', p.slot);
@@ -569,16 +572,17 @@ function botInput(m, p, W) {
     // goal: health when hurt, the contested items when they are close, else the fight
     B.goal = null;
     if (p.hp < 50) {
-      let bd = 24;
+      let bd = 36;
       m.spawners.forEach((s, i) => { const S = MAP.spawners[i]; if (s.k === 'h' && S.y < 0.5) { const d = Math.hypot(S.x - p.x, S.z - p.z); if (d < bd) { bd = d; B.goal = { x: S.x, z: S.z, y: S.y }; } } });
       for (const d of m.drops) { const dd = Math.hypot(d.x - p.x, d.z - p.z); if (dd < bd) { bd = dd; B.goal = { x: d.x, z: d.z, y: 0 }; } }
     }
-    if (!B.goal) {
+    const near = best && Math.hypot(best.x - p.x, best.z - p.z) < 14;
+    if (!B.goal && !near) {
       const top = m.spawners[m.spawners.length - 1], S = MAP.spawners[m.spawners.length - 1];
-      if (top.k && p.hp >= 45 && Math.hypot(p.x, p.z) < 20) {
+      if (top.k && p.hp >= 45 && Math.hypot(p.x, p.z) < 30) {
         if (p.y > 2) B.goal = { x: S.x, z: S.z, y: S.y };
         else { let bd = 99; for (const pd of MAP.pads) { const d = Math.hypot(pd.x - p.x, pd.z - p.z); if (d < bd) { bd = d; B.goal = { x: pd.x, z: pd.z, y: 0.2, pad: true }; } } }
-      } else m.spawners.forEach((s, i) => { const S2 = MAP.spawners[i]; if (!B.goal && s.k && s.k !== 'h' && S2.y > 0.5 && Math.hypot(S2.x - p.x, S2.z - p.z) < 9) B.goal = { x: S2.x, z: S2.z, y: S2.y }; });
+      } else m.spawners.forEach((s, i) => { const S2 = MAP.spawners[i]; if (!B.goal && s.k && s.k !== 'h' && S2.y > 0.5 && Math.hypot(S2.x - p.x, S2.z - p.z) < 13) B.goal = { x: S2.x, z: S2.z, y: S2.y }; });
     }
     // celebrate a fresh elimination when nobody is near
     if (p.kills > B.kills) { B.kills = p.kills; if (!enemies.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 9) && Math.random() < 0.5) inp.emoteE = 1; }
@@ -593,9 +597,10 @@ function botInput(m, p, W) {
       const keep = C.keep;
       const radial = d > keep + 2 || !vis ? 1 : d < keep - 2 ? -1 : 0;
       if (B.strafeT <= 0) { B.strafe = -B.strafe; B.strafeT = 0.9 + Math.random() * 1.6; }
-      wx = tx / d * radial + (-tz / d) * B.strafe * 0.8; wz = tz / d * radial + (tx / d) * B.strafe * 0.8;
+      const sw = d > keep + 5 ? 0.3 : 0.8; // far away: close in; at fighting range: strafe
+      wx = tx / d * radial + (-tz / d) * B.strafe * sw; wz = tz / d * radial + (tx / d) * B.strafe * sw;
     }
-  } else if (!B.goal) { const r = Math.hypot(p.x, p.z) || 1; wx = -p.x / r * (r > 12 ? 1 : 0) + Math.sin(m.t * 0.3 + p.slot) * 0.6; wz = -p.z / r * (r > 12 ? 1 : 0) + Math.cos(m.t * 0.3 + p.slot) * 0.6; }
+  } else if (!B.goal) { const r = Math.hypot(p.x, p.z) || 1; wx = -p.x / r * (r > 18 ? 1 : 0) + Math.sin(m.t * 0.3 + p.slot) * 0.6; wz = -p.z / r * (r > 18 ? 1 : 0) + Math.cos(m.t * 0.3 + p.slot) * 0.6; }
   if (B.goal) { const gx = B.goal.x - p.x, gz = B.goal.z - p.z, gd = Math.hypot(gx, gz) || 1; wx = gx / gd * Math.min(1, gd * 1.5); wz = gz / gd * Math.min(1, gd * 1.5); }
   // keep away from the water, and inside the ink ring in sudden death
   // keep off the edge of the page, and inside the ink ring in sudden death
@@ -610,7 +615,7 @@ function botInput(m, p, W) {
     const ax = p.x + wx / wl * 0.75, az = p.z + wz / wl * 0.75;
     for (const b of W.boxes) {
       if (b.top <= p.y + STEP || b.bottom > p.y + 1.4 || ax < b.minX - RAD || ax > b.maxX + RAD || az < b.minZ - RAD || az > b.maxZ + RAD) continue;
-      if (b.top - p.y < 2.6 && b.kind !== 'lift' && (ed > 3.2 || (wx * ex + wz * ez) < 0)) inp.jumpE = true;
+      if (b.top - p.y < 3.2 && b.kind !== 'lift' && (ed > 3.2 || (wx * ex + wz * ez) < 0)) inp.jumpE = true;
       else { const s = B.strafe; const nx = -wz * s, nz = wx * s; wx = nx; wz = nz; }
       break;
     }
@@ -618,7 +623,7 @@ function botInput(m, p, W) {
   if (!p.ground && p.vy < 0.5 && p.vy > -2 && p.airJumps > 0 && wl > 0.2) {
     // a second hop if the first one wasn't enough to clear it
     const ax = p.x + wx / (wl || 1) * 0.6, az = p.z + wz / (wl || 1) * 0.6;
-    for (const b of W.boxes) if (b.top > p.y + 0.1 && b.top - p.y < 1.8 && ax > b.minX - RAD && ax < b.maxX + RAD && az > b.minZ - RAD && az < b.maxZ + RAD && b.bottom < p.y + 1) { inp.jumpE = true; break; }
+    for (const b of W.boxes) if (b.top > p.y + 0.1 && b.top - p.y < 2.0 && ax > b.minX - RAD && ax < b.maxX + RAD && az > b.minZ - RAD && az < b.maxZ + RAD && b.bottom < p.y + 1) { inp.jumpE = true; break; }
   }
   if (ed < 0.6 && !p.ground && p.airJumps > 0 && p.vy < 0) inp.jumpE = true; // save yourself at the edge
   // stuck: jump, then try another way
@@ -629,7 +634,7 @@ function botInput(m, p, W) {
   if (p.ground && p.y < 0.7) {
     const rr = Math.hypot(p.x, p.z);
     if (rr > ARM_IN - 0.6 && rr < ARM_OUT + 0.7) {
-      const w = m.t > SD_T ? 0.7 : 0.4, dA = angDiff(W.arm, Math.atan2(p.z, p.x)), tti = dA / w;
+      const w = m.t > SD_T ? 0.52 : 0.3, dA = angDiff(W.arm, Math.atan2(p.z, p.x)), tti = dA / w;
       if (tti > 0.05 && tti < 0.42 + (C.react - 0.16)) inp.jumpE = true;
     }
   }

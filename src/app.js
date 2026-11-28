@@ -89,8 +89,8 @@ const Input = (() => {
     st.nx = e.clientX / innerWidth * 2 - 1; st.ny = -(e.clientY / innerHeight) * 2 + 1; st.mouseSeen = true;
     // right-drag turns the camera (a right-click held still is steady aim)
     const rd = st.rDrag;
-    if (rd) { const dx = e.clientX - rd.x, dy = e.clientY - rd.y; rd.moved += Math.abs(dx) + Math.abs(dy); if (rd.moved > 8) rd.drag = true; if (rd.drag) { GFX.cam.yaw -= dx * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + dy * 0.004, 0.12, 1.2); } rd.x = e.clientX; rd.y = e.clientY; }
-    if (st.camDrag) { GFX.cam.yaw -= (e.clientX - st.camDrag.x) * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - st.camDrag.y) * 0.004, 0.12, 1.2); st.camDrag.x = e.clientX; st.camDrag.y = e.clientY; }
+    if (rd) { const dx = e.clientX - rd.x, dy = e.clientY - rd.y; rd.moved += Math.abs(dx) + Math.abs(dy); if (rd.moved > 8) rd.drag = true; if (rd.drag) { GFX.cam.manualT = performance.now(); GFX.cam.yaw -= dx * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + dy * 0.004, 0.12, 1.2); } rd.x = e.clientX; rd.y = e.clientY; }
+    if (st.camDrag) { GFX.cam.manualT = performance.now(); GFX.cam.yaw -= (e.clientX - st.camDrag.x) * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - st.camDrag.y) * 0.004, 0.12, 1.2); st.camDrag.x = e.clientX; st.camDrag.y = e.clientY; }
   });
   canvas.addEventListener('wheel', e => { e.preventDefault(); GFX.cam.dist = clamp(GFX.cam.dist * (1 + Math.sign(e.deltaY) * 0.08), 3.5, 15); }, { passive: false });
   // touch: the move stick on the left, buttons on the right; drag anywhere else to turn the camera
@@ -103,7 +103,7 @@ const Input = (() => {
   };
   bindStick($('#stick'), $('#knob'), st.stick);
   canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' || st.touchCam) return; st.touchCam = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
-  canvas.addEventListener('pointermove', e => { const c = st.touchCam; if (!c || c.id !== e.pointerId) return; GFX.cam.yaw -= (e.clientX - c.x) * 0.008; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - c.y) * 0.005, 0.12, 1.2); c.x = e.clientX; c.y = e.clientY; });
+  canvas.addEventListener('pointermove', e => { const c = st.touchCam; if (!c || c.id !== e.pointerId) return; GFX.cam.manualT = performance.now(); GFX.cam.yaw -= (e.clientX - c.x) * 0.008; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - c.y) * 0.005, 0.12, 1.2); c.x = e.clientX; c.y = e.clientY; });
   const endCam = e => { if (st.touchCam && st.touchCam.id === e.pointerId) st.touchCam = null; };
   canvas.addEventListener('pointerup', endCam); canvas.addEventListener('pointercancel', endCam);
   const tap = (id, fn, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); SFX.unlock(); fn(); }); if (up) { el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('pointerleave', up); } };
@@ -136,7 +136,7 @@ const Input = (() => {
       if (keys.KeyW || keys.ArrowUp) z -= 1; if (keys.KeyS || keys.ArrowDown) z += 1;
       x += st.stick.x; z += st.stick.y;
       if (st.pad) { x += st.pad.lx; z += st.pad.ly; }
-      if (keys.KeyZ) GFX.cam.yaw += dt * 1.8; if (keys.KeyC) GFX.cam.yaw -= dt * 1.8;
+      if (keys.KeyZ || keys.KeyC) { GFX.cam.yaw += dt * 1.8 * (keys.KeyZ ? 1 : -1); GFX.cam.manualT = performance.now(); }
     }
     const l = Math.hypot(x, z); if (l > 1) { x /= l; z /= l; }
     const [mx, mz] = camRel(x, z);
