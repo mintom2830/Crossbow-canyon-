@@ -3,10 +3,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Patrick+Hand&display=swap">
 <style>
-/* Layout: a full-screen 3D island under paper cards: scoreboard top left, clock top centre, feed top right, thumb sticks on phones. */
-/* One look on purpose (a sunny cartoon island with notebook-paper UI), the same in light and dark. */
+/* Layout: a full-screen 3D notebook page under paper cards: scoreboard top left, clock top centre, minimap and feed top right, thumb controls on phones. */
+/* One look on purpose (notebook paper on a cream desk), the same in light and dark. */
 :root {
-  --paper: #fbf8ee; --ink: #1e1d2b; --soft: #55576b; --tape: rgba(214, 222, 232, 0.92); --marker: #ffd93d; --sky: #a9dcff; --red: #ff4d5e; --line: #b9d3ef;
+  --paper: #fbf8ee; --ink: #1e1d2b; --soft: #55576b; --tape: rgba(214, 222, 232, 0.92); --marker: #ffd93d; --sky: #f4efe0; --red: #ff4d5e; --line: #b9d3ef;
   --display: "Gochi Hand", "Comic Sans MS", "Chalkboard SE", cursive; --hand: "Patrick Hand", "Comic Sans MS", "Chalkboard SE", cursive;
   color-scheme: light;
 }
@@ -69,7 +69,8 @@ button, input { font: inherit; color: inherit; }
 #timer { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 28px; padding: 0 16px 2px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 8px 5px 9px 6px; box-shadow: 2px 3px 0 var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #timer.sd { background: #ffd1da; color: #a3122e; animation: throb 0.9s ease-in-out infinite; }
 @keyframes throb { 50% { transform: translateX(-50%) scale(1.06); } }
-#feed { position: fixed; top: calc(62px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); display: grid; gap: 4px; justify-items: end; max-width: 46%; }
+#minimap { position: fixed; top: calc(62px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: 132px; height: 132px; border: 2px solid var(--ink); border-radius: 9px 6px 10px 7px; background: rgba(251, 248, 238, 0.92); box-shadow: 2px 3px 0 rgba(30, 29, 43, 0.22); }
+#feed { position: fixed; top: calc(204px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); display: grid; gap: 4px; justify-items: end; max-width: 46%; }
 #feed .f { background: rgba(251, 248, 238, 0.94); border: 1.5px solid var(--ink); border-radius: 6px 4px 7px 5px; padding: 0 8px; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 #feed b { font-weight: 400; font-family: var(--display); }
 .iconbtn { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); width: 44px; height: 44px; border-radius: 50%; border: 2.5px solid var(--ink); background: var(--paper); font-family: var(--display); font-size: 20px; box-shadow: 2px 3px 0 var(--ink); cursor: pointer; }
@@ -101,29 +102,27 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 2.5px solid var(--ink); pointer-events: none; }
 #stick { left: max(22px, calc(env(safe-area-inset-left, 0px) + 12px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); }
 #knob { background: var(--marker); }
-#aimStick { right: max(22px, calc(env(safe-area-inset-right, 0px) + 12px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); }
-#aimKnob { background: #ff9eb0; }
-#aimStick::after { content: "aim + shoot"; position: absolute; left: 50%; top: -22px; transform: translateX(-50%); font-family: var(--display); font-size: 15px; white-space: nowrap; color: var(--ink); }
 .pad { position: fixed; border-radius: 50%; border: 2.5px solid var(--ink); background: #fff; font-family: var(--display); font-size: 20px; box-shadow: 2px 3px 0 var(--ink); touch-action: none; }
 .pad:active { transform: translate(1px, 2px); box-shadow: 1px 1px 0 var(--ink); }
-#bJump { width: 82px; height: 82px; right: max(168px, calc(env(safe-area-inset-right, 0px) + 158px)); bottom: calc(26px + env(safe-area-inset-bottom, 0px)); background: var(--marker); }
-#bDash { width: 64px; height: 64px; right: max(176px, calc(env(safe-area-inset-right, 0px) + 166px)); bottom: calc(122px + env(safe-area-inset-bottom, 0px)); background: #b9dbf8; }
-#bCheer { width: 50px; height: 50px; font-size: 15px; right: max(36px, calc(env(safe-area-inset-right, 0px) + 26px)); bottom: calc(176px + env(safe-area-inset-bottom, 0px)); background: #b5ea9f; }
-#bFlop { width: 50px; height: 50px; font-size: 15px; right: max(96px, calc(env(safe-area-inset-right, 0px) + 86px)); bottom: calc(190px + env(safe-area-inset-bottom, 0px)); background: #e6e2d6; }
-@media (max-height: 460px) { .screen { padding: 12px 18px 14px; gap: 8px; } .screen h1 { font-size: 34px; } #board { min-width: 180px; } #board .row { font-size: 15px; } #timer { font-size: 23px; } #power { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
-@media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } #feed { top: calc(62px + env(safe-area-inset-top, 0px)); } }
-@media (hover: none), (pointer: coarse) { #keys { display: none; } #power { bottom: calc(160px + env(safe-area-inset-bottom, 0px)); } }
+#bShoot { width: 88px; height: 88px; right: max(132px, calc(env(safe-area-inset-right, 0px) + 122px)); bottom: calc(118px + env(safe-area-inset-bottom, 0px)); background: #f4a6b7; font-size: 22px; }
+#bJump { width: 94px; height: 94px; right: max(24px, calc(env(safe-area-inset-right, 0px) + 14px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--marker); font-size: 22px; }
+#bDash { width: 82px; height: 82px; right: max(136px, calc(env(safe-area-inset-right, 0px) + 126px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); background: #b9dbf8; }
+#bCheer { width: 66px; height: 66px; font-size: 18px; right: max(36px, calc(env(safe-area-inset-right, 0px) + 26px)); bottom: calc(134px + env(safe-area-inset-bottom, 0px)); background: #b5ea9f; }
+#bFlop { width: 60px; height: 60px; font-size: 17px; right: max(44px, calc(env(safe-area-inset-right, 0px) + 34px)); bottom: calc(212px + env(safe-area-inset-bottom, 0px)); background: #e6e2d6; }
+@media (max-height: 460px) { #minimap { width: 96px; height: 96px; } #feed { top: calc(166px + env(safe-area-inset-top, 0px)); } .screen { padding: 12px 18px 14px; gap: 8px; } .screen h1 { font-size: 34px; } #board { min-width: 180px; } #board .row { font-size: 15px; } #timer { font-size: 23px; } #power { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
+@media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
+@media (hover: none), (pointer: coarse) { #keys { display: none; } #power { bottom: calc(26px + env(safe-area-inset-bottom, 0px)); } #spec { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); } }
 #turn { display: none; }
 @media (orientation: portrait) and (pointer: coarse) { body[data-screen="game"] #turn { display: block; position: fixed; left: 50%; top: calc(54px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--paper); border: 2px solid var(--ink); border-radius: 6px; padding: 0 10px; font-size: 14px; z-index: 3; white-space: nowrap; pointer-events: none; } body[data-screen="game"] #timer { top: calc(150px + env(safe-area-inset-top, 0px)); } }
 @media (prefers-reduced-motion: reduce) { #timer.sd, #big.pop, #flash.on { animation: none; } }
 </style>
 
-<canvas id="view" aria-label="Doodle Island arena"></canvas>
+<canvas id="view" aria-label="The page arena"></canvas>
 <div id="loading">Sharpening pencils…</div>
 
 <section class="screen card" id="menu" hidden aria-labelledby="menuTitle">
   <h1 id="menuTitle">Doodle Playground</h1>
-  <p class="sub">Free-for-all on Doodle Island: four doodlers, three lives each. The last one standing wins.</p>
+  <p class="sub">Free-for-all on a giant page of notebook paper: four doodlers, three lives each. Don't fall off the edge. The last one standing wins.</p>
   <div class="field"><label for="nameIn">Your name</label><input id="nameIn" maxlength="14" autocomplete="off" spellcheck="false"></div>
   <div class="stack">
     <button class="btn primary" id="bQuick" type="button" disabled>Quick match online</button>
@@ -172,6 +171,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 <div id="hud" hidden>
   <div class="card" id="board" aria-label="Scoreboard"></div>
   <div id="timer" aria-live="off">3:00</div>
+  <canvas id="minimap" width="264" height="264" aria-label="Map of the page"></canvas>
   <div id="feed" aria-live="polite"></div>
   <button class="iconbtn" id="bPause" type="button" aria-label="Pause">II</button>
   <button class="iconbtn" id="bMute" type="button" aria-label="Sound on or off" aria-pressed="false">♪</button>
@@ -183,12 +183,12 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
   <aside class="card" id="keys" aria-label="Controls"><dl>
     <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Run (<kbd>Shift</kbd> walks)</dd>
     <dt>Mouse</dt><dd>Aim, click or hold to shoot</dd>
-    <dt>Right mouse</dt><dd>Hold for steady aim</dd>
+    <dt>Right mouse</dt><dd>Drag to turn the camera, hold still for steady aim</dd>
     <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest rival</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice to double jump</dd>
     <dt><kbd>K</kbd> <kbd>E</kbd></dt><dd>Dash (shoves rivals)</dd>
     <dt><kbd>V</kbd> <kbd>X</kbd></dt><dd>Cheer, fall over</dd>
-    <dt><kbd>Z</kbd> <kbd>C</kbd></dt><dd>Turn the camera, wheel zooms</dd>
+    <dt><kbd>Z</kbd> <kbd>C</kbd></dt><dd>Turn the camera too, wheel zooms</dd>
     <dt><kbd>Tab</kbd> <kbd>H</kbd></dt><dd>Spectate next, hide this</dd>
   </dl></aside>
   <div id="fps"></div>
@@ -198,9 +198,9 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 <div id="dmgLayer"></div>
 <div id="touch" hidden aria-hidden="true">
   <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
-  <div class="stick" id="aimStick"><div class="knob" id="aimKnob"></div></div>
-  <button class="pad" id="bJump" type="button">jump</button>
+  <button class="pad" id="bShoot" type="button">shoot</button>
   <button class="pad" id="bDash" type="button">dash</button>
+  <button class="pad" id="bJump" type="button">jump</button>
   <button class="pad" id="bCheer" type="button">yay!</button>
   <button class="pad" id="bFlop" type="button">oof</button>
 </div>

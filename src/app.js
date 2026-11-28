@@ -58,7 +58,7 @@ const SFX = (() => {
 const Input = (() => {
   const keys = {};
   const st = { jc: 0, dc: 0, ec: 0, et: 0, qc: 0, seq: 0, mouseL: false, mouseR: false, nx: 0, ny: 0, mouseSeen: false,
-    stick: { x: 0, y: 0, id: null }, aimStick: { x: 0, y: 0, id: null, t0: 0, moved: false }, touchJump: false,
+    stick: { x: 0, y: 0, id: null }, touchJump: false, touchFire: false, touchCam: null, rDrag: null,
     aim: new THREE.Vector3(0, 1, 0), override: null, overrideT: 0, pad: null, padPrev: {}, enabled: false, quickWanted: false, camDrag: null };
   const inField = e => e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
   addEventListener('keydown', e => {
@@ -81,16 +81,19 @@ const Input = (() => {
   canvas.addEventListener('mousedown', e => {
     SFX.unlock();
     if (e.button === 0) st.mouseL = true;
-    else if (e.button === 2) st.mouseR = true;
+    else if (e.button === 2) { st.mouseR = true; st.rDrag = { x: e.clientX, y: e.clientY, moved: 0, drag: false }; }
     else if (e.button === 1) { st.camDrag = { x: e.clientX, y: e.clientY }; e.preventDefault(); }
   });
-  addEventListener('mouseup', e => { if (e.button === 0) st.mouseL = false; else if (e.button === 2) st.mouseR = false; else if (e.button === 1) st.camDrag = null; });
+  addEventListener('mouseup', e => { if (e.button === 0) st.mouseL = false; else if (e.button === 2) { st.mouseR = false; st.rDrag = null; } else if (e.button === 1) st.camDrag = null; });
   addEventListener('mousemove', e => {
     st.nx = e.clientX / innerWidth * 2 - 1; st.ny = -(e.clientY / innerHeight) * 2 + 1; st.mouseSeen = true;
-    if (st.camDrag) { GFX.cam.yaw -= (e.clientX - st.camDrag.x) * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - st.camDrag.y) * 0.004, 0.35, 1.25); st.camDrag.x = e.clientX; st.camDrag.y = e.clientY; }
+    // right-drag turns the camera (a right-click held still is steady aim)
+    const rd = st.rDrag;
+    if (rd) { const dx = e.clientX - rd.x, dy = e.clientY - rd.y; rd.moved += Math.abs(dx) + Math.abs(dy); if (rd.moved > 8) rd.drag = true; if (rd.drag) { GFX.cam.yaw -= dx * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + dy * 0.004, 0.12, 1.2); } rd.x = e.clientX; rd.y = e.clientY; }
+    if (st.camDrag) { GFX.cam.yaw -= (e.clientX - st.camDrag.x) * 0.006; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - st.camDrag.y) * 0.004, 0.12, 1.2); st.camDrag.x = e.clientX; st.camDrag.y = e.clientY; }
   });
-  canvas.addEventListener('wheel', e => { e.preventDefault(); GFX.cam.dist = clamp(GFX.cam.dist * (1 + Math.sign(e.deltaY) * 0.08), 7, 18); }, { passive: false });
-  // touch: move stick on the left, aim stick on the right (drag to aim and fire, tap for a quick shot at the nearest rival)
+  canvas.addEventListener('wheel', e => { e.preventDefault(); GFX.cam.dist = clamp(GFX.cam.dist * (1 + Math.sign(e.deltaY) * 0.08), 3.5, 15); }, { passive: false });
+  // touch: the move stick on the left, buttons on the right; drag anywhere else to turn the camera
   const bindStick = (el, knob, S, onEnd) => {
     const move = e => { const r = el.getBoundingClientRect(), R = r.width / 2; let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const l = Math.hypot(dx, dy); if (l > R) { dx *= R / l; dy *= R / l; } S.x = dx / R; S.y = dy / R; if (l > R * 0.3) S.moved = true; knob.style.transform = `translate(${dx}px, ${dy}px)`; };
     el.addEventListener('pointerdown', e => { SFX.unlock(); S.id = e.pointerId; S.t0 = performance.now(); S.moved = false; try { el.setPointerCapture(e.pointerId); } catch { /* the finger still drives the stick */ } move(e); e.preventDefault(); });
@@ -99,12 +102,16 @@ const Input = (() => {
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
   };
   bindStick($('#stick'), $('#knob'), st.stick);
-  bindStick($('#aimStick'), $('#aimKnob'), st.aimStick, () => { if (!st.aimStick.moved && performance.now() - st.aimStick.t0 < 300) st.quickWanted = true; });
+  canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' || st.touchCam) return; st.touchCam = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointermove', e => { const c = st.touchCam; if (!c || c.id !== e.pointerId) return; GFX.cam.yaw -= (e.clientX - c.x) * 0.008; GFX.cam.pitch = clamp(GFX.cam.pitch + (e.clientY - c.y) * 0.005, 0.12, 1.2); c.x = e.clientX; c.y = e.clientY; });
+  const endCam = e => { if (st.touchCam && st.touchCam.id === e.pointerId) st.touchCam = null; };
+  canvas.addEventListener('pointerup', endCam); canvas.addEventListener('pointercancel', endCam);
   const tap = (id, fn, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); SFX.unlock(); fn(); }); if (up) { el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('pointerleave', up); } };
   tap('#bJump', () => { st.jc++; st.touchJump = true; }, () => { st.touchJump = false; });
   tap('#bDash', () => { st.dc++; });
   tap('#bCheer', () => { st.ec++; st.et = 1; });
   tap('#bFlop', () => { st.ec++; st.et = 2; });
+  tap('#bShoot', () => { st.touchFire = true; }, () => { st.touchFire = false; });
   // gamepad (polled)
   function poll() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -133,15 +140,15 @@ const Input = (() => {
     }
     const l = Math.hypot(x, z); if (l > 1) { x /= l; z /= l; }
     const [mx, mz] = camRel(x, z);
-    let fire = st.enabled && (st.mouseL || false), aimMode = st.enabled && st.mouseR;
+    let fire = st.enabled && (st.mouseL || false), aimMode = st.enabled && st.mouseR && !(st.rDrag && st.rDrag.drag);
     const A = st.aim;
     if (me) {
-      const as = st.aimStick, pad = st.pad;
+      const pad = st.pad;
       if (st.overrideT > 0) { st.overrideT -= dt; A.copy(st.override); }
-      else if (as.id !== null && Math.hypot(as.x, as.y) > 0.25) {
-        const [ax, az] = camRel(as.x, as.y), al = Math.hypot(ax, az) || 1; A.set(me.x + ax / al * 9, me.y + 1.05, me.z + az / al * 9);
-        App.assist(A, me);
-        fire = st.enabled && Math.hypot(as.x, as.y) > 0.45;
+      else if (st.touchFire && st.enabled) {
+        // the shoot button aims for you: the nearest rival in sight, or straight ahead
+        if (!App.quickTarget(me, A)) A.set(me.x + Math.sin(me.yaw) * 10, me.y + 1.05, me.z + Math.cos(me.yaw) * 10);
+        fire = true;
       } else if (pad && Math.hypot(pad.rx, pad.ry) > 0.3) {
         const [ax, az] = camRel(pad.rx, pad.ry), al = Math.hypot(ax, az) || 1; A.set(me.x + ax / al * 9, me.y + 1.05, me.z + az / al * 9);
         App.assist(A, me);
@@ -156,7 +163,7 @@ const Input = (() => {
       ax: A.x, ay: A.y, az: A.z, jc: st.jc, dc: st.dc, ec: st.ec, et: st.et, qc: st.qc, seq: ++st.seq,
     };
   }
-  function updateMouseAim(me, view) { if (st.mouseSeen && !TOUCH && st.overrideT <= 0 && st.aimStick.id === null && !(st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3)) GFX.aimAt(st.nx, st.ny, me, view, st.aim); }
+  function updateMouseAim(me, view) { if (st.mouseSeen && !TOUCH && st.overrideT <= 0 && !st.touchFire && !(st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3)) GFX.aimAt(st.nx, st.ny, me, view, st.aim); }
   return { st, keys, build, poll, updateMouseAim, set enabled(v) { st.enabled = v; if (!v) { st.mouseL = st.mouseR = false; } }, get enabled() { return st.enabled; } };
 })();
 
@@ -171,12 +178,38 @@ const HUD = (() => {
     const k = document.createElement('span'); k.className = 'k';
     r.append(dot, name, lives, k); board.appendChild(r); rows.push({ r, name, lives, k, key: '' });
   }
+  // the minimap: the whole page, turned so that up is where the camera looks
+  const mm = $('#minimap'), mg = mm.getContext('2d');
+  let mmT = 0;
+  const KIND_FILL = { tower: '#ffffff', book: '#9fc1f5', bridge: '#ffe680', eraser: '#f7a8bb', pbox: '#7fa6ef', book2: '#b5ea9f', book3: '#ffc7a8', pad: '#f7a8bb' };
+  function drawMap(v) {
+    const W = mm.width, S = W / (HALF * 2 + 6), c = W / 2, cs = Math.cos(GFX.cam.yaw), sn = Math.sin(GFX.cam.yaw);
+    const P = (x, z) => [c + (x * cs - z * sn) * S, c + (x * sn + z * cs) * S];
+    const poly = (b, fill) => { const pts = [P(b.minX, b.minZ), P(b.maxX, b.minZ), P(b.maxX, b.maxZ), P(b.minX, b.maxZ)]; mg.beginPath(); pts.forEach(([x, y], i) => i ? mg.lineTo(x, y) : mg.moveTo(x, y)); mg.closePath(); mg.fillStyle = fill; mg.fill(); mg.stroke(); };
+    mg.clearRect(0, 0, W, W); mg.lineWidth = 2; mg.strokeStyle = '#1e1d2b';
+    poly({ minX: -HALF, maxX: HALF, minZ: -HALF, maxZ: HALF }, '#fbf8ee');
+    mg.lineWidth = 1.5;
+    for (const b of MAP.boxes) if (KIND_FILL[b.kind]) poly(b, KIND_FILL[b.kind]);
+    for (const l of MAP.lifts) poly(l, '#ffe45c');
+    MAP.crates.forEach((b, i) => { if (!v.crates || v.crates[i]) poly(b, '#c98b4b'); });
+    for (const t of MAP.tps) { const [x, y] = P(t.x, t.z); mg.fillStyle = t.q % 2 ? '#3ad1c4' : '#a05cff'; mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); }
+    (v.spawners || []).forEach((k, i) => { if (!k) return; const S2 = MAP.spawners[i], [x, y] = P(S2.x, S2.z); mg.fillStyle = ({ h: '#ff6b81', s: '#5b8def', b: '#6fd3ff', t: '#ffc23d', p: '#ff8a1f' })[k]; mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); mg.stroke(); });
+    if (v.sd) { const [x, y] = P(0, 0); mg.strokeStyle = 'rgba(160, 40, 120, 0.9)'; mg.lineWidth = 3; mg.beginPath(); mg.arc(x, y, Math.min(v.zone, 60) * S, 0, TAU); mg.stroke(); mg.strokeStyle = '#1e1d2b'; }
+    mg.lineWidth = 2.5;
+    for (const p of v.players) {
+      if (!p.alive || p.out) continue;
+      const [x, y] = P(p.x, p.z), me = p.slot === v.localSlot;
+      mg.fillStyle = COLORS[p.slot].hex; mg.beginPath(); mg.arc(x, y, me ? 9 : 7, 0, TAU); mg.fill(); mg.stroke();
+      if (me) { const [fx, fy] = P(p.x + Math.sin(p.yaw) * 4, p.z + Math.cos(p.yaw) * 4); mg.beginPath(); mg.moveTo(x, y); mg.lineTo(fx, fy); mg.stroke(); }
+    }
+  }
   const timer = $('#timer'), feedEl = $('#feed'), noteEl = $('#note'), bigEl = $('#big'), powerEl = $('#power'), specEl = $('#spec'), flashEl = $('#flash');
   let view = null, noteT = 0, bigT = 0, lastCount = -1;
   const nameOf = s => view && view.players[s] ? view.players[s].name : 'Someone';
   function update(v, dt) {
     view = v;
     const local = v.localSlot;
+    if ((mmT -= dt) <= 0) { mmT = 1 / 15; drawMap(v); }
     v.players.forEach((p, i) => {
       const R = rows[i], key = `${p.name}|${p.bot}|${p.lives}|${p.kills}|${p.out}|${i === local}|${v.practice}|${p.score}`;
       R.r.hidden = false;
@@ -217,8 +250,8 @@ const HUD = (() => {
   function feed(v, by, cause) {
     const row = document.createElement('div'); row.className = 'f'; row._t = 5;
     const vn = document.createElement('b'); vn.textContent = nameOf(v); vn.style.color = COLORS[v].hex;
-    if (by >= 0) { const kn = document.createElement('b'); kn.textContent = nameOf(by); kn.style.color = COLORS[by].hex; row.append(kn, document.createTextNode(cause === 1 ? ' splashed ' : cause === 2 ? ' bonked ' : ' erased '), vn); }
-    else row.append(vn, document.createTextNode(cause === 1 ? ' fell in the water' : cause === 2 ? ' got bonked by the pencil' : cause === 3 ? ' got inked by the zone' : ' was erased'));
+    if (by >= 0) { const kn = document.createElement('b'); kn.textContent = nameOf(by); kn.style.color = COLORS[by].hex; row.append(kn, document.createTextNode(cause === 1 ? ' pushed ' : cause === 2 ? ' bonked ' : ' erased '), vn, document.createTextNode(cause === 1 ? ' off the page' : '')); }
+    else row.append(vn, document.createTextNode(cause === 1 ? ' fell off the page' : cause === 2 ? ' got bonked by the pencil' : cause === 3 ? ' got inked by the zone' : ' was erased'));
     feedEl.prepend(row); while (feedEl.children.length > 5) feedEl.lastChild.remove();
   }
   function note(text, t = 1.6) { noteEl.textContent = text; noteEl.hidden = false; noteT = t; }

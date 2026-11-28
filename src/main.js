@@ -53,7 +53,7 @@ function clientView(net, dt) {
   }
   return { t: est, state: c.state, sd: c.sd, zone: zoneRadius(est), practice: c.practice, players, localSlot: ls, crates: c.crates, spawners: c.spawners, drops: c.drops, targets: c.targets, ranking: c.ranking, shotTime: rt, ownShotTime: est };
 }
-const camGame = { dist: 12, pitch: 0.86 };
+const camGame = { dist: 7.5, pitch: 0.32 };
 let last = performance.now(), lobbyRefresh = 0, lastFrame = performance.now();
 // a host whose tab is in the background still has to run the match for everyone: browsers stop animation frames there, so a timer takes over
 setInterval(() => {
@@ -97,9 +97,9 @@ function loop(now) {
   }
   view.focus = focus;
   if (App.mode === 'menu' || !focus) {
-    GFX.cam.yaw += dt * 0.05; GFX.cam.dist += (27 - GFX.cam.dist) * Math.min(1, dt * 2); GFX.cam.pitch += (0.62 - GFX.cam.pitch) * Math.min(1, dt * 2);
+    GFX.cam.yaw += dt * 0.05; GFX.cam.dist += (34 - GFX.cam.dist) * Math.min(1, dt * 2); GFX.cam.pitch += (0.48 - GFX.cam.pitch) * Math.min(1, dt * 2);
     focus = { x: 0, y: 0, z: 0 };
-  } else if (GFX.cam.dist > 18.5) { GFX.cam.dist = camGame.dist; GFX.cam.pitch = camGame.pitch; GFX.cam.init = false; }
+  } else if (GFX.cam.dist > 15.5) { GFX.cam.dist = camGame.dist; GFX.cam.pitch = camGame.pitch; GFX.cam.init = false; }
   GFX.frame(view, dt, now / 1000, focus, aim);
   if (App.mode !== 'menu') {
     HUD.update(view, dt);

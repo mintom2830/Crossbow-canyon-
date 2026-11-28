@@ -1,9 +1,9 @@
 // ===================================================================== core: rules, map, physics, match, bots
 // Shared by the offline game, the online host (the authority) and the online clients (for prediction).
-const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, ISLAND_R = 16.5, GRAV = 20;
-const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 120, END_T = 180, ZONE_R0 = 21, ZONE_R1 = 3.5, ZONE_DUR = 45;
+const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, HALF = 30, GRAV = 20;  // the page is 60 m by 60 m
+const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 130, END_T = 200, ZONE_R0 = 44, ZONE_R1 = 4.5, ZONE_DUR = 60;
 const RUN = 5.4, WALK = 2.3, ACC = 34, AIR_ACC = 13, JUMP = 7.4, JUMP2 = 6.6, DASH = 12.5;
-const BULLET_V = 24, BULLET_LIFE = 1.0, DMG = 12, FIRE_EVERY = 0.2;
+const BULLET_V = 25, BULLET_LIFE = 1.15, DMG = 12, FIRE_EVERY = 0.2;
 const COLORS = [
   { name: 'Blue', hex: '#3b7bff', hue: null },
   { name: 'Red', hex: '#ff4d5e', hue: 354 },
@@ -26,7 +26,9 @@ const BOT = {
 };
 const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 
-// ---- the arena: Doodle Island. Everything per quadrant is the same layout turned by 90 degrees, so all four spawns are equal.
+// ---- the arena: one big sheet of notebook paper on a desk. Every quarter is the same layout turned by 90 degrees, so all four spawns are equal.
+// Fall off the edge of the page and you lose a life.
+const ARM_IN = 6.5, ARM_OUT = 11.5, ARM_H = 0.75;  // the sweeping pencil reaches from 6.5 to 11.5 m out
 const MAP = (() => {
   const boxes = [], lifts = [], pads = [], tps = [], spawns = [], spawners = [], crates = [], trees = [], decor = [], targets = [];
   const rq = (x, z, q) => { for (let i = 0; i < q; i++) [x, z] = [-z, x]; return [x, z]; };
@@ -34,32 +36,45 @@ const MAP = (() => {
     const [x, z] = rq(cx, cz, q), [ww, dd] = q % 2 ? [d, w] : [w, d];
     return { minX: x - ww / 2, maxX: x + ww / 2, minZ: z - dd / 2, maxZ: z + dd / 2, bottom, top, kind, q, cx: x, cz: z, w: ww, d: dd, ...extra };
   };
-  boxes.push(box(0, 0, 5, 5, 0, 2.4, 'tower'));
+  const TOWER = 3.6, MID = 1.9;
+  boxes.push(box(0, 0, 8, 8, 0, TOWER, 'tower'));
+  // a pad launch: up from the pad, landing at (tx, tz) on a top at height `land`
+  const padLaunch = (vy, land) => { const dh = land - 0.2; return (vy + Math.sqrt(vy * vy - 2 * GRAV * dh)) / GRAV; };
   for (let q = 0; q < 4; q++) {
-    boxes.push(box(11, 0, 2.8, 3.4, 0, 1.2, 'book', q));
-    boxes.push(box(7.0, 0, 5.2, 1.3, 0.95, 1.2, 'bridge', q));
-    lifts.push(box(3.5, 0, 1.8, 1.8, 0, 1.2, 'lift', q, { lo: 1.2, hi: 2.4 }));
-    { const [x, z] = rq(10.2, 10.2, q); spawns.push({ x, z, yaw: Math.atan2(-x, -z) }); }
-    { const [x, z] = rq(4.6, 4.6, q), [tx, tz] = rq(1.0, 1.0, q); pads.push({ x, z, r: 0.78, top: 0.2, tx, tz, q }); boxes.push(box(4.6, 4.6, 1.5, 1.5, 0, 0.2, 'pad', q)); }
-    for (const [cx, cz] of [[7.9, 3.9], [3.9, 7.9], [6.9, 6.9]]) crates.push(box(cx, cz, 1.0, 1.0, 0, 1.0, 'crate', q));
-    { const [x, z] = rq(12.0, 6.4, q); trees.push({ x, z, r: 0.38, s: 1.15 }); }
-    for (const a of [0, 70]) { const ang = (a + q * 90) * Math.PI / 180; decor.push({ x: Math.cos(ang) * 15.4, z: Math.sin(ang) * 15.4, s: 0.9 + (a % 3) * 0.1 }); }
-    { const [x, z] = rq(13.6, 3.2, q); tps.push({ x, z, r: 0.72, q, to: (q + 2) % 4 }); }
-    { const [x, z] = rq(6.2, 11.0, q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
-    { const [x, z] = rq(11, 0, q); spawners.push({ x, y: 1.2, z, kinds: 'stb', every: 14 }); }
+    // along each axis: a sticky-note lift beside the tower, a long ruler bridge (you can walk under it), a big book at the far end
+    lifts.push(box(5, 0, 2, 2, 0, MID, 'lift', q, { lo: MID, hi: TOWER }));
+    boxes.push(box(11, 0, 10, 1.5, 1.6, MID, 'bridge', q));
+    boxes.push(box(18, 0, 4, 5, 0, MID, 'book', q));
+    // in each quarter: the spawn, a pad up to the tower, crates, eraser cover, a pencil box, a stack of books, a tree, a teleporter
+    { const [x, z] = rq(19, 19, q); spawns.push({ x, z, yaw: Math.atan2(-x, -z) }); }
+    { const [x, z] = rq(7.4, 7.4, q), [tx, tz] = rq(2.2, 2.2, q); pads.push({ x, z, r: 0.85, top: 0.2, tx, tz, q, vy: 12.5, tt: padLaunch(12.5, TOWER) }); boxes.push(box(7.4, 7.4, 1.7, 1.7, 0, 0.2, 'pad', q)); }
+    for (const [cx, cz] of [[12.6, 5.6], [13.8, 5.6], [5.6, 12.6], [5.6, 13.8], [11.4, 11.4]]) crates.push(box(cx, cz, 1.0, 1.0, 0, 1.0, 'crate', q));
+    boxes.push(box(15.2, 12.2, 1.4, 2.6, 0, 1.1, 'eraser', q));
+    boxes.push(box(12.2, 15.2, 2.6, 1.4, 0, 1.1, 'eraser', q));
+    boxes.push(box(24.5, 13, 2, 6, 0, 1.4, 'pbox', q));
+    boxes.push(box(12.5, 23.5, 4.2, 3.2, 0, 1.0, 'book2', q));
+    boxes.push(box(12.8, 23.8, 3, 2.2, 1.0, 2.0, 'book3', q));
+    { const [x, z] = rq(17.5, 7.5, q); trees.push({ x, z, r: 0.38, s: 1.2 }); }
+    for (const [cx, cz, s] of [[27.2, 3.5, 1.1], [26.5, 26.5, 1.3], [7, 27.2, 1.0]]) { const [x, z] = rq(cx, cz, q); trees.push({ x, z, r: 0.34, s }); }
+    { const [x, z] = rq(26, 8.5, q); tps.push({ x, z, r: 0.75, q, to: (q + 2) % 4 }); }
+    { const [x, z] = rq(15, 19.5, q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
+    { const [x, z] = rq(18, 0, q); spawners.push({ x, y: MID, z, kinds: 'stb', every: 14 }); }
+    { const [x, z] = rq(12.8, 23.8, q); spawners.push({ x, y: 2.0, z, kinds: 'sb', every: 16 }); }
   }
-  spawners.push({ x: 0, y: 2.4, z: 0, kinds: 'pt', every: 16, big: true });
-  for (const [x, y, z] of [[6, 0, -6.5], [-7, 0, 5.5], [0, 2.4, 1.6], [11, 1.2, 1.2], [-11, 1.2, -1.2], [2.5, 0, 12.5], [-12.5, 0, -6]]) targets.push({ x, y, z });
-  for (const t of trees) boxes.push({ minX: t.x - t.r, maxX: t.x + t.r, minZ: t.z - t.r, maxZ: t.z + t.r, bottom: 0, top: 2.3, kind: 'trunk', bulletOnly: true });
-  return { boxes, lifts, pads, tps, spawns, spawners, crates, trees, decor, targets, rq };
+  spawners.push({ x: 0, y: TOWER, z: 0, kinds: 'pt', every: 16, big: true });
+  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, TOWER, 2.6], [18, MID, 1.6], [-18, MID, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8]]) targets.push({ x, y, z });
+  for (const t of trees) boxes.push({ minX: t.x - t.r, maxX: t.x + t.r, minZ: t.z - t.r, maxZ: t.z + t.r, bottom: 0, top: 2.4 * t.s, kind: 'trunk', bulletOnly: true });
+  return { boxes, lifts, pads, tps, spawns, spawners, crates, trees, decor, targets, rq, TOWER, MID };
 })();
+const onPage = (x, z, m = 0) => Math.abs(x) < HALF + m && Math.abs(z) < HALF + m;
+const edgeDist = (x, z) => HALF - Math.max(Math.abs(x), Math.abs(z));
 
 function liftTop(l, t) {
   const c = ((t % 6) + 6) % 6;
   const s = c < 1.5 ? 0 : c < 3 ? smooth((c - 1.5) / 1.5) : c < 4.5 ? 1 : 1 - smooth((c - 4.5) / 1.5);
   return l.lo + (l.hi - l.lo) * s;
 }
-const armAngle = t => t * 0.5 + Math.max(0, t - SD_T) * 0.35;
+const armAngle = t => t * 0.4 + Math.max(0, t - SD_T) * 0.3;
 const zoneRadius = t => t < SD_T ? 99 : lerp(ZONE_R0, ZONE_R1, clamp((t - SD_T) / ZONE_DUR, 0, 1));
 
 // the page as it is at time t: fixed boxes, lifts where they are now, crates that are standing
@@ -76,7 +91,7 @@ class World {
 }
 
 function support(W, x, z, y) {
-  let best = x * x + z * z < (ISLAND_R + 0.12) ** 2 ? 0 : -1e9;
+  let best = onPage(x, z, 0.12) ? 0 : -1e9;
   const m = RAD * 0.7;
   for (const b of W.boxes) if (b.top <= y + STEP && b.top > best && x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m) best = b.top;
   return best;
@@ -148,7 +163,8 @@ function stepPlayer(p, inp, W, fx) {
     if (p.ground || p.coyote > 0) { p.vy = JUMP; p.ground = false; p.coyote = 0; p.emote = 0; if (fx) fx('jump', p.slot); }
     else if (p.airJumps > 0) { p.vy = JUMP2; p.airJumps--; if (fx) fx('jump2', p.slot); }
   }
-  p.vy -= GRAV * (p.vy > 0 && inp.jh ? 0.72 : 1) * (p.dashT > 0 ? 0.3 : 1) * dt;
+  if (p.padT > 0) p.padT -= dt;
+  p.vy -= GRAV * (p.vy > 0 && inp.jh && !(p.padT > 0) ? 0.72 : 1) * (p.dashT > 0 ? 0.3 : 1) * dt;
   if (p.vy < -26) p.vy = -26;
   const wasGround = p.ground, vyIn = p.vy;
   const n = Math.min(5, Math.max(1, Math.ceil(Math.hypot(p.vx, p.vy, p.vz) * dt / 0.12))), sdt = dt / n;
@@ -163,11 +179,12 @@ function stepPlayer(p, inp, W, fx) {
     else if (p.y > floor + 0.02) p.ground = false;
   }
   if (!wasGround && p.ground && vyIn < -7.5 && fx) fx('land', p.slot);
+  if (p.ground) p.padT = 0;
   // bounce pads (eraser springs): launch toward the top of the tower
   if (p.ground) for (const pd of MAP.pads) {
     if (Math.abs(p.y - pd.top) > 0.06 || Math.hypot(p.x - pd.x, p.z - pd.z) > pd.r) continue;
     const dx = pd.tx - p.x, dz = pd.tz - p.z;
-    p.vy = 11; p.vx = dx / 0.84; p.vz = dz / 0.84; p.ground = false; p.airJumps = 1; p.dashT = 0;
+    p.vy = pd.vy; p.vx = dx / pd.tt; p.vz = dz / pd.tt; p.ground = false; p.airJumps = 1; p.dashT = 0; p.padT = pd.tt;
     if (fx) fx('boing', pd.q, p.slot);
     break;
   }
@@ -225,7 +242,7 @@ function newPlayer(slot, r) {
   return {
     slot, name: r.name, bot: !!r.bot, diff: r.diff || 'normal', peer: r.peer || '',
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, hp: MAXHP, lives: LIVES, alive: false, out: false,
-    ground: true, airJumps: 1, coyote: 0, dashT: 0, dashCd: 0, stunT: 0, tpCd: 0, armCd: 0, inv: 0, shield: 0, pw: '', pwT: 0,
+    ground: true, airJumps: 1, coyote: 0, padT: 0, dashT: 0, dashCd: 0, stunT: 0, tpCd: 0, armCd: 0, inv: 0, shield: 0, pw: '', pwT: 0,
     fireCd: 0, quickBuf: 0, aimT: 0, aiming: false, ax: 0, ay: 1, az: 0, emote: 0, emoteT: 0,
     kills: 0, deaths: 0, score: 0, dmg: 0, hits: 0, shots: 0, place: 0, respawnT: 0, lastBy: -1, lastByT: -99,
     ack: 0, ljc: 0, ldc: 0, lec: 0, lqc: 0, brain: null,
@@ -424,7 +441,7 @@ class Match {
       });
       // the island and the water
       const ny = b.y + dy;
-      if (ny < 0 && hitT > 1) { const f = b.y / Math.max(1e-6, b.y - ny); const hx = b.x + dx * f, hz = b.z + dz * f; if (hx * hx + hz * hz < ISLAND_R * ISLAND_R) { hitT = f; kind = 5; } else if (ny < -0.5) { hitT = 1; kind = 6; } }
+      if (ny < 0 && hitT > 1) { const f = b.y / Math.max(1e-6, b.y - ny); const hx = b.x + dx * f, hz = b.z + dz * f; if (onPage(hx, hz)) { hitT = f; kind = 5; } else if (ny < -0.5) { hitT = 1; kind = 6; } }
       if (hitT <= 1) {
         const hx = b.x + dx * hitT, hy = b.y + dy * hitT, hz = b.z + dz * hitT;
         if (kind === 3 && fight) {
@@ -486,9 +503,9 @@ class Match {
     const a = W.arm, ca = Math.cos(a), sa = Math.sin(a);
     for (const p of this.players) {
       if (p.armCd > 0) p.armCd -= DT;
-      if (!p.alive || p.y > 0.7 || p.armCd > 0) continue;
-      const along = clamp(p.x * ca + p.z * sa, 4.6, 7.6), qx = ca * along, qz = sa * along;
-      if (Math.hypot(p.x - qx, p.z - qz) > RAD + 0.32) continue;
+      if (!p.alive || p.y > ARM_H || p.armCd > 0) continue;
+      const along = clamp(p.x * ca + p.z * sa, ARM_IN, ARM_OUT), qx = ca * along, qz = sa * along;
+      if (Math.hypot(p.x - qx, p.z - qz) > RAD + 0.38) continue;
       p.armCd = 0.9;
       this.hurt(p, 8, -1, -sa * 8 + ca * 2, 6.5, ca * 8 + sa * 2, 0.45, 'arm');
       this.ev('arm', p.slot);
@@ -552,16 +569,16 @@ function botInput(m, p, W) {
     // goal: health when hurt, the contested items when they are close, else the fight
     B.goal = null;
     if (p.hp < 50) {
-      let bd = 16;
+      let bd = 24;
       m.spawners.forEach((s, i) => { const S = MAP.spawners[i]; if (s.k === 'h' && S.y < 0.5) { const d = Math.hypot(S.x - p.x, S.z - p.z); if (d < bd) { bd = d; B.goal = { x: S.x, z: S.z, y: S.y }; } } });
       for (const d of m.drops) { const dd = Math.hypot(d.x - p.x, d.z - p.z); if (dd < bd) { bd = dd; B.goal = { x: d.x, z: d.z, y: 0 }; } }
     }
     if (!B.goal) {
       const top = m.spawners[m.spawners.length - 1], S = MAP.spawners[m.spawners.length - 1];
-      if (top.k && p.hp >= 45 && Math.hypot(p.x, p.z) < 13) {
+      if (top.k && p.hp >= 45 && Math.hypot(p.x, p.z) < 20) {
         if (p.y > 2) B.goal = { x: S.x, z: S.z, y: S.y };
         else { let bd = 99; for (const pd of MAP.pads) { const d = Math.hypot(pd.x - p.x, pd.z - p.z); if (d < bd) { bd = d; B.goal = { x: pd.x, z: pd.z, y: 0.2, pad: true }; } } }
-      } else m.spawners.forEach((s, i) => { const S2 = MAP.spawners[i]; if (!B.goal && s.k && s.k !== 'h' && S2.y > 0.5 && Math.hypot(S2.x - p.x, S2.z - p.z) < 7) B.goal = { x: S2.x, z: S2.z, y: S2.y }; });
+      } else m.spawners.forEach((s, i) => { const S2 = MAP.spawners[i]; if (!B.goal && s.k && s.k !== 'h' && S2.y > 0.5 && Math.hypot(S2.x - p.x, S2.z - p.z) < 9) B.goal = { x: S2.x, z: S2.z, y: S2.y }; });
     }
     // celebrate a fresh elimination when nobody is near
     if (p.kills > B.kills) { B.kills = p.kills; if (!enemies.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 9) && Math.random() < 0.5) inp.emoteE = 1; }
@@ -578,11 +595,14 @@ function botInput(m, p, W) {
       if (B.strafeT <= 0) { B.strafe = -B.strafe; B.strafeT = 0.9 + Math.random() * 1.6; }
       wx = tx / d * radial + (-tz / d) * B.strafe * 0.8; wz = tz / d * radial + (tx / d) * B.strafe * 0.8;
     }
-  } else if (!B.goal) { const r = Math.hypot(p.x, p.z) || 1; wx = -p.x / r * (r > 8 ? 1 : 0) + Math.sin(m.t * 0.3 + p.slot) * 0.6; wz = -p.z / r * (r > 8 ? 1 : 0) + Math.cos(m.t * 0.3 + p.slot) * 0.6; }
+  } else if (!B.goal) { const r = Math.hypot(p.x, p.z) || 1; wx = -p.x / r * (r > 12 ? 1 : 0) + Math.sin(m.t * 0.3 + p.slot) * 0.6; wz = -p.z / r * (r > 12 ? 1 : 0) + Math.cos(m.t * 0.3 + p.slot) * 0.6; }
   if (B.goal) { const gx = B.goal.x - p.x, gz = B.goal.z - p.z, gd = Math.hypot(gx, gz) || 1; wx = gx / gd * Math.min(1, gd * 1.5); wz = gz / gd * Math.min(1, gd * 1.5); }
   // keep away from the water, and inside the ink ring in sudden death
-  const r = Math.hypot(p.x, p.z) || 1, safe = Math.min(13.6, W.zone - 1.5);
-  if (r > safe) { const k = clamp((r - safe) / 1.5, 0, 2); wx -= p.x / r * k * 1.6; wz -= p.z / r * k * 1.6; }
+  // keep off the edge of the page, and inside the ink ring in sudden death
+  const r = Math.hypot(p.x, p.z) || 1, ed = edgeDist(p.x, p.z), zr = W.zone - 1.5;
+  const ex = Math.abs(p.x) > Math.abs(p.z) ? Math.sign(p.x) : 0, ez = ex ? 0 : Math.sign(p.z); // outward from the nearest edge
+  if (ed < 3.2) { const k = clamp((3.2 - ed) / 1.5, 0, 2); wx -= ex * k * 1.6; wz -= ez * k * 1.6; }
+  if (r > zr) { const k = clamp((r - zr) / 1.5, 0, 2); wx -= p.x / r * k * 1.6; wz -= p.z / r * k * 1.6; }
   if (B.detour > 0) { B.detour -= DT; wx = B.dx; wz = B.dz; }
   let wl = Math.hypot(wx, wz); if (wl > 1) { wx /= wl; wz /= wl; wl = 1; }
   // steer: hop up onto low things in the way, go round tall ones
@@ -590,7 +610,7 @@ function botInput(m, p, W) {
     const ax = p.x + wx / wl * 0.75, az = p.z + wz / wl * 0.75;
     for (const b of W.boxes) {
       if (b.top <= p.y + STEP || b.bottom > p.y + 1.4 || ax < b.minX - RAD || ax > b.maxX + RAD || az < b.minZ - RAD || az > b.maxZ + RAD) continue;
-      if (b.top - p.y < 2.6 && b.kind !== 'lift' && (r < 13 || (wx * p.x + wz * p.z) < 0)) inp.jumpE = true;
+      if (b.top - p.y < 2.6 && b.kind !== 'lift' && (ed > 3.2 || (wx * ex + wz * ez) < 0)) inp.jumpE = true;
       else { const s = B.strafe; const nx = -wz * s, nz = wx * s; wx = nx; wz = nz; }
       break;
     }
@@ -600,7 +620,7 @@ function botInput(m, p, W) {
     const ax = p.x + wx / (wl || 1) * 0.6, az = p.z + wz / (wl || 1) * 0.6;
     for (const b of W.boxes) if (b.top > p.y + 0.1 && b.top - p.y < 1.8 && ax > b.minX - RAD && ax < b.maxX + RAD && az > b.minZ - RAD && az < b.maxZ + RAD && b.bottom < p.y + 1) { inp.jumpE = true; break; }
   }
-  if (r > 15.6 && !p.ground && p.airJumps > 0 && p.vy < 0) inp.jumpE = true; // save yourself from the water
+  if (ed < 0.6 && !p.ground && p.airJumps > 0 && p.vy < 0) inp.jumpE = true; // save yourself at the edge
   // stuck: jump, then try another way
   const sp = Math.hypot(p.vx, p.vz);
   if (wl > 0.5 && p.ground && sp < 0.6 && B.detour <= 0) { B.stuck += DT; if (B.stuck > 0.35) inp.jumpE = true; if (B.stuck > 1) { B.stuck = 0; const a = Math.random() * TAU; B.dx = Math.cos(a); B.dz = Math.sin(a); B.detour = 0.8; } }
@@ -608,8 +628,8 @@ function botInput(m, p, W) {
   // the sweeping pencil: jump it as it comes round
   if (p.ground && p.y < 0.7) {
     const rr = Math.hypot(p.x, p.z);
-    if (rr > 4.0 && rr < 8.3) {
-      const w = m.t > SD_T ? 0.85 : 0.5, dA = angDiff(W.arm, Math.atan2(p.z, p.x)), tti = dA / w;
+    if (rr > ARM_IN - 0.6 && rr < ARM_OUT + 0.7) {
+      const w = m.t > SD_T ? 0.7 : 0.4, dA = angDiff(W.arm, Math.atan2(p.z, p.x)), tti = dA / w;
       if (tti > 0.05 && tti < 0.42 + (C.react - 0.16)) inp.jumpE = true;
     }
   }
@@ -625,15 +645,16 @@ function botInput(m, p, W) {
     const l = Math.sqrt(v2) || 1;
     // dash to whichever side keeps you on the island
     let best = null;
-    for (const side of [1, -1]) { const dx = -b.vz / l * side, dz = b.vx / l * side, ex = p.x + dx * 2.8, ez = p.z + dz * 2.8; const er = Math.hypot(ex, ez); if (er < Math.min(14.2, W.zone - 1) && (!best || er < best.r)) best = { dx, dz, r: er }; }
+    for (const side of [1, -1]) { const dx = -b.vz / l * side, dz = b.vx / l * side, ex2 = p.x + dx * 2.8, ez2 = p.z + dz * 2.8; const er = Math.hypot(ex2, ez2); if (edgeDist(ex2, ez2) > 2.5 && er < W.zone - 1 && (!best || er < best.r)) best = { dx, dz, r: er }; }
     if (best) { wx = best.dx; wz = best.dz; B.mx = wx; B.mz = wz; inp.dashE = true; }
     break;
   }
-  if (T && vis && d < 12 && r < 12.5 && Math.random() < C.jumpy * DT) inp.jumpE = true;
+  if (T && vis && d < 12 && ed > 4 && Math.random() < C.jumpy * DT) inp.jumpE = true;
   // in the air near the edge: steer back inland
-  if (!p.ground && r > 10.5) { const out = (p.vx * p.x + p.vz * p.z) / r; if (out > 0 || r > 13.5) { wx = -p.x / r; wz = -p.z / r; B.mx = wx; B.mz = wz; } }
+  if (!p.ground && ed < 6) { const out = p.vx * ex + p.vz * ez; if (out > 0 || ed < 2.5) { wx = -ex; wz = -ez; B.mx = wx; B.mz = wz; } }
   // never walk outward past the safe ring
-  if (r > safe - 0.4) { const out = (wx * p.x + wz * p.z) / r; if (out > 0) { wx -= p.x / r * out; wz -= p.z / r * out; } }
+  if (ed < 2.8) { const out = wx * ex + wz * ez; if (out > 0) { wx -= ex * out; wz -= ez * out; } }
+  if (r > zr - 0.4) { const out = (wx * p.x + wz * p.z) / r; if (out > 0) { wx -= p.x / r * out; wz -= p.z / r * out; } }
   B.mx += (wx - B.mx) * Math.min(1, DT * 10); B.mz += (wz - B.mz) * Math.min(1, DT * 10);
   inp.mx = B.mx; inp.mz = B.mz; inp.jh = p.vy > 0;
   // aim with a lead and a human-sized wobble; shoot once the target has been in view for the reaction time
