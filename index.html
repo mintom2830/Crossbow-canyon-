@@ -108,6 +108,9 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 #bJump { width: 94px; height: 94px; right: max(24px, calc(env(safe-area-inset-right, 0px) + 14px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--marker); font-size: 22px; }
 #bDash { width: 82px; height: 82px; right: max(136px, calc(env(safe-area-inset-right, 0px) + 126px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); background: #b9dbf8; }
 #bCheer { width: 66px; height: 66px; font-size: 18px; right: max(36px, calc(env(safe-area-inset-right, 0px) + 26px)); bottom: calc(134px + env(safe-area-inset-bottom, 0px)); background: #b5ea9f; }
+#bLock { width: 60px; height: 60px; font-size: 17px; right: max(122px, calc(env(safe-area-inset-right, 0px) + 112px)); bottom: calc(226px + env(safe-area-inset-bottom, 0px)); background: #fff; }
+#bLock.on { background: #ff4d5e; color: #fffdf4; }
+#lockChip { position: fixed; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--paper); border: 3px solid var(--red); border-radius: 8px 5px 9px 6px; padding: 0 12px 1px; font-family: var(--display); font-size: 18px; white-space: nowrap; }
 #bFlop { width: 60px; height: 60px; font-size: 17px; right: max(44px, calc(env(safe-area-inset-right, 0px) + 34px)); bottom: calc(212px + env(safe-area-inset-bottom, 0px)); background: #e6e2d6; }
 @media (max-height: 460px) { #minimap { width: 96px; height: 96px; } #feed { top: calc(166px + env(safe-area-inset-top, 0px)); } .screen { padding: 12px 18px 14px; gap: 8px; } .screen h1 { font-size: 34px; } #board { min-width: 180px; } #board .row { font-size: 15px; } #timer { font-size: 23px; } #power { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
 @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
@@ -176,6 +179,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
   <button class="iconbtn" id="bPause" type="button" aria-label="Pause">II</button>
   <button class="iconbtn" id="bMute" type="button" aria-label="Sound on or off" aria-pressed="false">♪</button>
   <div id="power" hidden></div>
+  <div id="lockChip" hidden></div>
   <div class="card" id="spec" hidden><button type="button" id="specPrev" aria-label="Previous player">◀</button><span id="specName"></span><button type="button" id="specNext" aria-label="Next player">▶</button></div>
   <div id="big" hidden></div>
   <div id="note" role="status" hidden></div>
@@ -186,6 +190,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
     <dt>Right mouse</dt><dd>Drag to turn the camera, hold still for steady aim</dd>
     <dt>Camera</dt><dd>Turns with your doodle (switch it off in pause)</dd>
     <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest rival</dd>
+    <dt><kbd>Q</kbd></dt><dd>Lock on or let go (hits lock on by themselves)</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice to double jump</dd>
     <dt><kbd>K</kbd> <kbd>E</kbd></dt><dd>Dash (shoves rivals)</dd>
     <dt><kbd>V</kbd> <kbd>X</kbd></dt><dd>Cheer, fall over</dd>
@@ -204,6 +209,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
   <button class="pad" id="bJump" type="button">jump</button>
   <button class="pad" id="bCheer" type="button">yay!</button>
   <button class="pad" id="bFlop" type="button">oof</button>
+  <button class="pad" id="bLock" type="button" aria-label="Lock on to the nearest rival">lock</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -429,7 +435,7 @@ function stepPlayer(p, inp, W, fx) {
     break;
   }
   // which way the doodle faces: where it aims while aiming or shooting, otherwise where it goes
-  const faceAim = inp.aim || p.aimT > 0;
+  const faceAim = inp.aim || inp.lock || p.aimT > 0;
   if (faceAim) { const d = angDiff(p.yaw, Math.atan2(num(inp.ax, p.x) - p.x, num(inp.az, p.z) - p.z)); p.yaw += d * Math.min(1, dt * 20); }
   else if (Math.hypot(p.vx, p.vz) > 0.4 && !flop) { const d = angDiff(p.yaw, Math.atan2(p.vx, p.vz)); p.yaw += d * Math.min(1, dt * 14); }
 }
@@ -542,7 +548,7 @@ class Match {
       else {
         const raw = this.inputs[p.slot] || IDLE;
         inp = {
-          mx: clamp(num(raw.mx), -1, 1), mz: clamp(num(raw.mz), -1, 1), walk: !!raw.walk, aim: !!raw.aim, fire: !!raw.fire, jh: !!raw.jh,
+          mx: clamp(num(raw.mx), -1, 1), mz: clamp(num(raw.mz), -1, 1), walk: !!raw.walk, aim: !!raw.aim, lock: !!raw.lock, fire: !!raw.fire, jh: !!raw.jh,
           ax: clamp(num(raw.ax, p.x), p.x - 60, p.x + 60), ay: clamp(num(raw.ay, p.y + 1), -5, 30), az: clamp(num(raw.az, p.z), p.z - 60, p.z + 60),
           jumpE: raw.jc !== p.ljc, dashE: raw.dc !== p.ldc, quickE: raw.qc !== p.lqc, emoteE: raw.ec !== p.lec ? (raw.et | 0) : 0,
         };
@@ -564,7 +570,7 @@ class Match {
     if (this.mode === 'ffa' && this.state === 'playing' && this.players.filter(p => !p.out).length <= 1) this.finish();
   }
   applyInput(p, inp, W, fight, fx) {
-    p.aiming = !!inp.aim; p.ax = inp.ax; p.ay = inp.ay; p.az = inp.az;
+    p.aiming = !!inp.aim; p.locked = !!inp.lock; p.ax = inp.ax; p.ay = inp.ay; p.az = inp.az;
     if (inp.emoteE && p.alive && p.ground && !p.emote) { p.emote = inp.emoteE; p.emoteT = inp.emoteE === 1 ? 1.6 : 1.5; this.ev('emote', p.slot, inp.emoteE); }
     if (p.pwT > 0) { p.pwT -= DT; if (p.pwT <= 0) { p.pw = ''; p.pwT = 0; } }
     if (p.fireCd > 0) p.fireCd -= DT;
@@ -753,7 +759,7 @@ class Match {
   snapshot(lobbyExtra) {
     const st = { lobby: 0, countdown: 1, playing: 2, ended: 3 }[this.state];
     const p = this.players.map(q => {
-      const f = (q.alive ? 1 : 0) | (q.ground ? 2 : 0) | (q.out ? 4 : 0) | (q.dashT > 0 ? 8 : 0) | (q.stunT > 0 ? 16 : 0) | (q.aiming || q.aimT > 0 ? 32 : 0) | (q.inv > 0 ? 64 : 0) | (q.emote === 1 ? 128 : 0) | (q.emote === 2 ? 256 : 0) | (q.bot ? 512 : 0) | (q.aiming ? 1024 : 0);
+      const f = (q.alive ? 1 : 0) | (q.ground ? 2 : 0) | (q.out ? 4 : 0) | (q.dashT > 0 ? 8 : 0) | (q.stunT > 0 ? 16 : 0) | (q.aiming || q.locked || q.aimT > 0 ? 32 : 0) | (q.inv > 0 ? 64 : 0) | (q.emote === 1 ? 128 : 0) | (q.emote === 2 ? 256 : 0) | (q.bot ? 512 : 0) | (q.aiming ? 1024 : 0);
       return [r2(q.x), r2(q.y), r2(q.z), r1(q.vx), r1(q.vy), r1(q.vz), r2(q.yaw), Math.ceil(q.hp), q.lives, f, PW_CODES.indexOf(q.pw), r1(q.pwT), Math.ceil(q.shield), q.kills, q.score, q.ack, r1(q.ax), r1(q.ay), r1(q.az), r1(q.respawnT), q.place, Math.round(q.dmg), r1(q.emoteT), r1(q.stunT), r1(q.dashCd), q.airJumps];
     });
     const ro = this.players.map(q => [q.name, q.bot ? 1 : 0, q.peer || '', q.diff]);
@@ -894,7 +900,7 @@ function botInput(m, p, W) {
   // aim with a lead and a human-sized wobble; shoot once the target has been in view for the reaction time
   if (T && T.alive) {
     if (B.noiseT <= 0) { B.noiseT = 0.25 + Math.random() * 0.2; const e = C.err * (0.3 + d / 16); B.nx = (Math.random() - 0.5) * e; B.ny = (Math.random() - 0.5) * e * 0.6; B.nz = (Math.random() - 0.5) * e; }
-    const lead = (d / BULLET_V) * C.lead;
+    const ts = Math.hypot(T.vx, T.vz), tk = ts > RUN ? RUN / ts : 1, lead = (d / BULLET_V) * C.lead * tk;
     inp.ax = T.x + T.vx * lead + B.nx; inp.ay = T.y + 1.0 + B.ny; inp.az = T.z + T.vz * lead + B.nz;
     inp.fire = vis && d < C.range && B.seen > C.react && B.fireOn && T.inv <= 0;
   }
@@ -1445,6 +1451,21 @@ const GFX = (() => {
     shotMesh.instanceMatrix.needsUpdate = true;
   }
 
+  // ---- the lock-on marker: red-and-yellow brackets on the rival you're locked on to, drawn over everything
+  const lockTex = ctex(128, 128, (g) => {
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [col, w] of [['#1e1d2b', 14], ['#ff4d5e', 7]]) {
+      g.strokeStyle = col; g.lineWidth = w; g.beginPath();
+      for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { g.moveTo(64 + sx * 52, 64 + sy * 24); g.lineTo(64 + sx * 52, 64 + sy * 52); g.lineTo(64 + sx * 24, 64 + sy * 52); }
+      g.stroke();
+    }
+    g.fillStyle = '#ffd93d'; g.strokeStyle = '#1e1d2b'; g.lineWidth = 4; g.beginPath(); g.arc(64, 64, 9, 0, TAU); g.fill(); g.stroke();
+  });
+  const lockSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, depthTest: false, depthWrite: false, transparent: true }));
+  lockSprite.renderOrder = 999; lockSprite.visible = false; scene.add(lockSprite);
+  let lockSlot = -1, lockPop = 0;
+  function setLock(s) { if (s !== lockSlot) lockPop = 0; lockSlot = s; }
+
   // ---- floating damage numbers (pooled DOM)
   const dmgLayer = $('#dmgLayer'), dmgPool = Array.from({ length: 18 }, () => { const d = document.createElement('div'); d.className = 'dmg'; d.hidden = true; dmgLayer.appendChild(d); return { d, t: 0, x: 0, y: 0, z: 0 }; });
   let dmgNext = 0;
@@ -1597,6 +1618,13 @@ const GFX = (() => {
       c.p.forEach((pp, j) => { const s = pp[3] * c.s; _m4.compose(_v.set(cx + pp[0] * c.s, c.y + pp[1] * c.s, cz + pp[2] * c.s), _q.identity(), _s.set(s, s * 0.75, s)); clouds.setMatrixAt(i * PUFFS + j, _m4); cloudOl.setMatrixAt(i * PUFFS + j, _m4); });
     });
     clouds.instanceMatrix.needsUpdate = true; cloudOl.instanceMatrix.needsUpdate = true;
+    const lp = lockSlot >= 0 ? view.players[lockSlot] : null;
+    lockSprite.visible = !!(lp && lp.alive);
+    if (lockSprite.visible) {
+      lockPop = Math.min(1, lockPop + dt * 5);
+      const s = (1.7 + Math.sin(timeU.value * 6) * 0.1) * (1 + (1 - smooth(lockPop)) * 1.5);
+      lockSprite.position.set(lp.x, lp.y + 0.95, lp.z); lockSprite.scale.set(s, s, 1); lockSprite.material.rotation = (1 - smooth(lockPop)) * 1.2;
+    }
     updateShots(view.shotTime ?? t, view.ownShotTime ?? t, dt);
     updateFx(dt);
     if (focus) { cam.t = t; updateCamera(focus, aim, dt); sun.position.set(focus.x + 13, 26, focus.z + 9); sun.target.position.set(focus.x, 0, focus.z); }
@@ -1610,7 +1638,7 @@ const GFX = (() => {
   function hand(slot, out) { return rigs[slot] ? rigs[slot].hand(out) : out; }
   function screenOf(x, y, z, out) { _v.set(x, y, z).project(camera); out.x = (_v.x * 0.5 + 0.5) * innerWidth; out.y = (-_v.y * 0.5 + 0.5) * innerHeight; out.z = _v.z; return out; }
   function clearShots() { shots.clear(); }
-  return { info: () => ({ ...renderer.info.render, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, pr: pixelRatio }), setupModel, buildRigs, frame, onEvent, aimAt, cam, camera, hand, screenOf, clearShots, rigs: () => rigs, LOW, get fps() { return qualityN / Math.max(1e-6, qualitySum); } };
+  return { setLock, info: () => ({ ...renderer.info.render, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, pr: pixelRatio }), setupModel, buildRigs, frame, onEvent, aimAt, cam, camera, hand, screenOf, clearShots, rigs: () => rigs, LOW, get fps() { return qualityN / Math.max(1e-6, qualitySum); } };
 })();
 
 // ===================================================================== sound: small synthesized effects, no files
@@ -1656,6 +1684,7 @@ const SFX = (() => {
     win: v => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.16 * v, i * 0.09)); },
     lose: v => { [392, 330, 262].forEach((f, i) => tone(f, f, 0.22, 'triangle', 0.15 * v, i * 0.12)); },
     click: v => { tone(800, 600, 0.04, 'triangle', 0.08 * v); },
+    lock: v => { tone(880, 880, 0.06, 'square', 0.07 * v); tone(1320, 1320, 0.08, 'square', 0.07 * v, 0.07); },
   };
   return {
     unlock,
@@ -1727,6 +1756,7 @@ const Input = (() => {
   tap('#bCheer', () => { st.ec++; st.et = 1; });
   tap('#bFlop', () => { st.ec++; st.et = 2; });
   tap('#bShoot', () => { st.touchFire = true; }, () => { st.touchFire = false; });
+  tap('#bLock', () => { App.toggleLock(); });
   // gamepad (polled)
   function poll() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -1771,14 +1801,23 @@ const Input = (() => {
       } else if (pad && pad.rt) fire = st.enabled;
       if (pad && pad.lt) aimMode = st.enabled;
     }
-    if (st.quickWanted) { st.quickWanted = false; if (me && App.quickTarget(me, A)) { st.override = A.clone(); st.overrideT = 0.35; } st.qc++; }
+    // locked on: every shot aims at that rival, leading where they're running
+    let lock = false;
+    const L = App.lock, tp = L && me && App.lastView ? App.lastView.players[L.slot] : null;
+    if (tp && tp.alive && !tp.out && st.enabled) {
+      // lead where they're running (a dash is too short to lead, so cap it at running speed)
+      const d = Math.hypot(tp.x - me.x, tp.z - me.z), lead = d / BULLET_V, sp = Math.hypot(tp.vx, tp.vz), k = sp > RUN ? RUN / sp : 1;
+      A.set(tp.x + tp.vx * k * lead, tp.y + 1.0, tp.z + tp.vz * k * lead); lock = true; st.overrideT = 0;
+      if (st.touchFire) fire = true;
+    }
+    if (st.quickWanted) { st.quickWanted = false; if (!lock && me && App.quickTarget(me, A)) { st.override = A.clone(); st.overrideT = 0.35; } st.qc++; }
     return {
-      mx, mz, walk: !!(st.enabled && (keys.ShiftLeft || keys.ShiftRight)), aim: !!aimMode, fire: !!fire,
+      mx, mz, walk: !!(st.enabled && (keys.ShiftLeft || keys.ShiftRight)), aim: !!aimMode, lock, fire: !!fire,
       jh: !!(st.enabled && (keys.Space || st.touchJump || (st.pad && st.pad.a))),
       ax: A.x, ay: A.y, az: A.z, jc: st.jc, dc: st.dc, ec: st.ec, et: st.et, qc: st.qc, seq: ++st.seq,
     };
   }
-  function updateMouseAim(me, view) { if (st.mouseSeen && !TOUCH && st.overrideT <= 0 && !st.touchFire && !(st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3)) GFX.aimAt(st.nx, st.ny, me, view, st.aim); }
+  function updateMouseAim(me, view) { if (!App.lock && st.mouseSeen && !TOUCH && st.overrideT <= 0 && !st.touchFire && !(st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3)) GFX.aimAt(st.nx, st.ny, me, view, st.aim); }
   return { st, keys, build, poll, updateMouseAim, set enabled(v) { st.enabled = v; if (!v) { st.mouseL = st.mouseR = false; } }, get enabled() { return st.enabled; } };
 })();
 
@@ -1818,6 +1857,7 @@ const HUD = (() => {
       if (me) { const [fx, fy] = P(p.x + Math.sin(p.yaw) * 4, p.z + Math.cos(p.yaw) * 4); mg.beginPath(); mg.moveTo(x, y); mg.lineTo(fx, fy); mg.stroke(); }
     }
   }
+  const lockChip = $('#lockChip');
   const timer = $('#timer'), feedEl = $('#feed'), noteEl = $('#note'), bigEl = $('#big'), powerEl = $('#power'), specEl = $('#spec'), flashEl = $('#flash');
   let view = null, noteT = 0, bigT = 0, lastCount = -1;
   const nameOf = s => view && view.players[s] ? view.players[s].name : 'Someone';
@@ -1855,6 +1895,11 @@ const HUD = (() => {
     else if (me && me.shield > 0 && me.alive) { powerEl.hidden = false; const t = `Bubble shield ${Math.ceil(me.shield)}`; if (powerEl.textContent !== t) powerEl.textContent = t; powerEl.style.borderColor = '#3aa6d9'; }
     else if (me && !me.alive && !me.out && v.state === 'playing') { powerEl.hidden = false; const t = `Back in ${Math.max(1, Math.ceil(me.respawnT))}…`; if (powerEl.textContent !== t) powerEl.textContent = t; powerEl.style.borderColor = '#1e1d2b'; }
     else powerEl.hidden = true;
+    // locked on
+    const L = App.lock, lp = L ? v.players[L.slot] : null;
+    lockChip.hidden = !lp;
+    if (lp) { const t = TOUCH ? `Locked on ${lp.name}` : `Locked on ${lp.name} · Q lets go`; if (lockChip.textContent !== t) lockChip.textContent = t; lockChip.style.borderColor = COLORS[L.slot].hex; }
+    $('#bLock').classList.toggle('on', !!lp);
     // spectating
     const spec = v.spectating;
     specEl.hidden = !spec;
@@ -1874,6 +1919,7 @@ const HUD = (() => {
   function flash() { if (REDUCED) return; flashEl.classList.remove('on'); void flashEl.offsetWidth; flashEl.classList.add('on'); }
   function onEvent(e, v) {
     const [, type] = e, a = e.slice(2), local = v.localSlot;
+    if (type === 'hit') { const [vv, by] = a; if (vv === local && by >= 0 && by !== local) App.lockOn(by); else if (by === local && vv !== local) App.lockOn(vv); }
     if (type === 'go') { big('GO!', 0.8); SFX.play('go'); }
     else if (type === 'sd') { big('Sudden death!', 1.6); note('The ink is closing in. Get to the middle!', 3); SFX.play('sd'); }
     else if (type === 'kill') {
@@ -1891,11 +1937,11 @@ const HUD = (() => {
 
 // ===================================================================== networking: one host is the authority, everyone else sends input
 const INTERP = 0.12;
-const encInput = i => [i.seq, Math.round(i.mx * 100), Math.round(i.mz * 100), (i.walk ? 1 : 0) | (i.aim ? 2 : 0) | (i.fire ? 4 : 0) | (i.jh ? 8 : 0), Math.round(i.ax * 10), Math.round(i.ay * 10), Math.round(i.az * 10), i.jc, i.dc, i.ec, i.et, i.qc];
+const encInput = i => [i.seq, Math.round(i.mx * 100), Math.round(i.mz * 100), (i.walk ? 1 : 0) | (i.aim ? 2 : 0) | (i.fire ? 4 : 0) | (i.jh ? 8 : 0) | (i.lock ? 16 : 0), Math.round(i.ax * 10), Math.round(i.ay * 10), Math.round(i.az * 10), i.jc, i.dc, i.ec, i.et, i.qc];
 const decInput = a => {
   if (!Array.isArray(a)) return IDLE;
   const n = k => num(a[k]);
-  return { seq: n(0) | 0, mx: clamp(n(1) / 100, -1, 1), mz: clamp(n(2) / 100, -1, 1), walk: !!(n(3) & 1), aim: !!(n(3) & 2), fire: !!(n(3) & 4), jh: !!(n(3) & 8), ax: n(4) / 10, ay: n(5) / 10, az: n(6) / 10, jc: n(7) | 0, dc: n(8) | 0, ec: n(9) | 0, et: clamp(n(10) | 0, 0, 2), qc: n(11) | 0 };
+  return { seq: n(0) | 0, mx: clamp(n(1) / 100, -1, 1), mz: clamp(n(2) / 100, -1, 1), walk: !!(n(3) & 1), aim: !!(n(3) & 2), fire: !!(n(3) & 4), jh: !!(n(3) & 8), lock: !!(n(3) & 16), ax: n(4) / 10, ay: n(5) / 10, az: n(6) / 10, jc: n(7) | 0, dc: n(8) | 0, ec: n(9) | 0, et: clamp(n(10) | 0, 0, 2), qc: n(11) | 0 };
 };
 const CODE_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 const newCode = () => Array.from({ length: 4 }, () => CODE_ABC[(Math.random() * CODE_ABC.length) | 0]).join('');
@@ -2155,6 +2201,33 @@ const App = {
     const lead = bd / BULLET_V; A.set(best.x + (best.vx || 0) * lead, best.y + 1, best.z + (best.vz || 0) * lead);
     return true;
   },
+  // ---- lock-on: a rival who hits you, or whom you hit, gets locked (Q or the lock button to lock or let go yourself)
+  lock: null,
+  lockOn(slot, manual) {
+    const v = this.lastView; if (!v || slot < 0 || slot === v.localSlot) return;
+    if (!manual && this.letGo && this.letGo.slot === slot && performance.now() - this.letGo.at < 3000) return; // you just let go of them
+    const p = v.players[slot], me = v.players[v.localSlot]; if (!p || !p.alive || p.out || !me || !me.alive) return;
+    if (this.lock && this.lock.slot === slot) { this.lock.t = 8; return; }
+    this.lock = { slot, t: 8, unseen: 0 }; SFX.play('lock');
+  },
+  unlock() { this.lock = null; },
+  toggleLock() {
+    if (this.lock) { this.letGo = { slot: this.lock.slot, at: performance.now() }; this.unlock(); return; }
+    const v = this.lastView, me = v && v.players[v.localSlot]; if (!me || !me.alive) return;
+    let best = -1, bd = 32;
+    for (const p of v.players) { if (p.slot === v.localSlot || !p.alive || p.out) continue; const d = Math.hypot(p.x - me.x, p.z - me.z); if (d < bd && !segBlocked(this.W, me.x, me.y + 1.1, me.z, p.x, p.y + 1, p.z)) { bd = d; best = p.slot; } }
+    if (best >= 0) this.lockOn(best, true); else HUD.note('No rival in sight to lock on to.', 1.2);
+  },
+  updateLock(dt) {
+    const L = this.lock; if (!L) return;
+    const v = this.lastView, me = v && v.players[v.localSlot], p = v && v.players[L.slot];
+    if (!me || !me.alive || !p || !p.alive || p.out || v.state === 'ended' || v.state === 'lobby') { this.unlock(); return; }
+    const vis = !segBlocked(this.W, me.x, me.y + 1.1, me.z, p.x, p.y + 1, p.z);
+    L.unseen = vis ? 0 : L.unseen + dt;
+    if (vis && (Input.st.mouseL || Input.st.touchFire)) L.t = Math.max(L.t, 4); // still shooting at them: keep the lock
+    L.t -= dt;
+    if (L.t <= 0 || L.unseen > 2.5 || Math.hypot(p.x - me.x, p.z - me.z) > 42) this.unlock();
+  },
   // ---- starting things
   startOffline() { this.leaveAll(); this.mode = 'offline'; this.match = new Match({ mode: 'ffa', roster: [{ name: this.name }, ...botRoster(3, this.diff, this.name)] }); this.localSlot = 0; this.enterGame(); },
   startPractice() { this.leaveAll(); this.mode = 'practice'; this.match = new Match({ mode: 'practice', roster: [{ name: this.name }] }); this.localSlot = 0; this.enterGame(); HUD.note('Shoot the bullseyes, try the pads, teleporters and lifts.', 3); },
@@ -2180,7 +2253,7 @@ const App = {
   toClient() { this.match = null; show('lobby'); },
   startMatch() { if (!this.match) return; this.match.reset(); this.resultsShown = false; this.hideResults(); this.enterGame(); },
   enterGame() {
-    show('game'); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
+    show('game'); this.unlock(); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
     GFX.clearShots(); HUD.clearFeed(); GFX.cam.init = false;
     const me = this.match ? this.match.players[this.localSlot] : null;
     const s = MAP.spawns[Math.max(0, this.localSlot)] || MAP.spawns[0];
@@ -2189,7 +2262,7 @@ const App = {
     GFX.cam.yaw = Math.atan2(s.x, s.z);
     SFX.unlock();
   },
-  leaveAll() { if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; this.paused = false; Input.enabled = false; },
+  leaveAll() { this.unlock(); if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; this.paused = false; Input.enabled = false; },
   toMenu() { this.leaveAll(); show('menu'); },
   netError(msg) { if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; Input.enabled = false; show('menu'); $('#netHint').textContent = msg; },
   togglePause() {
@@ -2277,7 +2350,7 @@ function newDemo() { demo.m = new Match({ mode: 'ffa', roster: botRoster(4, 'nor
 newDemo();
 const pv = (p, x, y, z, W) => ({
   slot: p.slot, name: p.name, bot: p.bot, x, y, z, vx: p.vx, vy: p.vy, vz: p.vz, yaw: p.yaw, hp: p.hp, lives: p.lives, alive: p.alive, out: p.out, ground: p.ground,
-  dash: p.dashT > 0, stun: p.stunT > 0, aim: p.aiming || p.aimT > 0, ax: p.ax, ay: p.ay, az: p.az, inv: p.inv > 0, shield: p.shield, pw: p.pw, pwT: p.pwT, emote: p.emote,
+  dash: p.dashT > 0, stun: p.stunT > 0, aim: p.aiming || p.locked || p.aimT > 0, ax: p.ax, ay: p.ay, az: p.az, inv: p.inv > 0, shield: p.shield, pw: p.pw, pwT: p.pwT, emote: p.emote,
   kills: p.kills, score: p.score, dmg: p.dmg, respawnT: p.respawnT, place: p.place, floor: support(W, x, z, y + 0.05),
 });
 function matchView(m, alpha, localSlot) {
@@ -2358,7 +2431,7 @@ function loop(now) {
   // where you are, what you aim at, who the camera follows
   const meV = view.players[view.localSlot];
   const playing = App.mode !== 'menu' && meV;
-  let focus = null, aim = null;
+  let focus = null, aim = null; // (aim: where the camera leans toward)
   if (playing && meV.alive) { focus = meV; Input.updateMouseAim(meV, view); aim = TOUCH ? null : Input.st.aim; view.spectating = 0; }
   else if (playing && !meV.out) { focus = meV; view.spectating = 0; }
   else if (App.mode !== 'menu' && view.players.length) {
@@ -2369,8 +2442,16 @@ function loop(now) {
     if (view.state === 'lobby' || view.state === 'ended') view.spectating = 0;
   }
   view.focus = focus;
+  // locked on: the camera swings round so the rival stays in front of you
+  if (App.mode !== 'menu') App.updateLock(dt);
+  const lockT = App.lock && playing && meV.alive ? view.players[App.lock.slot] : null;
+  GFX.setLock(lockT ? App.lock.slot : -1);
+  if (lockT && cur === 'game') {
+    if (now - GFX.cam.manualT > 1200) { const want = Math.atan2(meV.x - lockT.x, meV.z - lockT.z); GFX.cam.yaw += angDiff(GFX.cam.yaw, want) * Math.min(1, dt * 4); }
+    if (!aim) aim = { x: lockT.x, z: lockT.z };
+  }
   // the camera swings round behind your doodle as it turns (not while you aim, shoot or turn the camera yourself)
-  if (playing && meV.alive && GFX.cam.follow && cur === 'game') {
+  else if (playing && meV.alive && GFX.cam.follow && cur === 'game') {
     const sp = Math.hypot(meV.vx, meV.vz), st = Input.st;
     const busy = st.mouseL || st.mouseR || st.touchFire || st.overrideT > 0 || (st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3) || meV.aim;
     if (sp > 1 && !busy && now - GFX.cam.manualT > 1200) {
@@ -2443,6 +2524,7 @@ function loop(now) {
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) { if (cur === 'game' || cur === 'pause') App.togglePause(); }
     if (e.code === 'Tab' && cur === 'game') { e.preventDefault(); spec(e.shiftKey ? -1 : 1); }
     if (e.code === 'KeyH' && cur === 'game') $('#keys').hidden = !$('#keys').hidden;
+    if (e.code === 'KeyQ' && cur === 'game' && !e.repeat) App.toggleLock();
     if (e.code === 'KeyM' && !e.repeat) mute();
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && cur === 'game' && App.mode !== 'online') App.togglePause(); });

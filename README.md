@@ -11,3 +11,4 @@ A 4-player free-for-all on a huge 90 m page of notebook paper, starring the Clas
 
 Source lives in `src/` (`core.js` rules, physics, bots; `gfx.js` 3D; `app.js` input, HUD, networking; `main.js` loop; `page.html` layout). Run `python3 tools/build.py` to rebuild `index.html`.
 - The camera turns with your doodle as it runs (switch it off in the pause menu); drag or right-drag to turn it yourself.
+- Lock-on: a rival who shoots you, or whom you hit, gets locked. Your shots aim at them, the camera keeps them in front of you and your doodle faces them. Q (or the lock button on phones) locks on or lets go.

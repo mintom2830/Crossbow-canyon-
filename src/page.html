@@ -108,6 +108,9 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 #bJump { width: 94px; height: 94px; right: max(24px, calc(env(safe-area-inset-right, 0px) + 14px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--marker); font-size: 22px; }
 #bDash { width: 82px; height: 82px; right: max(136px, calc(env(safe-area-inset-right, 0px) + 126px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); background: #b9dbf8; }
 #bCheer { width: 66px; height: 66px; font-size: 18px; right: max(36px, calc(env(safe-area-inset-right, 0px) + 26px)); bottom: calc(134px + env(safe-area-inset-bottom, 0px)); background: #b5ea9f; }
+#bLock { width: 60px; height: 60px; font-size: 17px; right: max(122px, calc(env(safe-area-inset-right, 0px) + 112px)); bottom: calc(226px + env(safe-area-inset-bottom, 0px)); background: #fff; }
+#bLock.on { background: #ff4d5e; color: #fffdf4; }
+#lockChip { position: fixed; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--paper); border: 3px solid var(--red); border-radius: 8px 5px 9px 6px; padding: 0 12px 1px; font-family: var(--display); font-size: 18px; white-space: nowrap; }
 #bFlop { width: 60px; height: 60px; font-size: 17px; right: max(44px, calc(env(safe-area-inset-right, 0px) + 34px)); bottom: calc(212px + env(safe-area-inset-bottom, 0px)); background: #e6e2d6; }
 @media (max-height: 460px) { #minimap { width: 96px; height: 96px; } #feed { top: calc(166px + env(safe-area-inset-top, 0px)); } .screen { padding: 12px 18px 14px; gap: 8px; } .screen h1 { font-size: 34px; } #board { min-width: 180px; } #board .row { font-size: 15px; } #timer { font-size: 23px; } #power { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); } }
 @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
@@ -176,6 +179,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
   <button class="iconbtn" id="bPause" type="button" aria-label="Pause">II</button>
   <button class="iconbtn" id="bMute" type="button" aria-label="Sound on or off" aria-pressed="false">♪</button>
   <div id="power" hidden></div>
+  <div id="lockChip" hidden></div>
   <div class="card" id="spec" hidden><button type="button" id="specPrev" aria-label="Previous player">◀</button><span id="specName"></span><button type="button" id="specNext" aria-label="Next player">▶</button></div>
   <div id="big" hidden></div>
   <div id="note" role="status" hidden></div>
@@ -186,6 +190,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
     <dt>Right mouse</dt><dd>Drag to turn the camera, hold still for steady aim</dd>
     <dt>Camera</dt><dd>Turns with your doodle (switch it off in pause)</dd>
     <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest rival</dd>
+    <dt><kbd>Q</kbd></dt><dd>Lock on or let go (hits lock on by themselves)</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice to double jump</dd>
     <dt><kbd>K</kbd> <kbd>E</kbd></dt><dd>Dash (shoves rivals)</dd>
     <dt><kbd>V</kbd> <kbd>X</kbd></dt><dd>Cheer, fall over</dd>
@@ -204,6 +209,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
   <button class="pad" id="bJump" type="button">jump</button>
   <button class="pad" id="bCheer" type="button">yay!</button>
   <button class="pad" id="bFlop" type="button">oof</button>
+  <button class="pad" id="bLock" type="button" aria-label="Lock on to the nearest rival">lock</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

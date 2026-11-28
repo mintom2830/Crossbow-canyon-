@@ -41,6 +41,7 @@ const SFX = (() => {
     win: v => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.16 * v, i * 0.09)); },
     lose: v => { [392, 330, 262].forEach((f, i) => tone(f, f, 0.22, 'triangle', 0.15 * v, i * 0.12)); },
     click: v => { tone(800, 600, 0.04, 'triangle', 0.08 * v); },
+    lock: v => { tone(880, 880, 0.06, 'square', 0.07 * v); tone(1320, 1320, 0.08, 'square', 0.07 * v, 0.07); },
   };
   return {
     unlock,
@@ -112,6 +113,7 @@ const Input = (() => {
   tap('#bCheer', () => { st.ec++; st.et = 1; });
   tap('#bFlop', () => { st.ec++; st.et = 2; });
   tap('#bShoot', () => { st.touchFire = true; }, () => { st.touchFire = false; });
+  tap('#bLock', () => { App.toggleLock(); });
   // gamepad (polled)
   function poll() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -156,14 +158,23 @@ const Input = (() => {
       } else if (pad && pad.rt) fire = st.enabled;
       if (pad && pad.lt) aimMode = st.enabled;
     }
-    if (st.quickWanted) { st.quickWanted = false; if (me && App.quickTarget(me, A)) { st.override = A.clone(); st.overrideT = 0.35; } st.qc++; }
+    // locked on: every shot aims at that rival, leading where they're running
+    let lock = false;
+    const L = App.lock, tp = L && me && App.lastView ? App.lastView.players[L.slot] : null;
+    if (tp && tp.alive && !tp.out && st.enabled) {
+      // lead where they're running (a dash is too short to lead, so cap it at running speed)
+      const d = Math.hypot(tp.x - me.x, tp.z - me.z), lead = d / BULLET_V, sp = Math.hypot(tp.vx, tp.vz), k = sp > RUN ? RUN / sp : 1;
+      A.set(tp.x + tp.vx * k * lead, tp.y + 1.0, tp.z + tp.vz * k * lead); lock = true; st.overrideT = 0;
+      if (st.touchFire) fire = true;
+    }
+    if (st.quickWanted) { st.quickWanted = false; if (!lock && me && App.quickTarget(me, A)) { st.override = A.clone(); st.overrideT = 0.35; } st.qc++; }
     return {
-      mx, mz, walk: !!(st.enabled && (keys.ShiftLeft || keys.ShiftRight)), aim: !!aimMode, fire: !!fire,
+      mx, mz, walk: !!(st.enabled && (keys.ShiftLeft || keys.ShiftRight)), aim: !!aimMode, lock, fire: !!fire,
       jh: !!(st.enabled && (keys.Space || st.touchJump || (st.pad && st.pad.a))),
       ax: A.x, ay: A.y, az: A.z, jc: st.jc, dc: st.dc, ec: st.ec, et: st.et, qc: st.qc, seq: ++st.seq,
     };
   }
-  function updateMouseAim(me, view) { if (st.mouseSeen && !TOUCH && st.overrideT <= 0 && !st.touchFire && !(st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3)) GFX.aimAt(st.nx, st.ny, me, view, st.aim); }
+  function updateMouseAim(me, view) { if (!App.lock && st.mouseSeen && !TOUCH && st.overrideT <= 0 && !st.touchFire && !(st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3)) GFX.aimAt(st.nx, st.ny, me, view, st.aim); }
   return { st, keys, build, poll, updateMouseAim, set enabled(v) { st.enabled = v; if (!v) { st.mouseL = st.mouseR = false; } }, get enabled() { return st.enabled; } };
 })();
 
@@ -203,6 +214,7 @@ const HUD = (() => {
       if (me) { const [fx, fy] = P(p.x + Math.sin(p.yaw) * 4, p.z + Math.cos(p.yaw) * 4); mg.beginPath(); mg.moveTo(x, y); mg.lineTo(fx, fy); mg.stroke(); }
     }
   }
+  const lockChip = $('#lockChip');
   const timer = $('#timer'), feedEl = $('#feed'), noteEl = $('#note'), bigEl = $('#big'), powerEl = $('#power'), specEl = $('#spec'), flashEl = $('#flash');
   let view = null, noteT = 0, bigT = 0, lastCount = -1;
   const nameOf = s => view && view.players[s] ? view.players[s].name : 'Someone';
@@ -240,6 +252,11 @@ const HUD = (() => {
     else if (me && me.shield > 0 && me.alive) { powerEl.hidden = false; const t = `Bubble shield ${Math.ceil(me.shield)}`; if (powerEl.textContent !== t) powerEl.textContent = t; powerEl.style.borderColor = '#3aa6d9'; }
     else if (me && !me.alive && !me.out && v.state === 'playing') { powerEl.hidden = false; const t = `Back in ${Math.max(1, Math.ceil(me.respawnT))}…`; if (powerEl.textContent !== t) powerEl.textContent = t; powerEl.style.borderColor = '#1e1d2b'; }
     else powerEl.hidden = true;
+    // locked on
+    const L = App.lock, lp = L ? v.players[L.slot] : null;
+    lockChip.hidden = !lp;
+    if (lp) { const t = TOUCH ? `Locked on ${lp.name}` : `Locked on ${lp.name} · Q lets go`; if (lockChip.textContent !== t) lockChip.textContent = t; lockChip.style.borderColor = COLORS[L.slot].hex; }
+    $('#bLock').classList.toggle('on', !!lp);
     // spectating
     const spec = v.spectating;
     specEl.hidden = !spec;
@@ -259,6 +276,7 @@ const HUD = (() => {
   function flash() { if (REDUCED) return; flashEl.classList.remove('on'); void flashEl.offsetWidth; flashEl.classList.add('on'); }
   function onEvent(e, v) {
     const [, type] = e, a = e.slice(2), local = v.localSlot;
+    if (type === 'hit') { const [vv, by] = a; if (vv === local && by >= 0 && by !== local) App.lockOn(by); else if (by === local && vv !== local) App.lockOn(vv); }
     if (type === 'go') { big('GO!', 0.8); SFX.play('go'); }
     else if (type === 'sd') { big('Sudden death!', 1.6); note('The ink is closing in. Get to the middle!', 3); SFX.play('sd'); }
     else if (type === 'kill') {
@@ -276,11 +294,11 @@ const HUD = (() => {
 
 // ===================================================================== networking: one host is the authority, everyone else sends input
 const INTERP = 0.12;
-const encInput = i => [i.seq, Math.round(i.mx * 100), Math.round(i.mz * 100), (i.walk ? 1 : 0) | (i.aim ? 2 : 0) | (i.fire ? 4 : 0) | (i.jh ? 8 : 0), Math.round(i.ax * 10), Math.round(i.ay * 10), Math.round(i.az * 10), i.jc, i.dc, i.ec, i.et, i.qc];
+const encInput = i => [i.seq, Math.round(i.mx * 100), Math.round(i.mz * 100), (i.walk ? 1 : 0) | (i.aim ? 2 : 0) | (i.fire ? 4 : 0) | (i.jh ? 8 : 0) | (i.lock ? 16 : 0), Math.round(i.ax * 10), Math.round(i.ay * 10), Math.round(i.az * 10), i.jc, i.dc, i.ec, i.et, i.qc];
 const decInput = a => {
   if (!Array.isArray(a)) return IDLE;
   const n = k => num(a[k]);
-  return { seq: n(0) | 0, mx: clamp(n(1) / 100, -1, 1), mz: clamp(n(2) / 100, -1, 1), walk: !!(n(3) & 1), aim: !!(n(3) & 2), fire: !!(n(3) & 4), jh: !!(n(3) & 8), ax: n(4) / 10, ay: n(5) / 10, az: n(6) / 10, jc: n(7) | 0, dc: n(8) | 0, ec: n(9) | 0, et: clamp(n(10) | 0, 0, 2), qc: n(11) | 0 };
+  return { seq: n(0) | 0, mx: clamp(n(1) / 100, -1, 1), mz: clamp(n(2) / 100, -1, 1), walk: !!(n(3) & 1), aim: !!(n(3) & 2), fire: !!(n(3) & 4), jh: !!(n(3) & 8), lock: !!(n(3) & 16), ax: n(4) / 10, ay: n(5) / 10, az: n(6) / 10, jc: n(7) | 0, dc: n(8) | 0, ec: n(9) | 0, et: clamp(n(10) | 0, 0, 2), qc: n(11) | 0 };
 };
 const CODE_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 const newCode = () => Array.from({ length: 4 }, () => CODE_ABC[(Math.random() * CODE_ABC.length) | 0]).join('');
@@ -540,6 +558,33 @@ const App = {
     const lead = bd / BULLET_V; A.set(best.x + (best.vx || 0) * lead, best.y + 1, best.z + (best.vz || 0) * lead);
     return true;
   },
+  // ---- lock-on: a rival who hits you, or whom you hit, gets locked (Q or the lock button to lock or let go yourself)
+  lock: null,
+  lockOn(slot, manual) {
+    const v = this.lastView; if (!v || slot < 0 || slot === v.localSlot) return;
+    if (!manual && this.letGo && this.letGo.slot === slot && performance.now() - this.letGo.at < 3000) return; // you just let go of them
+    const p = v.players[slot], me = v.players[v.localSlot]; if (!p || !p.alive || p.out || !me || !me.alive) return;
+    if (this.lock && this.lock.slot === slot) { this.lock.t = 8; return; }
+    this.lock = { slot, t: 8, unseen: 0 }; SFX.play('lock');
+  },
+  unlock() { this.lock = null; },
+  toggleLock() {
+    if (this.lock) { this.letGo = { slot: this.lock.slot, at: performance.now() }; this.unlock(); return; }
+    const v = this.lastView, me = v && v.players[v.localSlot]; if (!me || !me.alive) return;
+    let best = -1, bd = 32;
+    for (const p of v.players) { if (p.slot === v.localSlot || !p.alive || p.out) continue; const d = Math.hypot(p.x - me.x, p.z - me.z); if (d < bd && !segBlocked(this.W, me.x, me.y + 1.1, me.z, p.x, p.y + 1, p.z)) { bd = d; best = p.slot; } }
+    if (best >= 0) this.lockOn(best, true); else HUD.note('No rival in sight to lock on to.', 1.2);
+  },
+  updateLock(dt) {
+    const L = this.lock; if (!L) return;
+    const v = this.lastView, me = v && v.players[v.localSlot], p = v && v.players[L.slot];
+    if (!me || !me.alive || !p || !p.alive || p.out || v.state === 'ended' || v.state === 'lobby') { this.unlock(); return; }
+    const vis = !segBlocked(this.W, me.x, me.y + 1.1, me.z, p.x, p.y + 1, p.z);
+    L.unseen = vis ? 0 : L.unseen + dt;
+    if (vis && (Input.st.mouseL || Input.st.touchFire)) L.t = Math.max(L.t, 4); // still shooting at them: keep the lock
+    L.t -= dt;
+    if (L.t <= 0 || L.unseen > 2.5 || Math.hypot(p.x - me.x, p.z - me.z) > 42) this.unlock();
+  },
   // ---- starting things
   startOffline() { this.leaveAll(); this.mode = 'offline'; this.match = new Match({ mode: 'ffa', roster: [{ name: this.name }, ...botRoster(3, this.diff, this.name)] }); this.localSlot = 0; this.enterGame(); },
   startPractice() { this.leaveAll(); this.mode = 'practice'; this.match = new Match({ mode: 'practice', roster: [{ name: this.name }] }); this.localSlot = 0; this.enterGame(); HUD.note('Shoot the bullseyes, try the pads, teleporters and lifts.', 3); },
@@ -565,7 +610,7 @@ const App = {
   toClient() { this.match = null; show('lobby'); },
   startMatch() { if (!this.match) return; this.match.reset(); this.resultsShown = false; this.hideResults(); this.enterGame(); },
   enterGame() {
-    show('game'); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
+    show('game'); this.unlock(); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
     GFX.clearShots(); HUD.clearFeed(); GFX.cam.init = false;
     const me = this.match ? this.match.players[this.localSlot] : null;
     const s = MAP.spawns[Math.max(0, this.localSlot)] || MAP.spawns[0];
@@ -574,7 +619,7 @@ const App = {
     GFX.cam.yaw = Math.atan2(s.x, s.z);
     SFX.unlock();
   },
-  leaveAll() { if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; this.paused = false; Input.enabled = false; },
+  leaveAll() { this.unlock(); if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; this.paused = false; Input.enabled = false; },
   toMenu() { this.leaveAll(); show('menu'); },
   netError(msg) { if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; Input.enabled = false; show('menu'); $('#netHint').textContent = msg; },
   togglePause() {

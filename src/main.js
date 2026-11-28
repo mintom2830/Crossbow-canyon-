@@ -4,7 +4,7 @@ function newDemo() { demo.m = new Match({ mode: 'ffa', roster: botRoster(4, 'nor
 newDemo();
 const pv = (p, x, y, z, W) => ({
   slot: p.slot, name: p.name, bot: p.bot, x, y, z, vx: p.vx, vy: p.vy, vz: p.vz, yaw: p.yaw, hp: p.hp, lives: p.lives, alive: p.alive, out: p.out, ground: p.ground,
-  dash: p.dashT > 0, stun: p.stunT > 0, aim: p.aiming || p.aimT > 0, ax: p.ax, ay: p.ay, az: p.az, inv: p.inv > 0, shield: p.shield, pw: p.pw, pwT: p.pwT, emote: p.emote,
+  dash: p.dashT > 0, stun: p.stunT > 0, aim: p.aiming || p.locked || p.aimT > 0, ax: p.ax, ay: p.ay, az: p.az, inv: p.inv > 0, shield: p.shield, pw: p.pw, pwT: p.pwT, emote: p.emote,
   kills: p.kills, score: p.score, dmg: p.dmg, respawnT: p.respawnT, place: p.place, floor: support(W, x, z, y + 0.05),
 });
 function matchView(m, alpha, localSlot) {
@@ -85,7 +85,7 @@ function loop(now) {
   // where you are, what you aim at, who the camera follows
   const meV = view.players[view.localSlot];
   const playing = App.mode !== 'menu' && meV;
-  let focus = null, aim = null;
+  let focus = null, aim = null; // (aim: where the camera leans toward)
   if (playing && meV.alive) { focus = meV; Input.updateMouseAim(meV, view); aim = TOUCH ? null : Input.st.aim; view.spectating = 0; }
   else if (playing && !meV.out) { focus = meV; view.spectating = 0; }
   else if (App.mode !== 'menu' && view.players.length) {
@@ -96,8 +96,16 @@ function loop(now) {
     if (view.state === 'lobby' || view.state === 'ended') view.spectating = 0;
   }
   view.focus = focus;
+  // locked on: the camera swings round so the rival stays in front of you
+  if (App.mode !== 'menu') App.updateLock(dt);
+  const lockT = App.lock && playing && meV.alive ? view.players[App.lock.slot] : null;
+  GFX.setLock(lockT ? App.lock.slot : -1);
+  if (lockT && cur === 'game') {
+    if (now - GFX.cam.manualT > 1200) { const want = Math.atan2(meV.x - lockT.x, meV.z - lockT.z); GFX.cam.yaw += angDiff(GFX.cam.yaw, want) * Math.min(1, dt * 4); }
+    if (!aim) aim = { x: lockT.x, z: lockT.z };
+  }
   // the camera swings round behind your doodle as it turns (not while you aim, shoot or turn the camera yourself)
-  if (playing && meV.alive && GFX.cam.follow && cur === 'game') {
+  else if (playing && meV.alive && GFX.cam.follow && cur === 'game') {
     const sp = Math.hypot(meV.vx, meV.vz), st = Input.st;
     const busy = st.mouseL || st.mouseR || st.touchFire || st.overrideT > 0 || (st.pad && Math.hypot(st.pad.rx, st.pad.ry) > 0.3) || meV.aim;
     if (sp > 1 && !busy && now - GFX.cam.manualT > 1200) {
@@ -170,6 +178,7 @@ function loop(now) {
     if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) { if (cur === 'game' || cur === 'pause') App.togglePause(); }
     if (e.code === 'Tab' && cur === 'game') { e.preventDefault(); spec(e.shiftKey ? -1 : 1); }
     if (e.code === 'KeyH' && cur === 'game') $('#keys').hidden = !$('#keys').hidden;
+    if (e.code === 'KeyQ' && cur === 'game' && !e.repeat) App.toggleLock();
     if (e.code === 'KeyM' && !e.repeat) mute();
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && cur === 'game' && App.mode !== 'online') App.togglePause(); });

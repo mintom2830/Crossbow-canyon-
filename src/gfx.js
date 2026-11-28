@@ -542,6 +542,21 @@ const GFX = (() => {
     shotMesh.instanceMatrix.needsUpdate = true;
   }
 
+  // ---- the lock-on marker: red-and-yellow brackets on the rival you're locked on to, drawn over everything
+  const lockTex = ctex(128, 128, (g) => {
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [col, w] of [['#1e1d2b', 14], ['#ff4d5e', 7]]) {
+      g.strokeStyle = col; g.lineWidth = w; g.beginPath();
+      for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { g.moveTo(64 + sx * 52, 64 + sy * 24); g.lineTo(64 + sx * 52, 64 + sy * 52); g.lineTo(64 + sx * 24, 64 + sy * 52); }
+      g.stroke();
+    }
+    g.fillStyle = '#ffd93d'; g.strokeStyle = '#1e1d2b'; g.lineWidth = 4; g.beginPath(); g.arc(64, 64, 9, 0, TAU); g.fill(); g.stroke();
+  });
+  const lockSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, depthTest: false, depthWrite: false, transparent: true }));
+  lockSprite.renderOrder = 999; lockSprite.visible = false; scene.add(lockSprite);
+  let lockSlot = -1, lockPop = 0;
+  function setLock(s) { if (s !== lockSlot) lockPop = 0; lockSlot = s; }
+
   // ---- floating damage numbers (pooled DOM)
   const dmgLayer = $('#dmgLayer'), dmgPool = Array.from({ length: 18 }, () => { const d = document.createElement('div'); d.className = 'dmg'; d.hidden = true; dmgLayer.appendChild(d); return { d, t: 0, x: 0, y: 0, z: 0 }; });
   let dmgNext = 0;
@@ -694,6 +709,13 @@ const GFX = (() => {
       c.p.forEach((pp, j) => { const s = pp[3] * c.s; _m4.compose(_v.set(cx + pp[0] * c.s, c.y + pp[1] * c.s, cz + pp[2] * c.s), _q.identity(), _s.set(s, s * 0.75, s)); clouds.setMatrixAt(i * PUFFS + j, _m4); cloudOl.setMatrixAt(i * PUFFS + j, _m4); });
     });
     clouds.instanceMatrix.needsUpdate = true; cloudOl.instanceMatrix.needsUpdate = true;
+    const lp = lockSlot >= 0 ? view.players[lockSlot] : null;
+    lockSprite.visible = !!(lp && lp.alive);
+    if (lockSprite.visible) {
+      lockPop = Math.min(1, lockPop + dt * 5);
+      const s = (1.7 + Math.sin(timeU.value * 6) * 0.1) * (1 + (1 - smooth(lockPop)) * 1.5);
+      lockSprite.position.set(lp.x, lp.y + 0.95, lp.z); lockSprite.scale.set(s, s, 1); lockSprite.material.rotation = (1 - smooth(lockPop)) * 1.2;
+    }
     updateShots(view.shotTime ?? t, view.ownShotTime ?? t, dt);
     updateFx(dt);
     if (focus) { cam.t = t; updateCamera(focus, aim, dt); sun.position.set(focus.x + 13, 26, focus.z + 9); sun.target.position.set(focus.x, 0, focus.z); }
@@ -707,5 +729,5 @@ const GFX = (() => {
   function hand(slot, out) { return rigs[slot] ? rigs[slot].hand(out) : out; }
   function screenOf(x, y, z, out) { _v.set(x, y, z).project(camera); out.x = (_v.x * 0.5 + 0.5) * innerWidth; out.y = (-_v.y * 0.5 + 0.5) * innerHeight; out.z = _v.z; return out; }
   function clearShots() { shots.clear(); }
-  return { info: () => ({ ...renderer.info.render, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, pr: pixelRatio }), setupModel, buildRigs, frame, onEvent, aimAt, cam, camera, hand, screenOf, clearShots, rigs: () => rigs, LOW, get fps() { return qualityN / Math.max(1e-6, qualitySum); } };
+  return { setLock, info: () => ({ ...renderer.info.render, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, pr: pixelRatio }), setupModel, buildRigs, frame, onEvent, aimAt, cam, camera, hand, screenOf, clearShots, rigs: () => rigs, LOW, get fps() { return qualityN / Math.max(1e-6, qualitySum); } };
 })();

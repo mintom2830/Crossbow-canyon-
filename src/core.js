@@ -200,7 +200,7 @@ function stepPlayer(p, inp, W, fx) {
     break;
   }
   // which way the doodle faces: where it aims while aiming or shooting, otherwise where it goes
-  const faceAim = inp.aim || p.aimT > 0;
+  const faceAim = inp.aim || inp.lock || p.aimT > 0;
   if (faceAim) { const d = angDiff(p.yaw, Math.atan2(num(inp.ax, p.x) - p.x, num(inp.az, p.z) - p.z)); p.yaw += d * Math.min(1, dt * 20); }
   else if (Math.hypot(p.vx, p.vz) > 0.4 && !flop) { const d = angDiff(p.yaw, Math.atan2(p.vx, p.vz)); p.yaw += d * Math.min(1, dt * 14); }
 }
@@ -313,7 +313,7 @@ class Match {
       else {
         const raw = this.inputs[p.slot] || IDLE;
         inp = {
-          mx: clamp(num(raw.mx), -1, 1), mz: clamp(num(raw.mz), -1, 1), walk: !!raw.walk, aim: !!raw.aim, fire: !!raw.fire, jh: !!raw.jh,
+          mx: clamp(num(raw.mx), -1, 1), mz: clamp(num(raw.mz), -1, 1), walk: !!raw.walk, aim: !!raw.aim, lock: !!raw.lock, fire: !!raw.fire, jh: !!raw.jh,
           ax: clamp(num(raw.ax, p.x), p.x - 60, p.x + 60), ay: clamp(num(raw.ay, p.y + 1), -5, 30), az: clamp(num(raw.az, p.z), p.z - 60, p.z + 60),
           jumpE: raw.jc !== p.ljc, dashE: raw.dc !== p.ldc, quickE: raw.qc !== p.lqc, emoteE: raw.ec !== p.lec ? (raw.et | 0) : 0,
         };
@@ -335,7 +335,7 @@ class Match {
     if (this.mode === 'ffa' && this.state === 'playing' && this.players.filter(p => !p.out).length <= 1) this.finish();
   }
   applyInput(p, inp, W, fight, fx) {
-    p.aiming = !!inp.aim; p.ax = inp.ax; p.ay = inp.ay; p.az = inp.az;
+    p.aiming = !!inp.aim; p.locked = !!inp.lock; p.ax = inp.ax; p.ay = inp.ay; p.az = inp.az;
     if (inp.emoteE && p.alive && p.ground && !p.emote) { p.emote = inp.emoteE; p.emoteT = inp.emoteE === 1 ? 1.6 : 1.5; this.ev('emote', p.slot, inp.emoteE); }
     if (p.pwT > 0) { p.pwT -= DT; if (p.pwT <= 0) { p.pw = ''; p.pwT = 0; } }
     if (p.fireCd > 0) p.fireCd -= DT;
@@ -524,7 +524,7 @@ class Match {
   snapshot(lobbyExtra) {
     const st = { lobby: 0, countdown: 1, playing: 2, ended: 3 }[this.state];
     const p = this.players.map(q => {
-      const f = (q.alive ? 1 : 0) | (q.ground ? 2 : 0) | (q.out ? 4 : 0) | (q.dashT > 0 ? 8 : 0) | (q.stunT > 0 ? 16 : 0) | (q.aiming || q.aimT > 0 ? 32 : 0) | (q.inv > 0 ? 64 : 0) | (q.emote === 1 ? 128 : 0) | (q.emote === 2 ? 256 : 0) | (q.bot ? 512 : 0) | (q.aiming ? 1024 : 0);
+      const f = (q.alive ? 1 : 0) | (q.ground ? 2 : 0) | (q.out ? 4 : 0) | (q.dashT > 0 ? 8 : 0) | (q.stunT > 0 ? 16 : 0) | (q.aiming || q.locked || q.aimT > 0 ? 32 : 0) | (q.inv > 0 ? 64 : 0) | (q.emote === 1 ? 128 : 0) | (q.emote === 2 ? 256 : 0) | (q.bot ? 512 : 0) | (q.aiming ? 1024 : 0);
       return [r2(q.x), r2(q.y), r2(q.z), r1(q.vx), r1(q.vy), r1(q.vz), r2(q.yaw), Math.ceil(q.hp), q.lives, f, PW_CODES.indexOf(q.pw), r1(q.pwT), Math.ceil(q.shield), q.kills, q.score, q.ack, r1(q.ax), r1(q.ay), r1(q.az), r1(q.respawnT), q.place, Math.round(q.dmg), r1(q.emoteT), r1(q.stunT), r1(q.dashCd), q.airJumps];
     });
     const ro = this.players.map(q => [q.name, q.bot ? 1 : 0, q.peer || '', q.diff]);
@@ -665,7 +665,7 @@ function botInput(m, p, W) {
   // aim with a lead and a human-sized wobble; shoot once the target has been in view for the reaction time
   if (T && T.alive) {
     if (B.noiseT <= 0) { B.noiseT = 0.25 + Math.random() * 0.2; const e = C.err * (0.3 + d / 16); B.nx = (Math.random() - 0.5) * e; B.ny = (Math.random() - 0.5) * e * 0.6; B.nz = (Math.random() - 0.5) * e; }
-    const lead = (d / BULLET_V) * C.lead;
+    const ts = Math.hypot(T.vx, T.vz), tk = ts > RUN ? RUN / ts : 1, lead = (d / BULLET_V) * C.lead * tk;
     inp.ax = T.x + T.vx * lead + B.nx; inp.ay = T.y + 1.0 + B.ny; inp.az = T.z + T.vz * lead + B.nz;
     inp.fire = vis && d < C.range && B.seen > C.react && B.fireOn && T.inv <= 0;
   }
