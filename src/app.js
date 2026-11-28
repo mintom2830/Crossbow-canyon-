@@ -67,7 +67,7 @@ const Input = (() => {
     keys[e.code] = true;
     if (!st.enabled) return;
     if (!e.repeat) {
-      if (e.code === 'Space') st.jc++;
+      if (e.code === 'Space') { st.jc++; if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); }
       if (e.code === 'KeyK' || e.code === 'KeyE') st.dc++;
       if (e.code === 'KeyV') { st.ec++; st.et = 1; }
       if (e.code === 'KeyX') { st.ec++; st.et = 2; }
@@ -79,8 +79,11 @@ const Input = (() => {
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; st.mouseL = st.mouseR = false; });
   const canvas = $('#view');
   canvas.addEventListener('contextmenu', e => e.preventDefault());
+  let lastTouch = -1e9;
+  addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') lastTouch = performance.now(); }, true);
   canvas.addEventListener('mousedown', e => {
     SFX.unlock();
+    if (performance.now() - lastTouch < 1000) return;
     if (e.button === 0) st.mouseL = true;
     else if (e.button === 2) { st.mouseR = true; st.rDrag = { x: e.clientX, y: e.clientY, moved: 0, drag: false }; }
     else if (e.button === 1) { st.camDrag = { x: e.clientX, y: e.clientY }; e.preventDefault(); }
@@ -189,10 +192,14 @@ const HUD = (() => {
     const k = document.createElement('span'); k.className = 'k';
     r.append(dot, name, lives, k); board.appendChild(r); rows.push({ r, name, lives, k, key: '' });
   }
+  const hpRow = document.createElement('div'); hpRow.className = 'hp';
+  const hpBar = document.createElement('i'), hpShield = document.createElement('b'), hpTxt = document.createElement('span');
+  hpRow.append(hpBar, hpShield, hpTxt); board.appendChild(hpRow);
+  let hpKey = '';
   // the minimap: the whole page, turned so that up is where the camera looks
   const mm = $('#minimap'), mg = mm.getContext('2d');
   let mmT = 0;
-  const KIND_FILL = { tower: '#ffffff', book: '#9fc1f5', bridge: '#ffe680', eraser: '#f7a8bb', pbox: '#7fa6ef', book2: '#b5ea9f', book3: '#ffc7a8', pad: '#f7a8bb' };
+  const KIND_FILL = { tower: '#ffffff', notebook: '#ffffff', cup: '#b9dbf8', book: '#9fc1f5', bridge: '#ffe680', eraser: '#f7a8bb', pbox: '#7fa6ef', book2: '#b5ea9f', book3: '#ffc7a8', pad: '#f7a8bb' };
   function drawMap(v) {
     const W = mm.width, S = W / (HALF * 2 + 6), c = W / 2, cs = Math.cos(GFX.cam.yaw), sn = Math.sin(GFX.cam.yaw);
     const P = (x, z) => [c + (x * cs - z * sn) * S, c + (x * sn + z * cs) * S];
@@ -203,7 +210,7 @@ const HUD = (() => {
     for (const b of MAP.boxes) if (KIND_FILL[b.kind]) poly(b, KIND_FILL[b.kind]);
     for (const l of MAP.lifts) poly(l, '#ffe45c');
     MAP.crates.forEach((b, i) => { if (!v.crates || v.crates[i]) poly(b, '#c98b4b'); });
-    for (const t of MAP.tps) { const [x, y] = P(t.x, t.z); mg.fillStyle = t.q % 2 ? '#3ad1c4' : '#a05cff'; mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); }
+    for (const t of MAP.tps) { const [x, y] = P(t.x, t.z); mg.fillStyle = TP_COLOR(t); mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); }
     (v.spawners || []).forEach((k, i) => { if (!k) return; const S2 = MAP.spawners[i], [x, y] = P(S2.x, S2.z); mg.fillStyle = ({ h: '#ff6b81', s: '#5b8def', b: '#6fd3ff', t: '#ffc23d', p: '#ff8a1f' })[k]; mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); mg.stroke(); });
     if (v.sd) { const [x, y] = P(0, 0); mg.strokeStyle = 'rgba(160, 40, 120, 0.9)'; mg.lineWidth = 3; mg.beginPath(); mg.arc(x, y, Math.min(v.zone, 60) * S, 0, TAU); mg.stroke(); mg.strokeStyle = '#1e1d2b'; }
     mg.lineWidth = 2.5;
@@ -233,6 +240,12 @@ const HUD = (() => {
       R.r.classList.toggle('me', i === local); R.r.classList.toggle('out', !!p.out);
     });
     for (let i = v.players.length; i < 4; i++) rows[i].r.hidden = true;
+    const mine = v.players[local];
+    hpRow.hidden = !mine || !mine.alive;
+    if (mine && mine.alive) {
+      const key = `${Math.ceil(mine.hp)}|${Math.ceil(mine.shield)}`;
+      if (key !== hpKey) { hpKey = key; const f = clamp(mine.hp / MAXHP, 0, 1); hpBar.style.width = `${f * 100}%`; hpBar.style.background = f > 0.5 ? '#3bc45c' : f > 0.25 ? '#ffc23d' : '#ff4d5e'; hpShield.style.width = `${clamp(mine.shield / 50, 0, 1) * 100}%`; hpTxt.textContent = mine.shield > 0 ? `${Math.ceil(mine.hp)} + ${Math.ceil(mine.shield)} shield` : `${Math.ceil(mine.hp)} health`; }
+    }
     // clock
     let txt;
     if (v.practice) txt = 'Practice';
@@ -277,6 +290,7 @@ const HUD = (() => {
   function onEvent(e, v) {
     const [, type] = e, a = e.slice(2), local = v.localSlot;
     if (type === 'hit') { const [vv, by] = a; if (vv === local && by >= 0 && by !== local) App.lockOn(by); else if (by === local && vv !== local) App.lockOn(vv); }
+    if (type === 'spawn' && a[0] === local && v.state === 'playing') App.reorient = true;
     if (type === 'go') { big('GO!', 0.8); SFX.play('go'); }
     else if (type === 'sd') { big('Sudden death!', 1.6); note('The ink is closing in. Get to the middle!', 3); SFX.play('sd'); }
     else if (type === 'kill') {
@@ -610,7 +624,7 @@ const App = {
   toClient() { this.match = null; show('lobby'); },
   startMatch() { if (!this.match) return; this.match.reset(); this.resultsShown = false; this.hideResults(); this.enterGame(); },
   enterGame() {
-    show('game'); this.unlock(); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
+    show('game'); this.unlock(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
     GFX.clearShots(); HUD.clearFeed(); GFX.cam.init = false;
     const me = this.match ? this.match.players[this.localSlot] : null;
     const s = MAP.spawns[Math.max(0, this.localSlot)] || MAP.spawns[0];
@@ -624,7 +638,7 @@ const App = {
   netError(msg) { if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; Input.enabled = false; show('menu'); $('#netHint').textContent = msg; },
   togglePause() {
     if (this.mode === 'menu') return;
-    if (!$('#pause').hidden) { show('game'); this.paused = false; Input.enabled = true; return; }
+    if (!$('#pause').hidden) { show('game'); this.paused = false; Input.enabled = true; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); return; }
     if (cur !== 'game') return;
     this.paused = this.mode !== 'online'; Input.enabled = false; $('#pauseNote').hidden = this.mode !== 'online'; show('pause');
   },

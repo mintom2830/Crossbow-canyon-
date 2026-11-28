@@ -65,6 +65,10 @@ button, input { font: inherit; color: inherit; }
 #board .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #board .nm small { color: var(--soft); font-size: 13px; }
 #board .lives { color: var(--red); letter-spacing: 1px; font-size: 15px; }
+#board .hp { position: relative; height: 18px; margin: 4px 2px 2px; border: 2px solid var(--ink); border-radius: 5px; background: #fffdf4; overflow: hidden; }
+#board .hp i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #3bc45c; }
+#board .hp b { position: absolute; left: 0; top: 0; height: 5px; width: 0; background: rgba(110, 210, 255, 0.95); }
+#board .hp span { position: relative; display: block; text-align: center; font-size: 13px; line-height: 14px; }
 #board .k { font-family: var(--display); font-size: 16px; min-width: 3.2em; text-align: right; }
 #timer { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 28px; padding: 0 16px 2px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 8px 5px 9px 6px; box-shadow: 2px 3px 0 var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #timer.sd { background: #ffd1da; color: #a3122e; animation: throb 0.9s ease-in-out infinite; }
@@ -168,7 +172,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 <section class="screen card" id="pause" hidden aria-labelledby="pauseTitle">
   <h2 id="pauseTitle">Paused</h2>
   <p class="hint" id="pauseNote" hidden>The online match keeps going while this is open.</p>
-  <div class="stack"><button class="btn primary" id="bResume" type="button">Resume</button><button class="btn" id="bFollow" type="button" aria-pressed="true">Camera follows your doodle: on</button><button class="btn" id="bHelp" type="button">Show or hide controls</button><button class="btn ghost" id="bQuit" type="button">Leave match</button></div>
+  <div class="stack"><button class="btn primary" id="bResume" type="button">Resume</button><button class="btn" id="bFollow" type="button" aria-pressed="false">Camera follows your doodle: off</button><button class="btn" id="bHelp" type="button">Show or hide controls</button><button class="btn ghost" id="bQuit" type="button">Leave match</button></div>
 </section>
 
 <div id="hud" hidden>
@@ -188,7 +192,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
     <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Run (<kbd>Shift</kbd> walks)</dd>
     <dt>Mouse</dt><dd>Aim, click or hold to shoot</dd>
     <dt>Right mouse</dt><dd>Drag to turn the camera, hold still for steady aim</dd>
-    <dt>Camera</dt><dd>Turns with your doodle (switch it off in pause)</dd>
+    <dt>Camera</dt><dd>Stays put; turn it yourself (or switch on follow in pause)</dd>
     <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest rival</dd>
     <dt><kbd>Q</kbd></dt><dd>Lock on or let go (hits lock on by themselves)</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice to double jump</dd>

@@ -1,7 +1,7 @@
 // ===================================================================== core: rules, map, physics, match, bots
 // Shared by the offline game, the online host (the authority) and the online clients (for prediction).
-const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, SC = 1.5, HALF = 30 * SC, GRAV = 20;  // the page is 90 m by 90 m; SC scales the whole world, the doodles stay their size
-const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 150, END_T = 230, ZONE_R0 = 66, ZONE_R1 = 6, ZONE_DUR = 70;
+const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, SC = 1.5, HALF = 65, GRAV = 20;  // the page is 130 m by 130 m; SC scales the pieces on it, the doodles stay their size
+const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 130, END_T = 240, ZONE_R0 = 70, ZONE_R1 = 6, ZONE_DUR = 70;
 const RUN = 6.2, WALK = 2.5, ACC = 36, AIR_ACC = 14, JUMP = 7.4, JUMP2 = 6.6, DASH = 14;
 const BULLET_V = 26, BULLET_LIFE = 1.3, DMG = 13, FIRE_EVERY = 0.2;
 const COLORS = [
@@ -58,16 +58,32 @@ const MAP = (() => {
     boxes.push(box(k(12.8), k(23.8), k(3), k(2.2), k(1.0), k(2.0), 'book3', q));
     { const [x, z] = rq(k(17.5), k(7.5), q); trees.push({ x, z, r: k(0.38), s: k(1.2) }); }
     for (const [cx, cz, s] of [[27.2, 3.5, 1.1], [26.5, 26.5, 1.3], [7, 27.2, 1.0]]) { const [x, z] = rq(k(cx), k(cz), q); trees.push({ x, z, r: k(0.34), s: k(s) }); }
-    { const [x, z] = rq(k(26), k(8.5), q); tps.push({ x, z, r: k(0.75), q, to: (q + 2) % 4 }); }
+    { const [x, z] = rq(k(26), k(8.5), q); tps.push({ x, z, r: k(0.75), q, ring: 0 }); }
+    // the outer ring: a second ruler bridge out to a big notebook, a tall pencil cup in the corner (a pad gets you up), more cover
+    boxes.push(box(k(25.5), 0, k(11), k(1.5), k(1.6), MID, 'bridge', q));
+    boxes.push(box(k(34), 0, k(6), k(8), 0, MID, 'notebook', q));
+    boxes.push(box(k(35), k(35), k(5), k(5), 0, k(3), 'cup', q));
+    { const [x, z] = rq(k(30.5), k(30.5), q), [tx, tz] = rq(k(35), k(35), q); pads.push({ x, z, r: k(0.85), top: 0.2, tx, tz, q, vy: 15, tt: padLaunch(15, k(3)), cup: true }); boxes.push(box(k(30.5), k(30.5), k(1.7), k(1.7), 0, 0.2, 'pad', q)); }
+    for (const [cx, cz] of [[33, 18], [34.2, 18], [18, 33], [18, 34.2], [29.5, 25.5]]) crates.push(box(k(cx), k(cz), k(1.0), k(1.0), 0, k(1.0), 'crate', q));
+    boxes.push(box(k(38), k(22), k(1.4), k(2.6), 0, k(1.1), 'eraser', q));
+    boxes.push(box(k(22), k(38), k(2.6), k(1.4), 0, k(1.1), 'eraser', q));
+    for (const [cx, cz, s] of [[38.5, 9, 1.2], [41, 41, 1.4], [9, 38.5, 1.1], [41, 28, 1.0], [28, 41, 1.0]]) { const [x, z] = rq(k(cx), k(cz), q); trees.push({ x, z, r: k(0.34), s: k(s) }); }
+    { const [x, z] = rq(k(41), k(15), q); tps.push({ x, z, r: k(0.75), q, ring: 1 }); }
+    { const [x, z] = rq(k(27), k(21), q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
+    { const [x, z] = rq(k(34), 0, q); spawners.push({ x, y: MID, z, kinds: 'tb', every: 15 }); }
+    { const [x, z] = rq(k(35), k(35), q); spawners.push({ x, y: k(3), z, kinds: 'pt', every: 18, pads: [pads.length - 1] }); }
     { const [x, z] = rq(k(15), k(19.5), q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
     { const [x, z] = rq(k(18), 0, q); spawners.push({ x, y: MID, z, kinds: 'stb', every: 14 }); }
     { const [x, z] = rq(k(12.8), k(23.8), q); spawners.push({ x, y: k(2.0), z, kinds: 'sb', every: 16 }); }
   }
-  spawners.push({ x: 0, y: TOWER, z: 0, kinds: 'pt', every: 16, big: true });
-  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, 3.6, 2.6], [18, 1.9, 1.6], [-18, 1.9, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8]]) targets.push({ x: k(x), y: k(y), z: k(z) });
+  // each teleporter sends you to the one across the page in its own ring
+  tps.forEach(t => { t.to = tps.findIndex(o => o.ring === t.ring && o.q === (t.q + 2) % 4); });
+  spawners.push({ x: 0, y: TOWER, z: 0, kinds: 'pt', every: 16, big: true, pads: pads.map((p, i) => p.cup ? -1 : i).filter(i => i >= 0) });
+  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, 3.6, 2.6], [18, 1.9, 1.6], [-18, 1.9, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8], [34, 1.9, 2.5], [-35, 3, -35], [30, 0, -30]]) targets.push({ x: k(x), y: k(y), z: k(z) });
   for (const t of trees) boxes.push({ minX: t.x - t.r, maxX: t.x + t.r, minZ: t.z - t.r, maxZ: t.z + t.r, bottom: 0, top: 2.3 * t.s, kind: 'trunk', bulletOnly: true });
   return { boxes, lifts, pads, tps, spawns, spawners, crates, trees, decor, targets, rq, TOWER, MID };
 })();
+const TP_COLOR = t => [['#a05cff', '#3ad1c4'], ['#ff8a1f', '#2fbf5f']][t.ring][t.q % 2];
 const onPage = (x, z, m = 0) => Math.abs(x) < HALF + m && Math.abs(z) < HALF + m;
 const edgeDist = (x, z) => HALF - Math.max(Math.abs(x), Math.abs(z));
 
@@ -154,6 +170,7 @@ function stepPlayer(p, inp, W, fx) {
     if (fx) fx('dash', p.slot);
   }
   if (p.dashT > 0) p.dashT -= dt;
+  else if (p.padT > 0.15) { /* launched by a bounce pad: the flight is set, so you land where the pad aims */ }
   else {
     const a = (p.ground ? ACC : AIR_ACC) * ctrl * dt, wx = mx * spd, wz = mz * spd, dx = wx - p.vx, dz = wz - p.vz, l = Math.hypot(dx, dz);
     if (l > a) { p.vx += dx / l * a; p.vz += dz / l * a; } else { p.vx = wx; p.vz = wz; }
@@ -188,15 +205,15 @@ function stepPlayer(p, inp, W, fx) {
     if (Math.abs(p.y - pd.top) > 0.06 || Math.hypot(p.x - pd.x, p.z - pd.z) > pd.r) continue;
     const dx = pd.tx - p.x, dz = pd.tz - p.z;
     p.vy = pd.vy; p.vx = dx / pd.tt; p.vz = dz / pd.tt; p.ground = false; p.airJumps = 1; p.dashT = 0; p.padT = pd.tt;
-    if (fx) fx('boing', pd.q, p.slot);
+    if (fx) fx('boing', MAP.pads.indexOf(pd), p.slot);
     break;
   }
   // teleporters: step in, come out of the one across the island
   if (p.tpCd <= 0 && p.y < 0.5) for (const tp of MAP.tps) {
     if (Math.hypot(p.x - tp.x, p.z - tp.z) > tp.r) continue;
-    const to = MAP.tps[tp.to], l = Math.hypot(to.x, to.z), sp = Math.max(2, Math.hypot(p.vx, p.vz));
-    p.x = to.x - to.x / l * 1.4; p.z = to.z - to.z / l * 1.4; p.y = 0; p.vx = -to.x / l * sp; p.vz = -to.z / l * sp; p.tpCd = 1.3;
-    if (fx) fx('tp', tp.q, to.q, p.slot);
+    const to = MAP.tps[tp.to], l = Math.hypot(to.x, to.z), sp = Math.max(2, Math.hypot(p.vx, p.vz)), toI = tp.to;
+    p.x = to.x - to.x / l * (to.r + 0.9); p.z = to.z - to.z / l * (to.r + 0.9); p.y = 0; p.vx = -to.x / l * sp; p.vz = -to.z / l * sp; p.tpCd = 1.3;
+    if (fx) fx('tp', MAP.tps.indexOf(tp), toI, p.slot);
     break;
   }
   // which way the doodle faces: where it aims while aiming or shooting, otherwise where it goes
@@ -578,11 +595,20 @@ function botInput(m, p, W) {
     }
     const near = best && Math.hypot(best.x - p.x, best.z - p.z) < 14;
     if (!B.goal && !near) {
-      const top = m.spawners[m.spawners.length - 1], S = MAP.spawners[m.spawners.length - 1];
-      if (top.k && p.hp >= 45 && Math.hypot(p.x, p.z) < 30) {
-        if (p.y > 2) B.goal = { x: S.x, z: S.z, y: S.y };
-        else { let bd = 99; for (const pd of MAP.pads) { const d = Math.hypot(pd.x - p.x, pd.z - p.z); if (d < bd) { bd = d; B.goal = { x: pd.x, z: pd.z, y: 0.2, pad: true }; } } }
-      } else m.spawners.forEach((s, i) => { const S2 = MAP.spawners[i]; if (!B.goal && s.k && s.k !== 'h' && S2.y > 0.5 && Math.hypot(S2.x - p.x, S2.z - p.z) < 13) B.goal = { x: S2.x, z: S2.z, y: S2.y }; });
+      // power-ups: the tower's from far away, the high ones (tower, pencil cups) by their bounce pads, the rest by jumping
+      let gi = -1, gs = 1e9;
+      m.spawners.forEach((s, i) => {
+        const S2 = MAP.spawners[i]; if (!s.k || s.k === 'h') return;
+        if (S2.pads && p.hp < 45) return;
+        const d = Math.hypot(S2.x - p.x, S2.z - p.z), lim = S2.big ? 30 : S2.pads ? 34 : S2.y > 2 ? 24 : 13;
+        if (d > lim) return;
+        const sc = d - (S2.big ? 8 : 0); if (sc < gs) { gs = sc; gi = i; }
+      });
+      if (gi >= 0) {
+        const S2 = MAP.spawners[gi];
+        if (S2.pads && p.y < S2.y - 0.5) { let bd = 1e9; for (const pi of S2.pads) { const pd = MAP.pads[pi], d = Math.hypot(pd.x - p.x, pd.z - p.z); if (d < bd) { bd = d; B.goal = { x: pd.x, z: pd.z, y: 0.2, pad: true }; } } }
+        else B.goal = { x: S2.x, z: S2.z, y: S2.y };
+      }
     }
     // celebrate a fresh elimination when nobody is near
     if (p.kills > B.kills) { B.kills = p.kills; if (!enemies.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 9) && Math.random() < 0.5) inp.emoteE = 1; }

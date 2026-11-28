@@ -65,6 +65,10 @@ button, input { font: inherit; color: inherit; }
 #board .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #board .nm small { color: var(--soft); font-size: 13px; }
 #board .lives { color: var(--red); letter-spacing: 1px; font-size: 15px; }
+#board .hp { position: relative; height: 18px; margin: 4px 2px 2px; border: 2px solid var(--ink); border-radius: 5px; background: #fffdf4; overflow: hidden; }
+#board .hp i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #3bc45c; }
+#board .hp b { position: absolute; left: 0; top: 0; height: 5px; width: 0; background: rgba(110, 210, 255, 0.95); }
+#board .hp span { position: relative; display: block; text-align: center; font-size: 13px; line-height: 14px; }
 #board .k { font-family: var(--display); font-size: 16px; min-width: 3.2em; text-align: right; }
 #timer { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 28px; padding: 0 16px 2px; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 8px 5px 9px 6px; box-shadow: 2px 3px 0 var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #timer.sd { background: #ffd1da; color: #a3122e; animation: throb 0.9s ease-in-out infinite; }
@@ -168,7 +172,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
 <section class="screen card" id="pause" hidden aria-labelledby="pauseTitle">
   <h2 id="pauseTitle">Paused</h2>
   <p class="hint" id="pauseNote" hidden>The online match keeps going while this is open.</p>
-  <div class="stack"><button class="btn primary" id="bResume" type="button">Resume</button><button class="btn" id="bFollow" type="button" aria-pressed="true">Camera follows your doodle: on</button><button class="btn" id="bHelp" type="button">Show or hide controls</button><button class="btn ghost" id="bQuit" type="button">Leave match</button></div>
+  <div class="stack"><button class="btn primary" id="bResume" type="button">Resume</button><button class="btn" id="bFollow" type="button" aria-pressed="false">Camera follows your doodle: off</button><button class="btn" id="bHelp" type="button">Show or hide controls</button><button class="btn ghost" id="bQuit" type="button">Leave match</button></div>
 </section>
 
 <div id="hud" hidden>
@@ -188,7 +192,7 @@ kbd { font-family: var(--display); font-size: 13px; border: 1.5px solid var(--in
     <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Run (<kbd>Shift</kbd> walks)</dd>
     <dt>Mouse</dt><dd>Aim, click or hold to shoot</dd>
     <dt>Right mouse</dt><dd>Drag to turn the camera, hold still for steady aim</dd>
-    <dt>Camera</dt><dd>Turns with your doodle (switch it off in pause)</dd>
+    <dt>Camera</dt><dd>Stays put; turn it yourself (or switch on follow in pause)</dd>
     <dt><kbd>J</kbd></dt><dd>Quick shot at the nearest rival</dd>
     <dt><kbd>Q</kbd></dt><dd>Lock on or let go (hits lock on by themselves)</dd>
     <dt><kbd>Space</kbd></dt><dd>Jump, twice to double jump</dd>
@@ -235,8 +239,8 @@ const num = (v, d = 0) => (typeof v === 'number' && isFinite(v)) ? v : d;
 const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f­​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, 14);
 // ===================================================================== core: rules, map, physics, match, bots
 // Shared by the offline game, the online host (the authority) and the online clients (for prediction).
-const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, SC = 1.5, HALF = 30 * SC, GRAV = 20;  // the page is 90 m by 90 m; SC scales the whole world, the doodles stay their size
-const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 150, END_T = 230, ZONE_R0 = 66, ZONE_R1 = 6, ZONE_DUR = 70;
+const DT = 1 / 60, H = 1.5, RAD = 0.33, STEP = 0.36, SC = 1.5, HALF = 65, GRAV = 20;  // the page is 130 m by 130 m; SC scales the pieces on it, the doodles stay their size
+const MAXHP = 100, LIVES = 3, COUNTDOWN = 3, SD_T = 130, END_T = 240, ZONE_R0 = 70, ZONE_R1 = 6, ZONE_DUR = 70;
 const RUN = 6.2, WALK = 2.5, ACC = 36, AIR_ACC = 14, JUMP = 7.4, JUMP2 = 6.6, DASH = 14;
 const BULLET_V = 26, BULLET_LIFE = 1.3, DMG = 13, FIRE_EVERY = 0.2;
 const COLORS = [
@@ -293,16 +297,32 @@ const MAP = (() => {
     boxes.push(box(k(12.8), k(23.8), k(3), k(2.2), k(1.0), k(2.0), 'book3', q));
     { const [x, z] = rq(k(17.5), k(7.5), q); trees.push({ x, z, r: k(0.38), s: k(1.2) }); }
     for (const [cx, cz, s] of [[27.2, 3.5, 1.1], [26.5, 26.5, 1.3], [7, 27.2, 1.0]]) { const [x, z] = rq(k(cx), k(cz), q); trees.push({ x, z, r: k(0.34), s: k(s) }); }
-    { const [x, z] = rq(k(26), k(8.5), q); tps.push({ x, z, r: k(0.75), q, to: (q + 2) % 4 }); }
+    { const [x, z] = rq(k(26), k(8.5), q); tps.push({ x, z, r: k(0.75), q, ring: 0 }); }
+    // the outer ring: a second ruler bridge out to a big notebook, a tall pencil cup in the corner (a pad gets you up), more cover
+    boxes.push(box(k(25.5), 0, k(11), k(1.5), k(1.6), MID, 'bridge', q));
+    boxes.push(box(k(34), 0, k(6), k(8), 0, MID, 'notebook', q));
+    boxes.push(box(k(35), k(35), k(5), k(5), 0, k(3), 'cup', q));
+    { const [x, z] = rq(k(30.5), k(30.5), q), [tx, tz] = rq(k(35), k(35), q); pads.push({ x, z, r: k(0.85), top: 0.2, tx, tz, q, vy: 15, tt: padLaunch(15, k(3)), cup: true }); boxes.push(box(k(30.5), k(30.5), k(1.7), k(1.7), 0, 0.2, 'pad', q)); }
+    for (const [cx, cz] of [[33, 18], [34.2, 18], [18, 33], [18, 34.2], [29.5, 25.5]]) crates.push(box(k(cx), k(cz), k(1.0), k(1.0), 0, k(1.0), 'crate', q));
+    boxes.push(box(k(38), k(22), k(1.4), k(2.6), 0, k(1.1), 'eraser', q));
+    boxes.push(box(k(22), k(38), k(2.6), k(1.4), 0, k(1.1), 'eraser', q));
+    for (const [cx, cz, s] of [[38.5, 9, 1.2], [41, 41, 1.4], [9, 38.5, 1.1], [41, 28, 1.0], [28, 41, 1.0]]) { const [x, z] = rq(k(cx), k(cz), q); trees.push({ x, z, r: k(0.34), s: k(s) }); }
+    { const [x, z] = rq(k(41), k(15), q); tps.push({ x, z, r: k(0.75), q, ring: 1 }); }
+    { const [x, z] = rq(k(27), k(21), q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
+    { const [x, z] = rq(k(34), 0, q); spawners.push({ x, y: MID, z, kinds: 'tb', every: 15 }); }
+    { const [x, z] = rq(k(35), k(35), q); spawners.push({ x, y: k(3), z, kinds: 'pt', every: 18, pads: [pads.length - 1] }); }
     { const [x, z] = rq(k(15), k(19.5), q); spawners.push({ x, y: 0, z, kinds: 'h', every: 12 }); }
     { const [x, z] = rq(k(18), 0, q); spawners.push({ x, y: MID, z, kinds: 'stb', every: 14 }); }
     { const [x, z] = rq(k(12.8), k(23.8), q); spawners.push({ x, y: k(2.0), z, kinds: 'sb', every: 16 }); }
   }
-  spawners.push({ x: 0, y: TOWER, z: 0, kinds: 'pt', every: 16, big: true });
-  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, 3.6, 2.6], [18, 1.9, 1.6], [-18, 1.9, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8]]) targets.push({ x: k(x), y: k(y), z: k(z) });
+  // each teleporter sends you to the one across the page in its own ring
+  tps.forEach(t => { t.to = tps.findIndex(o => o.ring === t.ring && o.q === (t.q + 2) % 4); });
+  spawners.push({ x: 0, y: TOWER, z: 0, kinds: 'pt', every: 16, big: true, pads: pads.map((p, i) => p.cup ? -1 : i).filter(i => i >= 0) });
+  for (const [x, y, z] of [[8, 0, -9.5], [-10, 0, 7.5], [0, 3.6, 2.6], [18, 1.9, 1.6], [-18, 1.9, -1.6], [4, 0, 21], [-21, 0, -8], [24.5, 1.4, 13], [-12.8, 2.0, -23.8], [34, 1.9, 2.5], [-35, 3, -35], [30, 0, -30]]) targets.push({ x: k(x), y: k(y), z: k(z) });
   for (const t of trees) boxes.push({ minX: t.x - t.r, maxX: t.x + t.r, minZ: t.z - t.r, maxZ: t.z + t.r, bottom: 0, top: 2.3 * t.s, kind: 'trunk', bulletOnly: true });
   return { boxes, lifts, pads, tps, spawns, spawners, crates, trees, decor, targets, rq, TOWER, MID };
 })();
+const TP_COLOR = t => [['#a05cff', '#3ad1c4'], ['#ff8a1f', '#2fbf5f']][t.ring][t.q % 2];
 const onPage = (x, z, m = 0) => Math.abs(x) < HALF + m && Math.abs(z) < HALF + m;
 const edgeDist = (x, z) => HALF - Math.max(Math.abs(x), Math.abs(z));
 
@@ -389,6 +409,7 @@ function stepPlayer(p, inp, W, fx) {
     if (fx) fx('dash', p.slot);
   }
   if (p.dashT > 0) p.dashT -= dt;
+  else if (p.padT > 0.15) { /* launched by a bounce pad: the flight is set, so you land where the pad aims */ }
   else {
     const a = (p.ground ? ACC : AIR_ACC) * ctrl * dt, wx = mx * spd, wz = mz * spd, dx = wx - p.vx, dz = wz - p.vz, l = Math.hypot(dx, dz);
     if (l > a) { p.vx += dx / l * a; p.vz += dz / l * a; } else { p.vx = wx; p.vz = wz; }
@@ -423,15 +444,15 @@ function stepPlayer(p, inp, W, fx) {
     if (Math.abs(p.y - pd.top) > 0.06 || Math.hypot(p.x - pd.x, p.z - pd.z) > pd.r) continue;
     const dx = pd.tx - p.x, dz = pd.tz - p.z;
     p.vy = pd.vy; p.vx = dx / pd.tt; p.vz = dz / pd.tt; p.ground = false; p.airJumps = 1; p.dashT = 0; p.padT = pd.tt;
-    if (fx) fx('boing', pd.q, p.slot);
+    if (fx) fx('boing', MAP.pads.indexOf(pd), p.slot);
     break;
   }
   // teleporters: step in, come out of the one across the island
   if (p.tpCd <= 0 && p.y < 0.5) for (const tp of MAP.tps) {
     if (Math.hypot(p.x - tp.x, p.z - tp.z) > tp.r) continue;
-    const to = MAP.tps[tp.to], l = Math.hypot(to.x, to.z), sp = Math.max(2, Math.hypot(p.vx, p.vz));
-    p.x = to.x - to.x / l * 1.4; p.z = to.z - to.z / l * 1.4; p.y = 0; p.vx = -to.x / l * sp; p.vz = -to.z / l * sp; p.tpCd = 1.3;
-    if (fx) fx('tp', tp.q, to.q, p.slot);
+    const to = MAP.tps[tp.to], l = Math.hypot(to.x, to.z), sp = Math.max(2, Math.hypot(p.vx, p.vz)), toI = tp.to;
+    p.x = to.x - to.x / l * (to.r + 0.9); p.z = to.z - to.z / l * (to.r + 0.9); p.y = 0; p.vx = -to.x / l * sp; p.vz = -to.z / l * sp; p.tpCd = 1.3;
+    if (fx) fx('tp', MAP.tps.indexOf(tp), toI, p.slot);
     break;
   }
   // which way the doodle faces: where it aims while aiming or shooting, otherwise where it goes
@@ -813,11 +834,20 @@ function botInput(m, p, W) {
     }
     const near = best && Math.hypot(best.x - p.x, best.z - p.z) < 14;
     if (!B.goal && !near) {
-      const top = m.spawners[m.spawners.length - 1], S = MAP.spawners[m.spawners.length - 1];
-      if (top.k && p.hp >= 45 && Math.hypot(p.x, p.z) < 30) {
-        if (p.y > 2) B.goal = { x: S.x, z: S.z, y: S.y };
-        else { let bd = 99; for (const pd of MAP.pads) { const d = Math.hypot(pd.x - p.x, pd.z - p.z); if (d < bd) { bd = d; B.goal = { x: pd.x, z: pd.z, y: 0.2, pad: true }; } } }
-      } else m.spawners.forEach((s, i) => { const S2 = MAP.spawners[i]; if (!B.goal && s.k && s.k !== 'h' && S2.y > 0.5 && Math.hypot(S2.x - p.x, S2.z - p.z) < 13) B.goal = { x: S2.x, z: S2.z, y: S2.y }; });
+      // power-ups: the tower's from far away, the high ones (tower, pencil cups) by their bounce pads, the rest by jumping
+      let gi = -1, gs = 1e9;
+      m.spawners.forEach((s, i) => {
+        const S2 = MAP.spawners[i]; if (!s.k || s.k === 'h') return;
+        if (S2.pads && p.hp < 45) return;
+        const d = Math.hypot(S2.x - p.x, S2.z - p.z), lim = S2.big ? 30 : S2.pads ? 34 : S2.y > 2 ? 24 : 13;
+        if (d > lim) return;
+        const sc = d - (S2.big ? 8 : 0); if (sc < gs) { gs = sc; gi = i; }
+      });
+      if (gi >= 0) {
+        const S2 = MAP.spawners[gi];
+        if (S2.pads && p.y < S2.y - 0.5) { let bd = 1e9; for (const pi of S2.pads) { const pd = MAP.pads[pi], d = Math.hypot(pd.x - p.x, pd.z - p.z); if (d < bd) { bd = d; B.goal = { x: pd.x, z: pd.z, y: 0.2, pad: true }; } } }
+        else B.goal = { x: S2.x, z: S2.z, y: S2.y };
+      }
     }
     // celebrate a fresh elimination when nobody is near
     if (p.kills > B.kills) { B.kills = p.kills; if (!enemies.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 9) && Math.random() < 0.5) inp.emoteE = 1; }
@@ -991,7 +1021,7 @@ const GFX = (() => {
   // ---- canvas textures (each object gets its own)
   const ctex = (w, h, draw, rep) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); } t.anisotropy = 4; return t; };
   scene.background = new THREE.Color('#f4efe0');
-  scene.fog = new THREE.Fog('#f4efe0', 46, 150);
+  scene.fog = new THREE.Fog('#f4efe0', 50, 175);
   const paperSide = ctex(256, 128, (g, w, h) => { g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h); g.strokeStyle = '#a9c9ee'; g.lineWidth = 3; for (let y = 18; y < h; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } g.strokeStyle = '#e8838a'; g.lineWidth = 4; g.beginPath(); g.moveTo(30, 0); g.lineTo(30, h); g.stroke(); }, [2, 1]);
   const paperTop = ctex(512, 512, (g, w, h) => {
     g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h); g.strokeStyle = '#a9c9ee'; g.lineWidth = 3; for (let y = 32; y < h; y += 48) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
@@ -1038,10 +1068,11 @@ const GFX = (() => {
       const rub = inked(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.4, 12), toon('#f7a8bb')), 0.15); rub.position.y = 14.2;
       g.add(body, wood, rub);
     };
-    giantPencil(-52, 18, 0.4, '#ffcf3a'); giantPencil(48, -40, -0.9, '#5b8def'); giantPencil(20, 56, 1.4, '#e63946');
-    const er = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(16, 6, 9), toon('#f7a8bb')), 0.15), 52, -4, 24); er.rotation.y = 0.5;
-    const mug = addD(inked(new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 16, 24), toon('#7fb3ff')), 0.15), -46, 1, -48);
-    const sharp = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), toon('#ffcf3a')), 0.15), -60, -4, -6); sharp.rotation.y = 1.1;
+    const f = HALF / SC / 30; // (laid out for a 60-unit page; spread out to fit this one)
+    giantPencil(-58 * f, 18 * f, 0.4, '#ffcf3a'); giantPencil(52 * f, -44 * f, -0.9, '#5b8def'); giantPencil(20 * f, 60 * f, 1.4, '#e63946');
+    const er = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(16, 6, 9), toon('#f7a8bb')), 0.15), 56 * f, -4, 24 * f); er.rotation.y = 0.5;
+    const mug = addD(inked(new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 16, 24), toon('#7fb3ff')), 0.15), -50 * f, 1, -52 * f);
+    const sharp = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), toon('#ffcf3a')), 0.15), -64 * f, -4, -6 * f); sharp.rotation.y = 1.1;
   }
   const playerU = { value: [new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0)] };
 
@@ -1089,6 +1120,24 @@ const GFX = (() => {
       const longX = b.w > b.d, mats = longX ? [pages, pages, cover, cover, pages, spine] : [pages, spine, cover, cover, pages, pages];
       add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(b.w, b.top, b.d), mats))), b.cx, b.top / 2, b.cz);
       const band = add(new THREE.Mesh(new THREE.BoxGeometry(b.w * 1.004, 0.08, b.d * 1.004), toon('#fffdf4')), b.cx, b.top - 0.12, b.cz);
+    } else if (b.kind === 'notebook') {
+      // a spiral notebook: cover on top, wire rings down one long side
+      const cover = toon(['#ffffff', '#ffe45c', '#b9dbf8', '#ffc7d4'][b.q]), pages = toon('#fff', { map: pagesTex });
+      add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(b.w, b.top, b.d), [pages, pages, cover, cover, pages, pages]))), b.cx, b.top / 2, b.cz);
+      const long = b.d > b.w, n = 11, ring = new THREE.TorusGeometry(0.34, 0.07, 6, 14), rings = new THREE.InstancedMesh(ring, toon('#c3c9d4'), n), m4 = new THREE.Matrix4();
+      const qr = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, long ? 0 : Math.PI / 2, 0)), side = Math.sign(b.cx + b.cz) || 1;
+      for (let i = 0; i < n; i++) { const f = -0.42 + i * 0.84 / (n - 1); m4.compose(new THREE.Vector3(long ? b.cx - side * b.w / 2 : b.cx + f * b.w, b.top, long ? b.cz + f * b.d : b.cz - side * b.d / 2), qr, new THREE.Vector3(1, 1, 1)); rings.setMatrixAt(i, m4); }
+      scene.add(rings);
+    } else if (b.kind === 'cup') {
+      // a tall pencil cup with pencils standing in it (the pencils are scenery; you stand on the rim)
+      const c = ['#7fb3ff', '#ff9ec4', '#b5ea9f', '#ffd93d'][b.q];
+      add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(b.w, b.top, b.d), toon(c)))), b.cx, b.top / 2, b.cz);
+      add(new THREE.Mesh(new THREE.BoxGeometry(b.w * 1.01, 0.18, b.d * 1.01), toon(new THREE.Color(c).multiplyScalar(0.8))), b.cx, b.top * 0.2, b.cz);
+      for (const [ox, oz, h, pc] of [[-0.3, -0.3, 2.6, '#ffcf3a'], [0.32, -0.25, 3.2, '#e63946'], [-0.28, 0.3, 2.2, '#5b8def']]) {
+        const pen = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, h, 6), toon(pc)), 0.03);
+        pen.rotation.set(oz * 0.25, 0, -ox * 0.25); add(pen, b.cx + ox * b.w, b.top + h / 2 - 0.2, b.cz + oz * b.d);
+        const tip = inked(new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 6), toon('#f2d2a6')), 0.03); tip.position.y = h / 2 + 0.2; pen.add(tip);
+      }
     } else if (b.kind === 'book2' || b.kind === 'book3') {
       const c = b.kind === 'book2' ? ['#2fbf5f', '#a05cff', '#ff9a1f', '#3ad1c4'][b.q] : ['#ff8fb1', '#ffd93d', '#7fb3ff', '#e63946'][b.q];
       const cover = toon(c), pages = toon('#fff', { map: pagesTex }), h = b.top - b.bottom;
@@ -1107,7 +1156,7 @@ const GFX = (() => {
       const long = b.d > b.w;
       for (const [o, c] of [[-0.35, '#ffcf3a'], [0.35, '#e63946']]) {
         const pc = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.09 * SC, 0.09 * SC, (long ? b.d : b.w) * 0.8, 6), toon(c)), 0.02);
-        pc.rotation.set(long ? Math.PI / 2 : 0, 0, long ? 0 : Math.PI / 2); add(pc, b.cx + (long ? o * SC : 0), h + 0.09 * SC, b.cz + (long ? 0 : o * SC)); pc.castShadow = true;
+        pc.rotation.set(long ? Math.PI / 2 : 0, 0, long ? 0 : Math.PI / 2); add(pc, b.cx + (long ? o * SC : 0), h + 0.09 * SC, b.cz + (long ? 0 : o * SC));
       }
     } else if (b.kind === 'bridge') {
       const tex = rulerTex.clone(); tex.needsUpdate = true; if (b.w < b.d) { tex.center.set(0.5, 0.5); tex.rotation = Math.PI / 2; }
@@ -1116,7 +1165,7 @@ const GFX = (() => {
       // two legs so it reads as a bridge
       // legs only on the outer half, so the sweeping pencil passes under cleanly
       const ol = Math.hypot(b.cx, b.cz) || 1, ux = b.cx / ol, uz = b.cz / ol;
-      for (const k of [1.3 * SC, 4.5 * SC]) add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, b.bottom, 8), toon('#c3c9d4')), 0.025)), b.cx + ux * k, b.bottom / 2, b.cz + uz * k);
+      for (const k of [1.3 * SC, 4.5 * SC]) add(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, b.bottom, 8), toon('#c3c9d4')), 0.025), b.cx + ux * k, b.bottom / 2, b.cz + uz * k);
     } else if (b.kind === 'pad') {
       const g = new THREE.Group(); g.position.set(b.cx, 0, b.cz); scene.add(g);
       const pr = b.w / 2;
@@ -1135,7 +1184,7 @@ const GFX = (() => {
   });
   const tpMeshes = MAP.tps.map(tp => {
     const g = new THREE.Group(); g.position.set(tp.x, 0, tp.z); g.scale.setScalar(tp.r / 0.75); scene.add(g);
-    const color = tp.q % 2 ? '#3ad1c4' : '#a05cff';
+    const color = TP_COLOR(tp); // each pair has its own colour
     g.add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.1, 28), toon('#2b2d4a')), 0.025)));
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.08, 8, 32), toon(color, { emissive: new THREE.Color(color).multiplyScalar(0.35) })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12; g.add(ring);
     const disc = new THREE.Mesh(new THREE.CircleGeometry(0.6, 28), new THREE.MeshBasicMaterial({ map: swirlTex, color, transparent: true, opacity: 0.85, depthWrite: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.11; g.add(disc);
@@ -1415,7 +1464,7 @@ const GFX = (() => {
       if (this.bubble.visible) this.bubble.material.color.set(p.shield > 0 ? '#9fe6ff' : '#ffffff');
       this.ring.material.color.set(p.pw ? ITEM_COLOR[p.pw] : COLORS[this.slot].hex);
       this.ring.scale.setScalar(p.pw ? 1.25 + Math.sin(rt * 8) * 0.08 : 1);
-      this.tag.visible = p.alive;
+      this.tag.visible = p.alive && !local;
       if (p.alive) this.drawTag(p, local);
       const fl = p.floor ?? 0;
       this.blob.visible = this.root.visible && fl > -1;
@@ -1482,8 +1531,10 @@ const GFX = (() => {
   }
 
   // ---- camera: follows your doodle (or whoever you spectate), rotatable and zoomable
-  const cam = { yaw: 0.6, pitch: 0.32, dist: 8, eff: 8, follow: true, manualT: 0, look: new THREE.Vector3(0, 1, 0), shake: 0, init: false, t: 0 };
-  const camBoxes = MAP.boxes.filter(b => b.kind !== 'pad'), _cl = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, bottom: 0, top: 0 };
+  const cam = { yaw: 0.6, pitch: 0.32, dist: 8, eff: 8, follow: false, manualT: 0, look: new THREE.Vector3(0, 1, 0), shake: 0, init: false, t: 0 };
+  // the camera stays out of walls and out of treetops (inside a crown you'd only see its ink outline)
+  const crowns = MAP.trees.map(t => ({ minX: t.x - 1.35 * t.s, maxX: t.x + 1.35 * t.s, minZ: t.z - 1.35 * t.s, maxZ: t.z + 1.35 * t.s, bottom: 1.5 * t.s, top: 3.9 * t.s }));
+  const camBoxes = [...MAP.boxes.filter(b => b.kind !== 'pad'), ...crowns], _cl = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, bottom: 0, top: 0 };
   function camClear(lx, ly, lz, px, py, pz) {
     let t = 1;
     const dx = px - lx, dy = py - ly, dz = pz - lz;
@@ -1498,7 +1549,7 @@ const GFX = (() => {
     cam.look.lerp(tgt, REDUCED ? 1 : 1 - Math.exp(-dt * 7));
     const cp = Math.cos(cam.pitch), ox = Math.sin(cam.yaw) * cp, oy = Math.sin(cam.pitch), oz = Math.cos(cam.yaw) * cp;
     const clear = cam.dist < 18 ? camClear(cam.look.x, cam.look.y, cam.look.z, cam.look.x + ox * cam.dist, cam.look.y + oy * cam.dist, cam.look.z + oz * cam.dist) : 1;
-    const want = Math.max(1.6, cam.dist * clear - 0.1);
+    const want = Math.max(0.35, cam.dist * clear - 0.15); // right up behind your head if something is that close
     cam.eff = want < cam.eff ? want : cam.eff + (want - cam.eff) * Math.min(1, dt * 3);
     camera.position.set(cam.look.x + ox * cam.eff, cam.look.y + oy * cam.eff, cam.look.z + oz * cam.eff);
     if (cam.shake > 0 && !REDUCED) { camera.position.x += (Math.random() - 0.5) * cam.shake; camera.position.y += (Math.random() - 0.5) * cam.shake; cam.shake = Math.max(0, cam.shake - dt * 1.5); }
@@ -1560,7 +1611,7 @@ const GFX = (() => {
       case 'jump2': { const r = rigs[a[0]]; if (r) r.flip = 1e-4; const p = P[a[0]]; if (p) for (let k = 0; k < 5; k++) puff(p.x, p.y, p.z, { vx: rand(-1.5, 1.5), vz: rand(-1.5, 1.5), vy: -1, c: '#ffffff', s0: 0.08, s1: 0.2, life: 0.3 }); if (a[0] === view.localSlot) SFX.play('jump', 0.6, 1.4); break; }
       case 'land': { const r = rigs[a[0]]; if (r) r.landT = 0.12; const p = P[a[0]]; if (p) for (let k = 0; k < 6; k++) puff(p.x + rand(-0.3, 0.3), p.y + 0.05, p.z + rand(-0.3, 0.3), { vx: rand(-2, 2), vz: rand(-2, 2), c: '#f4ecd6', s0: 0.08, s1: 0.22, life: 0.35 }); break; }
       case 'dash': { const p = P[a[0]]; if (p) for (let k = 0; k < 5; k++) puff(p.x, p.y + 0.5, p.z, { vx: rand(-1, 1), vy: rand(0, 1), vz: rand(-1, 1), c: '#ffffff', s0: 0.12, s1: 0.3, life: 0.3 }); if (a[0] === view.localSlot) SFX.play('dash', 0.6); break; }
-      case 'boing': { const pm = padMeshes.find(m => m.q === a[0]); if (pm) pm.t = 0.35; SFX.play('boing', a[1] === view.localSlot ? 0.8 : 0.3); break; }
+      case 'boing': { const pm = padMeshes[a[0]]; if (pm) pm.t = 0.35; SFX.play('boing', a[1] === view.localSlot ? 0.8 : 0.3); break; }
       case 'tp': { for (const q of [a[0], a[1]]) { const t2 = tpMeshes[q]; for (let k = 0; k < 12; k++) puff(t2.x + rand(-0.5, 0.5), rand(0.1, 1.8), t2.z + rand(-0.5, 0.5), { vy: rand(1, 3), c: t2.color, s0: 0.06, s1: 0.16, life: 0.6 }); } if (a[2] === view.localSlot) SFX.play('tp'); break; }
       case 'pick': { const S = a[0] >= 0 ? MAP.spawners[a[0]] : null, p = P[a[1]]; const x = S ? S.x : p ? p.x : 0, y = S ? S.y + 0.8 : p ? p.y + 0.8 : 0, z = S ? S.z : p ? p.z : 0; for (let k = 0; k < 10; k++) puff(x, y, z, { vx: rand(-2, 2), vy: rand(1, 3), vz: rand(-2, 2), c: ITEM_COLOR[a[2]], s0: 0.06, s1: 0.16, life: 0.5 }); if (a[1] === view.localSlot) { SFX.play('pick'); HUD.note(POWERS[a[2]].name + '! ' + POWERS[a[2]].note, 1.6); } break; }
       case 'crate': { const c = MAP.crates[a[0]]; debris(c.cx, 0.5, c.cz, '#c98b4b', 10, 0.2, 5); for (let k = 0; k < 6; k++) puff(c.cx, 0.5, c.cz, { vx: rand(-2, 2), vy: rand(0, 2), vz: rand(-2, 2), c: '#e9d2b0', s0: 0.15, s1: 0.4, life: 0.5 }); SFX.play('crate', near(c.cx, c.cz) ? 0.7 : 0.2); break; }
@@ -1594,7 +1645,7 @@ const GFX = (() => {
       _m4.compose(_v, _q, _s.set(C.w * (k + w) + 0.06 * k, C.top * (k - w) + 0.06 * k, C.d * (k + w) + 0.06 * k)); crateHull.setMatrixAt(i, _m4);
     });
     crateInst.instanceMatrix.needsUpdate = true; crateHull.instanceMatrix.needsUpdate = true;
-    zone.visible = !!view.sd; if (view.sd) { const r = Math.min(95, view.zone); zone.scale.set(r, 1, r); }
+    zone.visible = !!view.sd; if (view.sd) { const r = Math.min(100, view.zone); zone.scale.set(r, 1, r); }
     spawnerViews.forEach((sv, i) => {
       const k = view.spawners ? view.spawners[i] || '' : '';
       if (k !== sv.k) { if (sv.mesh) sv.holder.remove(sv.mesh); sv.mesh = k ? itemMesh(k) : null; if (sv.mesh) { sv.holder.add(sv.mesh); sv.pop = 0; } sv.k = k; }
@@ -1627,7 +1678,7 @@ const GFX = (() => {
     }
     updateShots(view.shotTime ?? t, view.ownShotTime ?? t, dt);
     updateFx(dt);
-    if (focus) { cam.t = t; updateCamera(focus, aim, dt); sun.position.set(focus.x + 13, 26, focus.z + 9); sun.target.position.set(focus.x, 0, focus.z); }
+    if (focus) { cam.t = t; updateCamera(focus, aim, dt); const lr = rigs[view.localSlot]; if (lr && cam.eff < 1.1) lr.model.visible = false; sun.position.set(focus.x + 13, 26, focus.z + 9); sun.target.position.set(focus.x, 0, focus.z); }
     renderer.render(scene, camera);
     updateDmg(dt);
     // keep it smooth: if frames run long for a few seconds, render fewer pixels
@@ -1710,7 +1761,7 @@ const Input = (() => {
     keys[e.code] = true;
     if (!st.enabled) return;
     if (!e.repeat) {
-      if (e.code === 'Space') st.jc++;
+      if (e.code === 'Space') { st.jc++; if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); }
       if (e.code === 'KeyK' || e.code === 'KeyE') st.dc++;
       if (e.code === 'KeyV') { st.ec++; st.et = 1; }
       if (e.code === 'KeyX') { st.ec++; st.et = 2; }
@@ -1722,8 +1773,11 @@ const Input = (() => {
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; st.mouseL = st.mouseR = false; });
   const canvas = $('#view');
   canvas.addEventListener('contextmenu', e => e.preventDefault());
+  let lastTouch = -1e9;
+  addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') lastTouch = performance.now(); }, true);
   canvas.addEventListener('mousedown', e => {
     SFX.unlock();
+    if (performance.now() - lastTouch < 1000) return;
     if (e.button === 0) st.mouseL = true;
     else if (e.button === 2) { st.mouseR = true; st.rDrag = { x: e.clientX, y: e.clientY, moved: 0, drag: false }; }
     else if (e.button === 1) { st.camDrag = { x: e.clientX, y: e.clientY }; e.preventDefault(); }
@@ -1832,10 +1886,14 @@ const HUD = (() => {
     const k = document.createElement('span'); k.className = 'k';
     r.append(dot, name, lives, k); board.appendChild(r); rows.push({ r, name, lives, k, key: '' });
   }
+  const hpRow = document.createElement('div'); hpRow.className = 'hp';
+  const hpBar = document.createElement('i'), hpShield = document.createElement('b'), hpTxt = document.createElement('span');
+  hpRow.append(hpBar, hpShield, hpTxt); board.appendChild(hpRow);
+  let hpKey = '';
   // the minimap: the whole page, turned so that up is where the camera looks
   const mm = $('#minimap'), mg = mm.getContext('2d');
   let mmT = 0;
-  const KIND_FILL = { tower: '#ffffff', book: '#9fc1f5', bridge: '#ffe680', eraser: '#f7a8bb', pbox: '#7fa6ef', book2: '#b5ea9f', book3: '#ffc7a8', pad: '#f7a8bb' };
+  const KIND_FILL = { tower: '#ffffff', notebook: '#ffffff', cup: '#b9dbf8', book: '#9fc1f5', bridge: '#ffe680', eraser: '#f7a8bb', pbox: '#7fa6ef', book2: '#b5ea9f', book3: '#ffc7a8', pad: '#f7a8bb' };
   function drawMap(v) {
     const W = mm.width, S = W / (HALF * 2 + 6), c = W / 2, cs = Math.cos(GFX.cam.yaw), sn = Math.sin(GFX.cam.yaw);
     const P = (x, z) => [c + (x * cs - z * sn) * S, c + (x * sn + z * cs) * S];
@@ -1846,7 +1904,7 @@ const HUD = (() => {
     for (const b of MAP.boxes) if (KIND_FILL[b.kind]) poly(b, KIND_FILL[b.kind]);
     for (const l of MAP.lifts) poly(l, '#ffe45c');
     MAP.crates.forEach((b, i) => { if (!v.crates || v.crates[i]) poly(b, '#c98b4b'); });
-    for (const t of MAP.tps) { const [x, y] = P(t.x, t.z); mg.fillStyle = t.q % 2 ? '#3ad1c4' : '#a05cff'; mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); }
+    for (const t of MAP.tps) { const [x, y] = P(t.x, t.z); mg.fillStyle = TP_COLOR(t); mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); }
     (v.spawners || []).forEach((k, i) => { if (!k) return; const S2 = MAP.spawners[i], [x, y] = P(S2.x, S2.z); mg.fillStyle = ({ h: '#ff6b81', s: '#5b8def', b: '#6fd3ff', t: '#ffc23d', p: '#ff8a1f' })[k]; mg.beginPath(); mg.arc(x, y, 5, 0, TAU); mg.fill(); mg.stroke(); });
     if (v.sd) { const [x, y] = P(0, 0); mg.strokeStyle = 'rgba(160, 40, 120, 0.9)'; mg.lineWidth = 3; mg.beginPath(); mg.arc(x, y, Math.min(v.zone, 60) * S, 0, TAU); mg.stroke(); mg.strokeStyle = '#1e1d2b'; }
     mg.lineWidth = 2.5;
@@ -1876,6 +1934,12 @@ const HUD = (() => {
       R.r.classList.toggle('me', i === local); R.r.classList.toggle('out', !!p.out);
     });
     for (let i = v.players.length; i < 4; i++) rows[i].r.hidden = true;
+    const mine = v.players[local];
+    hpRow.hidden = !mine || !mine.alive;
+    if (mine && mine.alive) {
+      const key = `${Math.ceil(mine.hp)}|${Math.ceil(mine.shield)}`;
+      if (key !== hpKey) { hpKey = key; const f = clamp(mine.hp / MAXHP, 0, 1); hpBar.style.width = `${f * 100}%`; hpBar.style.background = f > 0.5 ? '#3bc45c' : f > 0.25 ? '#ffc23d' : '#ff4d5e'; hpShield.style.width = `${clamp(mine.shield / 50, 0, 1) * 100}%`; hpTxt.textContent = mine.shield > 0 ? `${Math.ceil(mine.hp)} + ${Math.ceil(mine.shield)} shield` : `${Math.ceil(mine.hp)} health`; }
+    }
     // clock
     let txt;
     if (v.practice) txt = 'Practice';
@@ -1920,6 +1984,7 @@ const HUD = (() => {
   function onEvent(e, v) {
     const [, type] = e, a = e.slice(2), local = v.localSlot;
     if (type === 'hit') { const [vv, by] = a; if (vv === local && by >= 0 && by !== local) App.lockOn(by); else if (by === local && vv !== local) App.lockOn(vv); }
+    if (type === 'spawn' && a[0] === local && v.state === 'playing') App.reorient = true;
     if (type === 'go') { big('GO!', 0.8); SFX.play('go'); }
     else if (type === 'sd') { big('Sudden death!', 1.6); note('The ink is closing in. Get to the middle!', 3); SFX.play('sd'); }
     else if (type === 'kill') {
@@ -2253,7 +2318,7 @@ const App = {
   toClient() { this.match = null; show('lobby'); },
   startMatch() { if (!this.match) return; this.match.reset(); this.resultsShown = false; this.hideResults(); this.enterGame(); },
   enterGame() {
-    show('game'); this.unlock(); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
+    show('game'); this.unlock(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); Input.enabled = true; this.paused = false; this.acc = 0; this.resultsShown = false; this.endT = 0; this.specSlot = -1;
     GFX.clearShots(); HUD.clearFeed(); GFX.cam.init = false;
     const me = this.match ? this.match.players[this.localSlot] : null;
     const s = MAP.spawns[Math.max(0, this.localSlot)] || MAP.spawns[0];
@@ -2267,7 +2332,7 @@ const App = {
   netError(msg) { if (this.net) { this.net.leave(); this.net = null; } this.match = null; this.client = null; this.mode = 'menu'; Input.enabled = false; show('menu'); $('#netHint').textContent = msg; },
   togglePause() {
     if (this.mode === 'menu') return;
-    if (!$('#pause').hidden) { show('game'); this.paused = false; Input.enabled = true; return; }
+    if (!$('#pause').hidden) { show('game'); this.paused = false; Input.enabled = true; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); return; }
     if (cur !== 'game') return;
     this.paused = this.mode !== 'online'; Input.enabled = false; $('#pauseNote').hidden = this.mode !== 'online'; show('pause');
   },
@@ -2442,12 +2507,19 @@ function loop(now) {
     if (view.state === 'lobby' || view.state === 'ended') view.spectating = 0;
   }
   view.focus = focus;
+  // after a respawn, face the middle of the page
+  if (App.reorient && playing && meV.alive) { App.reorient = false; GFX.cam.yaw = Math.atan2(meV.x, meV.z); GFX.cam.init = false; }
   // locked on: the camera swings round so the rival stays in front of you
   if (App.mode !== 'menu') App.updateLock(dt);
   const lockT = App.lock && playing && meV.alive ? view.players[App.lock.slot] : null;
   GFX.setLock(lockT ? App.lock.slot : -1);
   if (lockT && cur === 'game') {
-    if (now - GFX.cam.manualT > 1200) { const want = Math.atan2(meV.x - lockT.x, meV.z - lockT.z); GFX.cam.yaw += angDiff(GFX.cam.yaw, want) * Math.min(1, dt * 4); }
+    // only once they drift well off to one side (about 35 degrees), then back to nearly centred
+    if (now - GFX.cam.manualT > 1200) {
+      const want = Math.atan2(meV.x - lockT.x, meV.z - lockT.z), off = angDiff(GFX.cam.yaw, want);
+      if (Math.abs(off) > 0.6) App.lock.turn = true;
+      if (App.lock.turn) { GFX.cam.yaw += off * Math.min(1, dt * 3); if (Math.abs(off) < 0.12) App.lock.turn = false; }
+    }
     if (!aim) aim = { x: lockT.x, z: lockT.z };
   }
   // the camera swings round behind your doodle as it turns (not while you aim, shoot or turn the camera yourself)
@@ -2510,10 +2582,10 @@ function loop(now) {
   $('#bResume').onclick = click(() => App.togglePause());
   $('#bQuit').onclick = click(() => App.toMenu());
   $('#bHelp').onclick = click(() => { $('#keys').hidden = !$('#keys').hidden; });
-  try { GFX.cam.follow = localStorage.getItem('dp.camfollow') !== 'off'; } catch { /* */ }
+  try { GFX.cam.follow = localStorage.getItem('dp.camfollow2') === 'on'; } catch { /* */ } // off unless you switch it on
   const paintFollow = () => { $('#bFollow').textContent = `Camera follows your doodle: ${GFX.cam.follow ? 'on' : 'off'}`; $('#bFollow').setAttribute('aria-pressed', String(GFX.cam.follow)); };
   paintFollow();
-  $('#bFollow').onclick = click(() => { GFX.cam.follow = !GFX.cam.follow; try { localStorage.setItem('dp.camfollow', GFX.cam.follow ? 'on' : 'off'); } catch { /* */ } paintFollow(); });
+  $('#bFollow').onclick = click(() => { GFX.cam.follow = !GFX.cam.follow; try { localStorage.setItem('dp.camfollow2', GFX.cam.follow ? 'on' : 'off'); } catch { /* */ } paintFollow(); });
   const mute = () => { const on = SFX.toggle(); $('#bMute').setAttribute('aria-pressed', String(!on)); $('#bMute').textContent = on ? '♪' : '♪̸'; };
   $('#bMute').onclick = () => { SFX.unlock(); mute(); };
   if (!SFX.on) { $('#bMute').setAttribute('aria-pressed', 'true'); $('#bMute').textContent = '♪̸'; }

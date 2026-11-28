@@ -82,7 +82,7 @@ const GFX = (() => {
   // ---- canvas textures (each object gets its own)
   const ctex = (w, h, draw, rep) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); } t.anisotropy = 4; return t; };
   scene.background = new THREE.Color('#f4efe0');
-  scene.fog = new THREE.Fog('#f4efe0', 46, 150);
+  scene.fog = new THREE.Fog('#f4efe0', 50, 175);
   const paperSide = ctex(256, 128, (g, w, h) => { g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h); g.strokeStyle = '#a9c9ee'; g.lineWidth = 3; for (let y = 18; y < h; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } g.strokeStyle = '#e8838a'; g.lineWidth = 4; g.beginPath(); g.moveTo(30, 0); g.lineTo(30, h); g.stroke(); }, [2, 1]);
   const paperTop = ctex(512, 512, (g, w, h) => {
     g.fillStyle = '#fbf8ee'; g.fillRect(0, 0, w, h); g.strokeStyle = '#a9c9ee'; g.lineWidth = 3; for (let y = 32; y < h; y += 48) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
@@ -129,10 +129,11 @@ const GFX = (() => {
       const rub = inked(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.4, 12), toon('#f7a8bb')), 0.15); rub.position.y = 14.2;
       g.add(body, wood, rub);
     };
-    giantPencil(-52, 18, 0.4, '#ffcf3a'); giantPencil(48, -40, -0.9, '#5b8def'); giantPencil(20, 56, 1.4, '#e63946');
-    const er = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(16, 6, 9), toon('#f7a8bb')), 0.15), 52, -4, 24); er.rotation.y = 0.5;
-    const mug = addD(inked(new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 16, 24), toon('#7fb3ff')), 0.15), -46, 1, -48);
-    const sharp = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), toon('#ffcf3a')), 0.15), -60, -4, -6); sharp.rotation.y = 1.1;
+    const f = HALF / SC / 30; // (laid out for a 60-unit page; spread out to fit this one)
+    giantPencil(-58 * f, 18 * f, 0.4, '#ffcf3a'); giantPencil(52 * f, -44 * f, -0.9, '#5b8def'); giantPencil(20 * f, 60 * f, 1.4, '#e63946');
+    const er = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(16, 6, 9), toon('#f7a8bb')), 0.15), 56 * f, -4, 24 * f); er.rotation.y = 0.5;
+    const mug = addD(inked(new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 16, 24), toon('#7fb3ff')), 0.15), -50 * f, 1, -52 * f);
+    const sharp = addD(inked(new THREE.Mesh(new THREE.BoxGeometry(7, 6, 6), toon('#ffcf3a')), 0.15), -64 * f, -4, -6 * f); sharp.rotation.y = 1.1;
   }
   const playerU = { value: [new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0), new THREE.Vector4(0, -99, 0, 0)] };
 
@@ -180,6 +181,24 @@ const GFX = (() => {
       const longX = b.w > b.d, mats = longX ? [pages, pages, cover, cover, pages, spine] : [pages, spine, cover, cover, pages, pages];
       add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(b.w, b.top, b.d), mats))), b.cx, b.top / 2, b.cz);
       const band = add(new THREE.Mesh(new THREE.BoxGeometry(b.w * 1.004, 0.08, b.d * 1.004), toon('#fffdf4')), b.cx, b.top - 0.12, b.cz);
+    } else if (b.kind === 'notebook') {
+      // a spiral notebook: cover on top, wire rings down one long side
+      const cover = toon(['#ffffff', '#ffe45c', '#b9dbf8', '#ffc7d4'][b.q]), pages = toon('#fff', { map: pagesTex });
+      add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(b.w, b.top, b.d), [pages, pages, cover, cover, pages, pages]))), b.cx, b.top / 2, b.cz);
+      const long = b.d > b.w, n = 11, ring = new THREE.TorusGeometry(0.34, 0.07, 6, 14), rings = new THREE.InstancedMesh(ring, toon('#c3c9d4'), n), m4 = new THREE.Matrix4();
+      const qr = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, long ? 0 : Math.PI / 2, 0)), side = Math.sign(b.cx + b.cz) || 1;
+      for (let i = 0; i < n; i++) { const f = -0.42 + i * 0.84 / (n - 1); m4.compose(new THREE.Vector3(long ? b.cx - side * b.w / 2 : b.cx + f * b.w, b.top, long ? b.cz + f * b.d : b.cz - side * b.d / 2), qr, new THREE.Vector3(1, 1, 1)); rings.setMatrixAt(i, m4); }
+      scene.add(rings);
+    } else if (b.kind === 'cup') {
+      // a tall pencil cup with pencils standing in it (the pencils are scenery; you stand on the rim)
+      const c = ['#7fb3ff', '#ff9ec4', '#b5ea9f', '#ffd93d'][b.q];
+      add(shadowy(inked(new THREE.Mesh(new THREE.BoxGeometry(b.w, b.top, b.d), toon(c)))), b.cx, b.top / 2, b.cz);
+      add(new THREE.Mesh(new THREE.BoxGeometry(b.w * 1.01, 0.18, b.d * 1.01), toon(new THREE.Color(c).multiplyScalar(0.8))), b.cx, b.top * 0.2, b.cz);
+      for (const [ox, oz, h, pc] of [[-0.3, -0.3, 2.6, '#ffcf3a'], [0.32, -0.25, 3.2, '#e63946'], [-0.28, 0.3, 2.2, '#5b8def']]) {
+        const pen = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, h, 6), toon(pc)), 0.03);
+        pen.rotation.set(oz * 0.25, 0, -ox * 0.25); add(pen, b.cx + ox * b.w, b.top + h / 2 - 0.2, b.cz + oz * b.d);
+        const tip = inked(new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 6), toon('#f2d2a6')), 0.03); tip.position.y = h / 2 + 0.2; pen.add(tip);
+      }
     } else if (b.kind === 'book2' || b.kind === 'book3') {
       const c = b.kind === 'book2' ? ['#2fbf5f', '#a05cff', '#ff9a1f', '#3ad1c4'][b.q] : ['#ff8fb1', '#ffd93d', '#7fb3ff', '#e63946'][b.q];
       const cover = toon(c), pages = toon('#fff', { map: pagesTex }), h = b.top - b.bottom;
@@ -198,7 +217,7 @@ const GFX = (() => {
       const long = b.d > b.w;
       for (const [o, c] of [[-0.35, '#ffcf3a'], [0.35, '#e63946']]) {
         const pc = inked(new THREE.Mesh(new THREE.CylinderGeometry(0.09 * SC, 0.09 * SC, (long ? b.d : b.w) * 0.8, 6), toon(c)), 0.02);
-        pc.rotation.set(long ? Math.PI / 2 : 0, 0, long ? 0 : Math.PI / 2); add(pc, b.cx + (long ? o * SC : 0), h + 0.09 * SC, b.cz + (long ? 0 : o * SC)); pc.castShadow = true;
+        pc.rotation.set(long ? Math.PI / 2 : 0, 0, long ? 0 : Math.PI / 2); add(pc, b.cx + (long ? o * SC : 0), h + 0.09 * SC, b.cz + (long ? 0 : o * SC));
       }
     } else if (b.kind === 'bridge') {
       const tex = rulerTex.clone(); tex.needsUpdate = true; if (b.w < b.d) { tex.center.set(0.5, 0.5); tex.rotation = Math.PI / 2; }
@@ -207,7 +226,7 @@ const GFX = (() => {
       // two legs so it reads as a bridge
       // legs only on the outer half, so the sweeping pencil passes under cleanly
       const ol = Math.hypot(b.cx, b.cz) || 1, ux = b.cx / ol, uz = b.cz / ol;
-      for (const k of [1.3 * SC, 4.5 * SC]) add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, b.bottom, 8), toon('#c3c9d4')), 0.025)), b.cx + ux * k, b.bottom / 2, b.cz + uz * k);
+      for (const k of [1.3 * SC, 4.5 * SC]) add(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, b.bottom, 8), toon('#c3c9d4')), 0.025), b.cx + ux * k, b.bottom / 2, b.cz + uz * k);
     } else if (b.kind === 'pad') {
       const g = new THREE.Group(); g.position.set(b.cx, 0, b.cz); scene.add(g);
       const pr = b.w / 2;
@@ -226,7 +245,7 @@ const GFX = (() => {
   });
   const tpMeshes = MAP.tps.map(tp => {
     const g = new THREE.Group(); g.position.set(tp.x, 0, tp.z); g.scale.setScalar(tp.r / 0.75); scene.add(g);
-    const color = tp.q % 2 ? '#3ad1c4' : '#a05cff';
+    const color = TP_COLOR(tp); // each pair has its own colour
     g.add(shadowy(inked(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.1, 28), toon('#2b2d4a')), 0.025)));
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.08, 8, 32), toon(color, { emissive: new THREE.Color(color).multiplyScalar(0.35) })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12; g.add(ring);
     const disc = new THREE.Mesh(new THREE.CircleGeometry(0.6, 28), new THREE.MeshBasicMaterial({ map: swirlTex, color, transparent: true, opacity: 0.85, depthWrite: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.11; g.add(disc);
@@ -506,7 +525,7 @@ const GFX = (() => {
       if (this.bubble.visible) this.bubble.material.color.set(p.shield > 0 ? '#9fe6ff' : '#ffffff');
       this.ring.material.color.set(p.pw ? ITEM_COLOR[p.pw] : COLORS[this.slot].hex);
       this.ring.scale.setScalar(p.pw ? 1.25 + Math.sin(rt * 8) * 0.08 : 1);
-      this.tag.visible = p.alive;
+      this.tag.visible = p.alive && !local;
       if (p.alive) this.drawTag(p, local);
       const fl = p.floor ?? 0;
       this.blob.visible = this.root.visible && fl > -1;
@@ -573,8 +592,10 @@ const GFX = (() => {
   }
 
   // ---- camera: follows your doodle (or whoever you spectate), rotatable and zoomable
-  const cam = { yaw: 0.6, pitch: 0.32, dist: 8, eff: 8, follow: true, manualT: 0, look: new THREE.Vector3(0, 1, 0), shake: 0, init: false, t: 0 };
-  const camBoxes = MAP.boxes.filter(b => b.kind !== 'pad'), _cl = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, bottom: 0, top: 0 };
+  const cam = { yaw: 0.6, pitch: 0.32, dist: 8, eff: 8, follow: false, manualT: 0, look: new THREE.Vector3(0, 1, 0), shake: 0, init: false, t: 0 };
+  // the camera stays out of walls and out of treetops (inside a crown you'd only see its ink outline)
+  const crowns = MAP.trees.map(t => ({ minX: t.x - 1.35 * t.s, maxX: t.x + 1.35 * t.s, minZ: t.z - 1.35 * t.s, maxZ: t.z + 1.35 * t.s, bottom: 1.5 * t.s, top: 3.9 * t.s }));
+  const camBoxes = [...MAP.boxes.filter(b => b.kind !== 'pad'), ...crowns], _cl = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, bottom: 0, top: 0 };
   function camClear(lx, ly, lz, px, py, pz) {
     let t = 1;
     const dx = px - lx, dy = py - ly, dz = pz - lz;
@@ -589,7 +610,7 @@ const GFX = (() => {
     cam.look.lerp(tgt, REDUCED ? 1 : 1 - Math.exp(-dt * 7));
     const cp = Math.cos(cam.pitch), ox = Math.sin(cam.yaw) * cp, oy = Math.sin(cam.pitch), oz = Math.cos(cam.yaw) * cp;
     const clear = cam.dist < 18 ? camClear(cam.look.x, cam.look.y, cam.look.z, cam.look.x + ox * cam.dist, cam.look.y + oy * cam.dist, cam.look.z + oz * cam.dist) : 1;
-    const want = Math.max(1.6, cam.dist * clear - 0.1);
+    const want = Math.max(0.35, cam.dist * clear - 0.15); // right up behind your head if something is that close
     cam.eff = want < cam.eff ? want : cam.eff + (want - cam.eff) * Math.min(1, dt * 3);
     camera.position.set(cam.look.x + ox * cam.eff, cam.look.y + oy * cam.eff, cam.look.z + oz * cam.eff);
     if (cam.shake > 0 && !REDUCED) { camera.position.x += (Math.random() - 0.5) * cam.shake; camera.position.y += (Math.random() - 0.5) * cam.shake; cam.shake = Math.max(0, cam.shake - dt * 1.5); }
@@ -651,7 +672,7 @@ const GFX = (() => {
       case 'jump2': { const r = rigs[a[0]]; if (r) r.flip = 1e-4; const p = P[a[0]]; if (p) for (let k = 0; k < 5; k++) puff(p.x, p.y, p.z, { vx: rand(-1.5, 1.5), vz: rand(-1.5, 1.5), vy: -1, c: '#ffffff', s0: 0.08, s1: 0.2, life: 0.3 }); if (a[0] === view.localSlot) SFX.play('jump', 0.6, 1.4); break; }
       case 'land': { const r = rigs[a[0]]; if (r) r.landT = 0.12; const p = P[a[0]]; if (p) for (let k = 0; k < 6; k++) puff(p.x + rand(-0.3, 0.3), p.y + 0.05, p.z + rand(-0.3, 0.3), { vx: rand(-2, 2), vz: rand(-2, 2), c: '#f4ecd6', s0: 0.08, s1: 0.22, life: 0.35 }); break; }
       case 'dash': { const p = P[a[0]]; if (p) for (let k = 0; k < 5; k++) puff(p.x, p.y + 0.5, p.z, { vx: rand(-1, 1), vy: rand(0, 1), vz: rand(-1, 1), c: '#ffffff', s0: 0.12, s1: 0.3, life: 0.3 }); if (a[0] === view.localSlot) SFX.play('dash', 0.6); break; }
-      case 'boing': { const pm = padMeshes.find(m => m.q === a[0]); if (pm) pm.t = 0.35; SFX.play('boing', a[1] === view.localSlot ? 0.8 : 0.3); break; }
+      case 'boing': { const pm = padMeshes[a[0]]; if (pm) pm.t = 0.35; SFX.play('boing', a[1] === view.localSlot ? 0.8 : 0.3); break; }
       case 'tp': { for (const q of [a[0], a[1]]) { const t2 = tpMeshes[q]; for (let k = 0; k < 12; k++) puff(t2.x + rand(-0.5, 0.5), rand(0.1, 1.8), t2.z + rand(-0.5, 0.5), { vy: rand(1, 3), c: t2.color, s0: 0.06, s1: 0.16, life: 0.6 }); } if (a[2] === view.localSlot) SFX.play('tp'); break; }
       case 'pick': { const S = a[0] >= 0 ? MAP.spawners[a[0]] : null, p = P[a[1]]; const x = S ? S.x : p ? p.x : 0, y = S ? S.y + 0.8 : p ? p.y + 0.8 : 0, z = S ? S.z : p ? p.z : 0; for (let k = 0; k < 10; k++) puff(x, y, z, { vx: rand(-2, 2), vy: rand(1, 3), vz: rand(-2, 2), c: ITEM_COLOR[a[2]], s0: 0.06, s1: 0.16, life: 0.5 }); if (a[1] === view.localSlot) { SFX.play('pick'); HUD.note(POWERS[a[2]].name + '! ' + POWERS[a[2]].note, 1.6); } break; }
       case 'crate': { const c = MAP.crates[a[0]]; debris(c.cx, 0.5, c.cz, '#c98b4b', 10, 0.2, 5); for (let k = 0; k < 6; k++) puff(c.cx, 0.5, c.cz, { vx: rand(-2, 2), vy: rand(0, 2), vz: rand(-2, 2), c: '#e9d2b0', s0: 0.15, s1: 0.4, life: 0.5 }); SFX.play('crate', near(c.cx, c.cz) ? 0.7 : 0.2); break; }
@@ -685,7 +706,7 @@ const GFX = (() => {
       _m4.compose(_v, _q, _s.set(C.w * (k + w) + 0.06 * k, C.top * (k - w) + 0.06 * k, C.d * (k + w) + 0.06 * k)); crateHull.setMatrixAt(i, _m4);
     });
     crateInst.instanceMatrix.needsUpdate = true; crateHull.instanceMatrix.needsUpdate = true;
-    zone.visible = !!view.sd; if (view.sd) { const r = Math.min(95, view.zone); zone.scale.set(r, 1, r); }
+    zone.visible = !!view.sd; if (view.sd) { const r = Math.min(100, view.zone); zone.scale.set(r, 1, r); }
     spawnerViews.forEach((sv, i) => {
       const k = view.spawners ? view.spawners[i] || '' : '';
       if (k !== sv.k) { if (sv.mesh) sv.holder.remove(sv.mesh); sv.mesh = k ? itemMesh(k) : null; if (sv.mesh) { sv.holder.add(sv.mesh); sv.pop = 0; } sv.k = k; }
@@ -718,7 +739,7 @@ const GFX = (() => {
     }
     updateShots(view.shotTime ?? t, view.ownShotTime ?? t, dt);
     updateFx(dt);
-    if (focus) { cam.t = t; updateCamera(focus, aim, dt); sun.position.set(focus.x + 13, 26, focus.z + 9); sun.target.position.set(focus.x, 0, focus.z); }
+    if (focus) { cam.t = t; updateCamera(focus, aim, dt); const lr = rigs[view.localSlot]; if (lr && cam.eff < 1.1) lr.model.visible = false; sun.position.set(focus.x + 13, 26, focus.z + 9); sun.target.position.set(focus.x, 0, focus.z); }
     renderer.render(scene, camera);
     updateDmg(dt);
     // keep it smooth: if frames run long for a few seconds, render fewer pixels
